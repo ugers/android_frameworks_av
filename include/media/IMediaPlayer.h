@@ -33,7 +33,7 @@ namespace android {
 class Parcel;
 class Surface;
 class IStreamSource;
-class ISurfaceTexture;
+class IGraphicBufferProducer;
 
 class IMediaPlayer: public IInterface
 {
@@ -47,7 +47,7 @@ public:
     virtual status_t        setDataSource(int fd, int64_t offset, int64_t length) = 0;
     virtual status_t        setDataSource(const sp<IStreamSource>& source) = 0;
     virtual status_t        setVideoSurfaceTexture(
-                                    const sp<ISurfaceTexture>& surfaceTexture) = 0;
+                                    const sp<IGraphicBufferProducer>& bufferProducer) = 0;
     virtual status_t        prepareAsync() = 0;
     virtual status_t        start() = 0;
     virtual status_t        stop() = 0;

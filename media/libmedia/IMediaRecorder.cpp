@@ -23,7 +23,7 @@
 #include <media/IMediaRecorderClient.h>
 #include <media/IMediaRecorder.h>
 #include <gui/Surface.h>
-#include <gui/ISurfaceTexture.h>
+#include <gui/IGraphicBufferProducer.h>
 #include <unistd.h>
 
 
@@ -76,7 +76,7 @@ public:
         return reply.readInt32();
     }
 
-    sp<ISurfaceTexture> querySurfaceMediaSource()
+    sp<IGraphicBufferProducer> querySurfaceMediaSource()
     {
         ALOGV("Query SurfaceMediaSource");
         Parcel data, reply;
@@ -86,7 +86,7 @@ public:
         if (returnedNull) {
             return NULL;
         }
-        return interface_cast<ISurfaceTexture>(reply.readStrongBinder());
+        return interface_cast<IGraphicBufferProducer>(reply.readStrongBinder());
     }
 
     status_t queueBuffer(int index, int addr_y, int addr_c, int64_t timestamp)
@@ -487,7 +487,7 @@ status_t BnMediaRecorder::onTransact(
             CHECK_INTERFACE(IMediaRecorder, data, reply);
             // call the mediaserver side to create
             // a surfacemediasource
-            sp<ISurfaceTexture> surfaceMediaSource = querySurfaceMediaSource();
+            sp<IGraphicBufferProducer> surfaceMediaSource = querySurfaceMediaSource();
             // The mediaserver might have failed to create a source
             int returnedNull= (surfaceMediaSource == NULL) ? 1 : 0 ;
             reply->writeInt32(returnedNull);

@@ -34,7 +34,7 @@ class ANativeWindow;
 namespace android {
 
 class Surface;
-class ISurfaceTexture;
+class IGraphicBufferProducer;
 
 //add by Bevis, for Dlna source detector
 #define DLNA_SOURCE_DETECTOR "com.softwinner.dlnasourcedetector"
@@ -210,7 +210,7 @@ public:
             status_t        setDataSource(int fd, int64_t offset, int64_t length);
             status_t        setDataSource(const sp<IStreamSource> &source);
             status_t        setVideoSurfaceTexture(
-                                    const sp<ISurfaceTexture>& surfaceTexture);
+                                    const sp<IGraphicBufferProducer>& bufferProducer);
             status_t        setListener(const sp<MediaPlayerListener>& listener);
             status_t        prepare();
             status_t        prepareAsync();

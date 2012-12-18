@@ -42,7 +42,7 @@ struct NuPlayer : public AHandler {
 
     void setDataSource(int fd, int64_t offset, int64_t length);
 
-    void setVideoSurfaceTexture(const sp<ISurfaceTexture> &surfaceTexture);
+    void setVideoSurfaceTexture(const sp<IGraphicBufferProducer> &bufferProducer);
     void setAudioSink(const sp<MediaPlayerBase::AudioSink> &sink);
     void start();
 

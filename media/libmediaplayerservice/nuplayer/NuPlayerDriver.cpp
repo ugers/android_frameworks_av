@@ -96,8 +96,8 @@ status_t NuPlayerDriver::setDataSource(const sp<IStreamSource> &source) {
 }
 
 status_t NuPlayerDriver::setVideoSurfaceTexture(
-        const sp<ISurfaceTexture> &surfaceTexture) {
-    mPlayer->setVideoSurfaceTexture(surfaceTexture);
+        const sp<IGraphicBufferProducer> &bufferProducer) {
+    mPlayer->setVideoSurfaceTexture(bufferProducer);
 
     return OK;
 }

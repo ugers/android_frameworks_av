@@ -32,7 +32,7 @@ class Surface;
 class IMediaRecorder;
 class ICamera;
 class ICameraRecordingProxy;
-class ISurfaceTexture;
+class IGraphicBufferProducer;
 class SurfaceTextureClient;
 
 typedef void (*media_completion_f)(status_t status, void *cookie);
@@ -252,9 +252,10 @@ public:
     status_t    close();
     status_t    release();
     void        notify(int msg, int ext1, int ext2);
-    sp<ISurfaceTexture>     querySurfaceMediaSourceFromMediaServer();
+    sp<IGraphicBufferProducer>     querySurfaceMediaSourceFromMediaServer();
     status_t queueBuffer(int index, int addr_y, int addr_c, int64_t timestamp);
     sp<IMemory> getOneBsFrame(int mode);
+
 private:
     void                    doCleanUp();
     status_t                doReset();
@@ -262,10 +263,10 @@ private:
     sp<IMediaRecorder>          mMediaRecorder;
     sp<MediaRecorderListener>   mListener;
 
-    // Reference toISurfaceTexture
+    // Reference to IGraphicBufferProducer
     // for encoding GL Frames. That is useful only when the
     // video source is set to VIDEO_SOURCE_GRALLOC_BUFFER
-    sp<ISurfaceTexture>         mSurfaceMediaSource;
+    sp<IGraphicBufferProducer>  mSurfaceMediaSource;
 
     media_recorder_states       mCurrentState;
     bool                        mIsAudioSourceSet;

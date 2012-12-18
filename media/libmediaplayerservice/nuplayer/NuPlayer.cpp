@@ -41,7 +41,7 @@
 #include <media/stagefright/MediaDefs.h>
 #include <media/stagefright/MediaErrors.h>
 #include <media/stagefright/MetaData.h>
-#include <gui/ISurfaceTexture.h>
+#include <gui/IGraphicBufferProducer.h>
 
 #include "avc_utils.h"
 
@@ -140,10 +140,10 @@ void NuPlayer::setDataSource(int fd, int64_t offset, int64_t length) {
     msg->post();
 }
 
-void NuPlayer::setVideoSurfaceTexture(const sp<ISurfaceTexture> &surfaceTexture) {
+void NuPlayer::setVideoSurfaceTexture(const sp<IGraphicBufferProducer> &bufferProducer) {
     sp<AMessage> msg = new AMessage(kWhatSetVideoNativeWindow, id());
-    sp<SurfaceTextureClient> surfaceTextureClient(surfaceTexture != NULL ?
-                new SurfaceTextureClient(surfaceTexture) : NULL);
+    sp<SurfaceTextureClient> surfaceTextureClient(bufferProducer != NULL ?
+                new SurfaceTextureClient(bufferProducer) : NULL);
     msg->setObject("native-window", new NativeWindowWrapper(surfaceTextureClient));
     msg->post();
 }

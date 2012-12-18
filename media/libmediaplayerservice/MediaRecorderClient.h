@@ -25,7 +25,7 @@ namespace android {
 class MediaRecorderBase;
 class MediaPlayerService;
 class ICameraRecordingProxy;
-class ISurfaceTexture;
+class IGraphicBufferProducer;
 
 class MediaRecorderClient : public BnMediaRecorder
 {
@@ -55,7 +55,8 @@ public:
     virtual     status_t   close();
     virtual     status_t   release();
     virtual     status_t   dump(int fd, const Vector<String16>& args) const;
-    virtual     sp<ISurfaceTexture> querySurfaceMediaSource();
+
+    virtual     sp<IGraphicBufferProducer> querySurfaceMediaSource();
     virtual   status_t queueBuffer(int index, int addr_y, int addr_c, int64_t timestamp);
     virtual    sp<IMemory> getOneBsFrame(int mode);
 
