@@ -67,8 +67,6 @@ sp<ISurfaceTexture> MediaRecorderClient::querySurfaceMediaSource()
     return mRecorder->querySurfaceMediaSource();
 }
 
-
-
 status_t MediaRecorderClient::setCamera(const sp<ICamera>& camera,
                                         const sp<ICameraRecordingProxy>& proxy)
 {

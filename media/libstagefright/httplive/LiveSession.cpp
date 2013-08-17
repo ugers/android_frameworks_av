@@ -108,6 +108,8 @@ void LiveSession::seekTo(int64_t timeUs) {
     while (!mSeekDone) {
         mCondition.wait(mLock);
     }
+
+    return 0;
 }
 
 void LiveSession::onMessageReceived(const sp<AMessage> &msg) {

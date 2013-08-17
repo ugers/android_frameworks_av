@@ -153,9 +153,11 @@ LOCAL_STATIC_LIBRARIES := \
         libstagefright_timedtext \
         libvpx \
         libstagefright_mpeg2ts \
-        libstagefright_httplive \
         libstagefright_id3 \
         libFLAC \
+
+
+LOCAL_LDFLAGS += $(TOP)/frameworks/av/media/libstagefright/libstagefright_httplive_opt.a
 
 LOCAL_SRC_FILES += \
         chromium_http_stub.cpp

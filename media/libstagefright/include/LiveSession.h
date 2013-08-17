@@ -108,6 +108,18 @@ private:
 
     int32_t mMonitorQueueGeneration;
 
+    int64_t				mSeekTargetStartUs;
+
+    bool				mHasSeekMsg;
+    bool				mLastDownloadTobeContinue;
+    int32_t				mLastDownloadOffset;
+    int32_t				mLastSubSeqNumber;
+
+    int32_t				mLastSeqNumberBase;
+
+
+    bool                                mIsPlaylistRedirected;
+    char*				mPlaylistRedirectURL;
     enum RefreshState {
         INITIAL_MINIMUM_RELOAD_DELAY,
         FIRST_UNCHANGED_RELOAD_ATTEMPT,
@@ -127,6 +139,8 @@ private:
     status_t fetchFile(
             const char *url, sp<ABuffer> *out,
             int64_t range_offset = 0, int64_t range_length = -1);
+
+    int32_t	 fetchTsData(const char* url, bool continueLast);
 
     sp<M3UParser> fetchPlaylist(const char *url, bool *unchanged);
     size_t getBandwidthIndex();

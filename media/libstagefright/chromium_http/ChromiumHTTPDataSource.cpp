@@ -39,6 +39,8 @@ ChromiumHTTPDataSource::ChromiumHTTPDataSource(uint32_t flags)
       mDecryptHandle(NULL),
       mDrmManagerClient(NULL) {
     mDelegate->setOwner(this);
+    mDelegate->setUA(!!(mFlags & kFlagUAIPAD));
+    mIsRedirected = false;
 }
 
 ChromiumHTTPDataSource::~ChromiumHTTPDataSource() {
@@ -73,6 +75,100 @@ status_t ChromiumHTTPDataSource::connect(
     return connect_l(uri, headers, offset);
 }
 
+//* add by chenxiaochuan for QQ live stream.
+
+AString ChromiumHTTPDataSource::getRedirectUri(bool getAll)
+{
+	if(!getAll) {
+		//for m3u8
+		char* tmp;
+		char* new_url;
+		char* new_url2;
+		char* pos1;
+		char* pos2;
+
+		if(!mIsRedirected)
+			return mURI.c_str();
+
+		tmp = (char*)malloc(4096);
+		if(tmp == NULL)
+			return mURI.c_str();
+
+		new_url  = tmp;
+		new_url2 = tmp + 2048;
+
+		strcpy(new_url, mURI.c_str());
+
+		pos1 = strstr(new_url, "//");
+		if(pos1 == NULL)
+		{
+			free(tmp);
+			return mURI.c_str();
+		}
+
+		pos1 += 2;
+
+		pos2 = strstr(pos1, "/");
+		if(pos2 == NULL)
+		{
+			free(tmp);
+			return mURI.c_str();
+		}
+
+		*pos1 = 0;
+		strcpy(new_url2, new_url);
+		strcat(new_url2, mRedirectHost.c_str());
+		if(strlen(mRedirectPort.c_str()) > 0)
+		{
+			strcat(new_url2, ":");
+			strcat(new_url2, mRedirectPort.c_str());
+		}
+
+		strcat(new_url2, pos2);
+		mRedirectURI = new_url2;
+		free(tmp);
+	} else  if(mRedirectURI.empty()){
+		//for flv,mkv.etc
+		//add by weihongqiang
+		mRedirectURI.append("http://");
+		mRedirectURI.append(mRedirectHost);
+		if(mRedirectPort.size() > 0) {
+			mRedirectURI.append(mRedirectPort);
+		}
+		mRedirectURI.append(mRedirectPath);
+	}
+	LOG_PRI(ANDROID_LOG_INFO, LOG_TAG, "getAll %d, mRedirectURI %s", getAll, mRedirectURI.c_str());
+	return mRedirectURI;
+}
+
+bool ChromiumHTTPDataSource::isRedirected()
+{
+	return mIsRedirected;
+}
+
+void ChromiumHTTPDataSource::setRedirectHost(const char* host)
+{
+	mRedirectHost = host;
+	mIsRedirected = true;
+}
+
+void ChromiumHTTPDataSource::setRedirectPort(const char* port)
+{
+	mRedirectPort = port;
+}
+
+void ChromiumHTTPDataSource::setRedirectPath(const char* path)
+{
+	mRedirectPath = path;
+}
+
+void ChromiumHTTPDataSource::setRedirectSpec(const char* path)
+{
+	//especially neccessary for QQ video.
+	mRedirectURI = path;
+}
+//* end.
+
 status_t ChromiumHTTPDataSource::connect_l(
         const char *uri,
         const KeyedVector<String8, String8> *headers,
@@ -87,6 +183,9 @@ status_t ChromiumHTTPDataSource::connect_l(
 #endif
 
     mURI = uri;
+    mIsRedirected = false;
+
+	//LOG_PRI(ANDROID_LOG_VERBOSE, LOG_TAG, "uri = %s.", uri);
     mContentType = String8("application/octet-stream");
 
     if (headers != NULL) {
@@ -341,4 +440,3 @@ status_t ChromiumHTTPDataSource::reconnectAtOffset(off64_t offset) {
 }
 
 }  // namespace android
-
