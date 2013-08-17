@@ -1,9 +1,5 @@
 /*
  * Copyright (C) 2006-2007 The Android Open Source Project
- * Copyright (c) 2012-2013, The Linux Foundation. All rights reserved.
- *
- * Not a Contribution, Apache license notifications and license are retained
- * for attribution purposes only
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -415,15 +411,6 @@ void AudioSystem::releaseAudioSessionId(int audioSession) {
     }
 }
 
-#ifdef QCOM_FM_ENABLED
-status_t AudioSystem::setFmVolume(float value)
-{
-    const sp<IAudioFlinger>& af = AudioSystem::get_audio_flinger();
-    if (af == 0) return PERMISSION_DENIED;
-    return af->setFmVolume(value);
-}
-#endif
-
 // ---------------------------------------------------------------------------
 
 void AudioSystem::AudioFlingerClient::binderDied(const wp<IBinder>& who) {
@@ -574,12 +561,6 @@ audio_policy_dev_state_t AudioSystem::getDeviceConnectionState(audio_devices_t d
     return aps->getDeviceConnectionState(device, device_address);
 }
 
-extern "C" audio_policy_dev_state_t _ZN7android11AudioSystem24getDeviceConnectionStateE15audio_devices_tPKc(audio_devices_t device,
-                                                  const char *device_address)
-{
-    return AudioSystem::getDeviceConnectionState(device, device_address);
-}
-
 status_t AudioSystem::setPhoneState(audio_mode_t state)
 {
     if (uint32_t(state) >= AUDIO_MODE_CNT) return BAD_VALUE;
@@ -613,14 +594,6 @@ audio_io_handle_t AudioSystem::getOutput(audio_stream_type_t stream,
     const sp<IAudioPolicyService>& aps = AudioSystem::get_audio_policy_service();
     if (aps == 0) return 0;
     return aps->getOutput(stream, samplingRate, format, channelMask, flags);
-}
-
-extern "C" audio_io_handle_t _ZN7android11AudioSystem9getOutputE19audio_stream_type_tjjj27audio_policy_output_flags_t(audio_stream_type_t stream,
-                                    uint32_t samplingRate,
-                                    uint32_t format,
-                                    uint32_t channels,
-                                    audio_output_flags_t flags) {
-    return AudioSystem::getOutput(stream,samplingRate,(audio_format_t) format, channels, flags);
 }
 
 status_t AudioSystem::startOutput(audio_io_handle_t output,
@@ -800,14 +773,5 @@ void AudioSystem::AudioPolicyServiceClient::binderDied(const wp<IBinder>& who) {
 
     ALOGW("AudioPolicyService server died!");
 }
-
-#ifdef USE_SAMSUNG_SEPARATEDSTREAM
-extern "C" bool _ZN7android11AudioSystem17isSeparatedStreamE19audio_stream_type_t(audio_stream_type_t stream)
-{
-    ALOGD("audio_stream_type_t: %d", stream);
-    ALOGD("isSeparatedStream: false");
-    return false;
-}
-#endif // USE_SAMSUNG_SEPARATEDSTREAM
 
 }; // namespace android

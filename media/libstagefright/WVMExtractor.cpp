@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+#define LOG_NDEBUG 0
 #define LOG_TAG "WVMExtractor"
 #include <utils/Log.h>
 
@@ -49,6 +50,8 @@ WVMExtractor::WVMExtractor(const sp<DataSource> &source)
 {
     Mutex::Autolock autoLock(gWVMutex);
 
+    ALOGV("~~ WVMExtractor::WVMExtractor");
+
     if (!getVendorLibHandle()) {
         return;
     }
@@ -72,18 +75,15 @@ WVMExtractor::WVMExtractor(const sp<DataSource> &source)
     }
 }
 
-static void init_routine()
+bool WVMExtractor::getVendorLibHandle()
 {
-    gVendorLibHandle = dlopen("libwvm.so", RTLD_NOW);
+    if (gVendorLibHandle == NULL) {
+        gVendorLibHandle = dlopen("libwvm.so", RTLD_NOW);
+    }
+
     if (gVendorLibHandle == NULL) {
         ALOGE("Failed to open libwvm.so");
     }
-}
-
-bool WVMExtractor::getVendorLibHandle()
-{
-    static pthread_once_t sOnceControl = PTHREAD_ONCE_INIT;
-    pthread_once(&sOnceControl, init_routine);
 
     return gVendorLibHandle != NULL;
 }

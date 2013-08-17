@@ -13,10 +13,6 @@ include $(BUILD_STATIC_LIBRARY)
 
 include $(CLEAR_VARS)
 
-ifeq ($(TARGET_QCOM_AUDIO_VARIANT),caf)
-LOCAL_CFLAGS += -DQCOM_ENHANCED_AUDIO
-endif
-
 LOCAL_SRC_FILES:=               \
     AudioFlinger.cpp            \
     AudioMixer.cpp.arm          \
@@ -50,14 +46,6 @@ LOCAL_SHARED_LIBRARIES := \
     libeffects \
     libdl \
     libpowermanager
-
-# SRS Processing
-ifeq ($(strip $(BOARD_USES_SRS_TRUEMEDIA)),true)
-LOCAL_SHARED_LIBRARIES += libsrsprocessing
-LOCAL_CFLAGS += -DSRS_PROCESSING
-LOCAL_C_INCLUDES += $(TARGET_OUT_HEADERS)/mm-audio/audio-effects
-endif
-# SRS Processing
 
 LOCAL_STATIC_LIBRARIES := \
     libscheduling_policy \

@@ -40,10 +40,6 @@
 #include <media/stagefright/MetaData.h>
 #include <media/stagefright/Utils.h>
 #include <utils/String8.h>
-#ifdef QCOM_HARDWARE
-#include <QCMediaDefs.h>
-#include <QCMetaData.h>
-#endif
 
 namespace android {
 
@@ -244,9 +240,6 @@ static const char *FourCC2MIME(uint32_t fourcc) {
         case FOURCC('m', 'p', '4', 'a'):
             return MEDIA_MIMETYPE_AUDIO_AAC;
 
-        case FOURCC('.', 'm', 'p', '3'):
-            return MEDIA_MIMETYPE_AUDIO_MPEG;
-
         case FOURCC('s', 'a', 'm', 'r'):
             return MEDIA_MIMETYPE_AUDIO_AMR_NB;
 
@@ -263,28 +256,6 @@ static const char *FourCC2MIME(uint32_t fourcc) {
 
         case FOURCC('a', 'v', 'c', '1'):
             return MEDIA_MIMETYPE_VIDEO_AVC;
-
-#ifdef QCOM_HARDWARE
-        case FOURCC('s', 'q', 'c', 'p'):
-            return MEDIA_MIMETYPE_AUDIO_QCELP;
-
-        case FOURCC('s', 'e', 'v', 'c'):
-            return MEDIA_MIMETYPE_AUDIO_EVRC;
-
-        case FOURCC('d', 't', 's', 'c'):
-        case FOURCC('d', 't', 's', 'h'):
-        case FOURCC('d', 't', 's', 'l'):
-            return MEDIA_MIMETYPE_AUDIO_DTS;
-
-        case FOURCC('d', 't', 's', 'e'):
-            return MEDIA_MIMETYPE_AUDIO_DTS_LBR;
-
-        case FOURCC('a', 'c', '-', '3'):
-            return MEDIA_MIMETYPE_AUDIO_AC3;
-
-        case FOURCC('e', 'c', '-', '3'):
-            return MEDIA_MIMETYPE_AUDIO_EAC3;
-#endif
 
         default:
             CHECK(!"should not be here.");
@@ -377,7 +348,7 @@ sp<MetaData> MPEG4Extractor::getTrackMetaData(
         CHECK(track->meta->findCString(kKeyMIMEType, &mime));
         if (!strncasecmp("video/", mime, 6)) {
             uint32_t sampleIndex;
-            uint32_t sampleTime;
+            uint64_t sampleTime;
             if (track->sampleTable->findThumbnailSample(&sampleIndex) == OK
                     && track->sampleTable->getMetaDataForSample(
                         sampleIndex, NULL /* offset */, NULL /* size */,
@@ -636,6 +607,7 @@ status_t MPEG4Extractor::parseChunk(off64_t *offset, int depth) {
     if (mDataSource->readAt(*offset, hdr, 8) < 8) {
         return ERROR_IO;
     }
+    ALOGV("*offset:0x%llx", *offset);
     uint64_t chunk_size = ntohl(hdr[0]);
     uint32_t chunk_type = ntohl(hdr[1]);
     off64_t data_offset = *offset + 8;
@@ -755,9 +727,14 @@ status_t MPEG4Extractor::parseChunk(off64_t *offset, int depth) {
             off64_t stop_offset = *offset + chunk_size;
             *offset = data_offset;
             while (*offset < stop_offset) {
-                status_t err = parseChunk(offset, depth + 1);
-                if (err != OK) {
-                    return err;
+                //ALOGV("*offset=0x%llx,stop_offset=0x%llx",*offset, stop_offset);  
+                if (*offset < stop_offset-8) {
+                    status_t err = parseChunk(offset, depth + 1);
+                    if (err != OK) {
+                        return err;
+                    }
+                }else {
+                    *offset = stop_offset;
                 }
             }
 
@@ -948,19 +925,15 @@ status_t MPEG4Extractor::parseChunk(off64_t *offset, int depth) {
         }
 
         case FOURCC('m', 'p', '4', 'a'):
+        {
+        	if (chunk_data_size < 20 + 8) {
+        		*offset += chunk_size;
+        		break;
+        	}
+        	//.lys!!no break here
+		}
         case FOURCC('s', 'a', 'm', 'r'):
         case FOURCC('s', 'a', 'w', 'b'):
-#ifdef QCOM_HARDWARE
-        case FOURCC('.', 'm', 'p', '3'):
-        case FOURCC('s', 'e', 'v', 'c'):
-        case FOURCC('s', 'q', 'c', 'p'):
-        case FOURCC('d', 't', 's', 'c'):
-        case FOURCC('d', 't', 's', 'h'):
-        case FOURCC('d', 't', 's', 'l'):
-        case FOURCC('d', 't', 's', 'e'):
-        case FOURCC('a', 'c', '-', '3'):
-        case FOURCC('e', 'c', '-', '3'):
-#endif
         {
             uint8_t buffer[8 + 20];
             if (chunk_data_size < (ssize_t)sizeof(buffer)) {
@@ -973,6 +946,7 @@ status_t MPEG4Extractor::parseChunk(off64_t *offset, int depth) {
                 return ERROR_IO;
             }
 
+            uint16_t version = U16_AT(&buffer[8]);
             uint16_t data_ref_index = U16_AT(&buffer[6]);
             uint16_t num_channels = U16_AT(&buffer[16]);
 
@@ -1001,20 +975,26 @@ status_t MPEG4Extractor::parseChunk(off64_t *offset, int depth) {
             mLastTrack->meta->setInt32(kKeySampleRate, sample_rate);
 
             off64_t stop_offset = *offset + chunk_size;
-#ifdef QCOM_HARDWARE
-            if (!strcasecmp(MEDIA_MIMETYPE_AUDIO_MPEG, FourCC2MIME(chunk_type)) ||
-                !strcasecmp(MEDIA_MIMETYPE_AUDIO_AMR_WB, FourCC2MIME(chunk_type))) {
-                // ESD is not required in mp3
-                // amr wb with damr atom corrupted can cause the clip to not play
-               *offset = stop_offset;
-            } else
-#endif
-               *offset = data_offset + sizeof(buffer);
+            *offset = data_offset + sizeof(buffer);
 
+            ALOGV("mIsQtff:%d version:%d", mIsQtff, version);
+			if (mIsQtff) {
+				if (version==1) {
+					*offset += 4*4;
+				}
+				else if (version==2) {
+					*offset += 4*9;
+				}
+			}
+            
             while (*offset < stop_offset) {
-                status_t err = parseChunk(offset, depth + 1);
-                if (err != OK) {
-                    return err;
+                if (*offset < stop_offset-8) {
+                    status_t err = parseChunk(offset, depth + 1);
+                    if (err != OK) {
+                        return err;
+                    }
+                }else {
+                    *offset = stop_offset;
                 }
             }
 
@@ -1064,9 +1044,13 @@ status_t MPEG4Extractor::parseChunk(off64_t *offset, int depth) {
             off64_t stop_offset = *offset + chunk_size;
             *offset = data_offset + sizeof(buffer);
             while (*offset < stop_offset) {
-                status_t err = parseChunk(offset, depth + 1);
-                if (err != OK) {
-                    return err;
+                if (*offset < stop_offset-8) {
+                    status_t err = parseChunk(offset, depth + 1);
+                    if (err != OK) {
+                        return err;
+                    }
+                }else {
+                    *offset = stop_offset;
                 }
             }
 
@@ -1267,18 +1251,6 @@ status_t MPEG4Extractor::parseChunk(off64_t *offset, int depth) {
             *offset += chunk_size;
             break;
         }
-
-#ifdef QCOM_HARDWARE
-        case FOURCC('d', 'd', 't', 's'):
-        case FOURCC('d', 'a', 'c', '3'):
-        case FOURCC('d', 'e', 'c', '3'):
-        {
-            //no information need to be passed here, just log and end
-            ALOGV("ddts/dac3/dec3 pass from mpeg4 extractor");
-            *offset += chunk_size;
-            break;
-        }
-#endif
 
         case FOURCC('a', 'v', 'c', 'C'):
         {
@@ -1505,6 +1477,45 @@ status_t MPEG4Extractor::parseChunk(off64_t *offset, int depth) {
             break;
         }
 
+        case FOURCC('w', 'a', 'v', 'e'):
+		{
+			off64_t stop_offset = *offset + chunk_size;
+			*offset = data_offset;
+			while (*offset < stop_offset) {
+				status_t err = parseChunk(offset, depth + 1);
+				if (err != OK) {
+					if (err == INFO_VENDOR_LEAF_ATOM) {
+						*offset = stop_offset;
+						break;
+					}
+					return err;
+				}
+			}
+
+			if (*offset != stop_offset) {
+				return ERROR_MALFORMED;
+			}
+			break;
+		}
+
+        case FOURCC('f', 't', 'y', 'p'):
+		{
+			uint32_t brand;
+			if (mDataSource->readAt(data_offset, &brand, 4) < 4) {
+				return false;
+			}
+
+			brand = ntohl(brand);
+
+			if (brand == FOURCC('q', 't', ' ', ' ')) {
+				mIsQtff = true;
+			}
+
+			*offset += chunk_size;
+
+			break;
+		}
+
         case FOURCC('-', '-', '-', '-'):
         {
             mLastCommentMean.clear();
@@ -1514,9 +1525,15 @@ status_t MPEG4Extractor::parseChunk(off64_t *offset, int depth) {
             break;
         }
 
+        case 0: //leaf atom
+		{
+        	return INFO_VENDOR_LEAF_ATOM;
+		}
+
         default:
         {
             *offset += chunk_size;
+            ALOGV("skip parser chunk");
             break;
         }
     }
@@ -1860,26 +1877,18 @@ status_t MPEG4Extractor::updateAudioTrackInfoFromESDS_MPEG4Audio(
         return ERROR_MALFORMED;
     }
 
-#ifdef QCOM_HARDWARE
-    if (objectTypeIndication == 0xA0) {
-        // This isn't MPEG4 audio at all, it's EVRC
-       mLastTrack->meta->setCString(kKeyMIMEType, MEDIA_MIMETYPE_AUDIO_EVRC);
-       return OK;
-    }
-#endif
-
     if (objectTypeIndication == 0xe1) {
         // This isn't MPEG4 audio at all, it's QCELP 14k...
         mLastTrack->meta->setCString(kKeyMIMEType, MEDIA_MIMETYPE_AUDIO_QCELP);
         return OK;
     }
 
-    if (objectTypeIndication  == 0x6b
-         || objectTypeIndication  == 0x69) {
-         // This is mpeg1/2 audio content, set mimetype to mpeg
-         mLastTrack->meta->setCString(kKeyMIMEType, MEDIA_MIMETYPE_AUDIO_MPEG);
-         ALOGD("objectTypeIndication:0x%x, set mimetype to mpeg ",objectTypeIndication);
-         return OK;
+    if (objectTypeIndication  == 0x6b) {
+        // The media subtype is MP3 audio
+        // Our software MP3 audio decoder may not be able to handle
+        // packetized MP3 audio; for now, lets just return ERROR_UNSUPPORTED
+        ALOGE("MP3 track in MP4/3GPP file is not supported");
+        return ERROR_UNSUPPORTED;
     }
 
     const uint8_t *csd;
@@ -2003,12 +2012,6 @@ MPEG4Source::MPEG4Source(
         // The number of bytes used to encode the length of a NAL unit.
         mNALLengthSize = 1 + (ptr[4] & 3);
     }
-
-#ifdef QCOM_HARDWARE
-    //MPEG4 extractor can give complete frames,
-    //set arbitrary mode to false
-    mFormat->setInt32(kKeyUseArbitraryMode, 0);
-#endif
 }
 
 MPEG4Source::~MPEG4Source() {
@@ -2094,6 +2097,7 @@ size_t MPEG4Source::parseNALSize(const uint8_t *data) const {
 status_t MPEG4Source::read(
         MediaBuffer **out, const ReadOptions *options) {
     Mutex::Autolock autoLock(mLock);
+    bool isSeekMode = false;
 
     CHECK(mStarted);
 
@@ -2110,6 +2114,7 @@ status_t MPEG4Source::read(
                 findFlags = SampleTable::kFlagBefore;
                 break;
             case ReadOptions::SEEK_NEXT_SYNC:
+            case ReadOptions::SEEK_VENDOR_OPT:   
                 findFlags = SampleTable::kFlagAfter;
                 break;
             case ReadOptions::SEEK_CLOSEST_SYNC:
@@ -2121,7 +2126,10 @@ status_t MPEG4Source::read(
                 break;
         }
 
+        isSeekMode = true;
+
         uint32_t sampleIndex;
+        ALOGV("seekTimeUs:%lld mTimescale:%d to:%lld",seekTimeUs,mTimescale,seekTimeUs * mTimescale / 1000000);
         status_t err = mSampleTable->findSampleAtTime(
                 seekTimeUs * mTimescale / 1000000,
                 &sampleIndex, findFlags);
@@ -2139,7 +2147,48 @@ status_t MPEG4Source::read(
                     sampleIndex, &syncSampleIndex, findFlags);
         }
 
-        uint32_t sampleTime;
+        ALOGV("syncSampleIndex:%d",syncSampleIndex);
+
+        if (mode == ReadOptions::SEEK_VENDOR_OPT) {
+            off64_t offset;
+            size_t size;
+            uint64_t cts;
+			status_t err;
+			uint32_t currSampleIndex = syncSampleIndex;
+			int64_t offsetBefind;
+			uint32_t left;
+			uint32_t right;
+
+			offsetBefind = options->getLateBy();
+			mSampleTable->getMetaDataForSample(currSampleIndex, &offset, &size, &cts);
+
+			if(offset < offsetBefind) {
+				left = currSampleIndex;
+				right = mSampleTable->countSamples() - 1;
+
+				while (left < right) {
+					uint32_t center = (left + right) / 2;
+					mSampleTable->getMetaDataForSample(center, &offset, &size, &cts);
+					ALOGV("offsetBefind:0x%llx offset:0x%llx center:%d left:%d right:%d",offsetBefind, offset, center, left, right);
+					if (offsetBefind < offset) {
+						right = center;
+					} else if (offsetBefind > offset) {
+						left = center + 1;
+					} else {
+						left = center;
+						break;
+					}
+				}
+
+				currSampleIndex = left;
+
+				mSampleTable->getMetaDataForSample(currSampleIndex, &offset, &size, &cts);
+			}
+
+			syncSampleIndex = sampleIndex = currSampleIndex;
+        }
+
+        uint64_t sampleTime;
         if (err == OK) {
             err = mSampleTable->getMetaDataForSample(
                     sampleIndex, NULL, NULL, &sampleTime);
@@ -2184,7 +2233,7 @@ status_t MPEG4Source::read(
 
     off64_t offset;
     size_t size;
-    uint32_t cts;
+    uint64_t cts;
     bool isSyncSample;
     bool newBuffer = false;
     if (mBuffer == NULL) {
@@ -2224,6 +2273,10 @@ status_t MPEG4Source::read(
             mBuffer->meta_data()->setInt64(
                     kKeyTime, ((int64_t)cts * 1000000) / mTimescale);
 
+            if (isSeekMode) { //set video offset
+            	mBuffer->meta_data()->setInt64(kKeyOffset, offset);
+            }
+            
             if (targetSampleTimeUs >= 0) {
                 mBuffer->meta_data()->setInt64(
                         kKeyTargetTime, targetSampleTimeUs);
@@ -2345,6 +2398,9 @@ status_t MPEG4Source::read(
         mBuffer->meta_data()->clear();
         mBuffer->meta_data()->setInt64(
                 kKeyTime, ((int64_t)cts * 1000000) / mTimescale);
+        if (isSeekMode) { //set video offset
+        	mBuffer->meta_data()->setInt64(kKeyOffset, offset);
+        }
 
         if (targetSampleTimeUs >= 0) {
             mBuffer->meta_data()->setInt64(
@@ -2388,9 +2444,6 @@ static bool LegacySniffMPEG4(
     }
 
     if (!memcmp(header, "ftyp3gp", 7) || !memcmp(header, "ftypmp42", 8)
-#ifdef QCOM_HARDWARE
-        || !memcmp(header, "ftyp3g2a", 8) || !memcmp(header, "ftyp3g2b", 8) || !memcmp(header, "ftyp3g2c", 8)
-#endif
         || !memcmp(header, "ftyp3gr6", 8) || !memcmp(header, "ftyp3gs6", 8)
         || !memcmp(header, "ftyp3ge6", 8) || !memcmp(header, "ftyp3gg6", 8)
         || !memcmp(header, "ftypisom", 8) || !memcmp(header, "ftypM4V ", 8)

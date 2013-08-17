@@ -67,6 +67,7 @@ SoftwareRenderer::SoftwareRenderer(
     switch (mColorFormat) {
         case OMX_COLOR_FormatYUV420Planar:
         case OMX_TI_COLOR_FormatYUV420PackedSemiPlanar:
+        case HAL_PIXEL_FORMAT_YV12:
         {
             if (!runningInEmulator()) {
                 halFormat = HAL_PIXEL_FORMAT_YV12;
@@ -94,20 +95,11 @@ SoftwareRenderer::SoftwareRenderer(
     CHECK(mCropHeight > 0);
     CHECK(mConverter == NULL || mConverter->isValid());
 
-#ifdef EXYNOS4_ENHANCEMENTS
-    CHECK_EQ(0,
-            native_window_set_usage(
-            mNativeWindow.get(),
-            GRALLOC_USAGE_SW_READ_NEVER | GRALLOC_USAGE_SW_WRITE_OFTEN
-            | GRALLOC_USAGE_HW_TEXTURE | GRALLOC_USAGE_EXTERNAL_DISP
-            | GRALLOC_USAGE_HW_FIMC1 | GRALLOC_USAGE_HWC_HWOVERLAY));
-#else
     CHECK_EQ(0,
             native_window_set_usage(
             mNativeWindow.get(),
             GRALLOC_USAGE_SW_READ_NEVER | GRALLOC_USAGE_SW_WRITE_OFTEN
             | GRALLOC_USAGE_HW_TEXTURE | GRALLOC_USAGE_EXTERNAL_DISP));
-#endif
 
     CHECK_EQ(0,
             native_window_set_scaling_mode(
@@ -200,7 +192,14 @@ void SoftwareRenderer::render(
             dst_u += dst_c_stride;
             dst_v += dst_c_stride;
         }
-    } else {
+    }else if (mColorFormat == HAL_PIXEL_FORMAT_YV12){
+        size_t dst_y_size = buf->stride * buf->height;
+        size_t dst_c_stride = ALIGN(buf->stride / 2, 16);
+        size_t dst_c_size = dst_c_stride * buf->height / 2;
+        
+        memcpy(dst, data, dst_y_size + dst_c_size*2);
+    } 
+    else {
         CHECK_EQ(mColorFormat, OMX_TI_COLOR_FormatYUV420PackedSemiPlanar);
 
         const uint8_t *src_y =
@@ -209,25 +208,13 @@ void SoftwareRenderer::render(
         const uint8_t *src_uv =
             (const uint8_t *)data + mWidth * (mHeight - mCropTop / 2);
 
-#ifdef EXYNOS4_ENHANCEMENTS
-        void *pYUVBuf[3];
+        uint8_t *dst_y = (uint8_t *)dst;
 
-        CHECK_EQ(0, mapper.unlock(buf->handle));
-        CHECK_EQ(0, mapper.lock(
-                buf->handle, GRALLOC_USAGE_SW_WRITE_OFTEN | GRALLOC_USAGE_YUV_ADDR, bounds, pYUVBuf));
-
-        size_t dst_c_stride = buf->stride / 2;
-        uint8_t *dst_y = (uint8_t *)pYUVBuf[0];
-        uint8_t *dst_v = (uint8_t *)pYUVBuf[1];
-        uint8_t *dst_u = (uint8_t *)pYUVBuf[2];
-#else
         size_t dst_y_size = buf->stride * buf->height;
         size_t dst_c_stride = ALIGN(buf->stride / 2, 16);
         size_t dst_c_size = dst_c_stride * buf->height / 2;
-        uint8_t *dst_y = (uint8_t *)dst;
         uint8_t *dst_v = dst_y + dst_y_size;
         uint8_t *dst_u = dst_v + dst_c_size;
-#endif
 
         for (int y = 0; y < mCropHeight; ++y) {
             memcpy(dst_y, src_y, mCropWidth);

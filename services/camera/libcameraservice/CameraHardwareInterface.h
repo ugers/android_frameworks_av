@@ -113,12 +113,6 @@ public:
         ALOGV("%s(%s) buf %p", __FUNCTION__, mName.string(), buf.get());
 
         if (mDevice->ops->set_preview_window) {
-#ifdef QCOM_HARDWARE
-            ALOGV("%s buf %p mPreviewWindow %p", __FUNCTION__, buf.get(), mPreviewWindow.get());
-            if (mPreviewWindow.get() && (buf.get() != mPreviewWindow.get())) {
-                 mDevice->ops->set_preview_window(mDevice, 0);
-            }
-#endif
             mPreviewWindow = buf;
             mHalPreviewWindow.user = this;
             ALOGV("%s &mHalPreviewWindow %p mHalPreviewWindow.user %p", __FUNCTION__,
@@ -462,17 +456,13 @@ private:
         ALOGV("%s", __FUNCTION__);
         CameraHardwareInterface *__this =
                 static_cast<CameraHardwareInterface *>(user);
-        if (data != NULL) {
-          sp<CameraHeapMemory> mem(static_cast<CameraHeapMemory *>(data->handle));
-          if (index >= mem->mNumBufs) {
+        sp<CameraHeapMemory> mem(static_cast<CameraHeapMemory *>(data->handle));
+        if (index >= mem->mNumBufs) {
             ALOGE("%s: invalid buffer index %d, max allowed is %d", __FUNCTION__,
                  index, mem->mNumBufs);
             return;
-          }
-          __this->mDataCb(msg_type, mem->mBuffers[index], metadata, __this->mCbUser);
-        } else {
-          __this->mDataCb(msg_type, NULL, metadata, __this->mCbUser);
         }
+        __this->mDataCb(msg_type, mem->mBuffers[index], metadata, __this->mCbUser);
     }
 
     static void __data_cb_timestamp(nsecs_t timestamp, int32_t msg_type,
@@ -650,9 +640,6 @@ private:
 
     static int __set_usage(struct preview_stream_ops* w, int usage)
     {
-#ifdef HTC_3D_SUPPORT
-        usage |= GRALLOC_USAGE_PRIVATE_0;
-#endif
         ANativeWindow *a = anw(w);
         return native_window_set_usage(a, usage);
     }
@@ -671,13 +658,21 @@ private:
         return a->query(a, NATIVE_WINDOW_MIN_UNDEQUEUED_BUFFERS, count);
     }
 
-#ifdef HTC_3D_SUPPORT
-    static int __set_3d_mode(
-                      const struct preview_stream_ops *w, int r1, int r2, int r3)
+    // add interfaces
+	static int __perform(struct preview_stream_ops *w, int cmd0, int cmd1, int value)
+	{
+        ANativeWindow *a = anw(w);
+        return a->perform(a, cmd0, cmd1, value);
+	}
+
+	static int __set_buffers_geometryex(struct preview_stream_ops* w,
+                      int width, int height, int format, int screenid)
     {
-        return 0;
+        ANativeWindow *a = anw(w);
+        //return native_window_set_buffers_geometryex(a,
+        //                  width, height, format, screenid);
+        return OK;
     }
-#endif
 
     void initHalPreviewWindow()
     {
@@ -686,9 +681,6 @@ private:
         mHalPreviewWindow.nw.dequeue_buffer = __dequeue_buffer;
         mHalPreviewWindow.nw.enqueue_buffer = __enqueue_buffer;
         mHalPreviewWindow.nw.set_buffer_count = __set_buffer_count;
-#ifdef HTC_3D_SUPPORT
-        mHalPreviewWindow.nw.set_3d_mode = __set_3d_mode;
-#endif
         mHalPreviewWindow.nw.set_buffers_geometry = __set_buffers_geometry;
         mHalPreviewWindow.nw.set_crop = __set_crop;
         mHalPreviewWindow.nw.set_timestamp = __set_timestamp;
@@ -697,6 +689,10 @@ private:
 
         mHalPreviewWindow.nw.get_min_undequeued_buffer_count =
                 __get_min_undequeued_buffer_count;
+
+        // add interfaces
+		mHalPreviewWindow.nw.perform = __perform;
+		mHalPreviewWindow.nw.set_buffers_geometryex = __set_buffers_geometryex;
     }
 
     sp<ANativeWindow>        mPreviewWindow;

@@ -11,15 +11,6 @@ LOCAL_SHARED_LIBRARIES := \
 	libutils \
 	libbinder
 
-ifeq ($(BOARD_USE_SECTVOUT),true)
-	LOCAL_CFLAGS += -DSECTVOUT
-	LOCAL_SHARED_LIBRARIES += libTVOut
-endif
-
-ifeq ($(TARGET_QCOM_AUDIO_VARIANT),caf)
-	LOCAL_CFLAGS += -DQCOM_ENHANCED_AUDIO
-endif
-
 # FIXME The duplicate audioflinger is temporary
 LOCAL_C_INCLUDES := \
     frameworks/av/media/libmediaplayerservice \

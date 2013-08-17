@@ -91,9 +91,6 @@ private:
     struct ExecutingToIdleState;
     struct IdleToLoadedState;
     struct FlushingState;
-#ifdef QCOM_HARDWARE
-    struct FlushingOutputState;
-#endif
 
     enum {
         kWhatSetup                   = 'setu',
@@ -155,9 +152,6 @@ private:
     sp<ExecutingToIdleState> mExecutingToIdleState;
     sp<IdleToLoadedState> mIdleToLoadedState;
     sp<FlushingState> mFlushingState;
-#ifdef QCOM_HARDWARE
-    sp<FlushingOutputState> mFlushingOutputState;
-#endif
     sp<SkipCutBuffer> mSkipCutBuffer;
 
     AString mComponentName;
@@ -168,6 +162,9 @@ private:
     sp<MemoryDealer> mDealer[2];
 
     sp<ANativeWindow> mNativeWindow;
+
+    sp<ANativeWindow> mNativeWindowSoft;
+    int32_t mVideoWidth,mVideoHeight;
 
     Vector<BufferInfo> mBuffers[2];
     bool mPortEOS[2];
@@ -196,9 +193,6 @@ private:
     status_t freeBuffer(OMX_U32 portIndex, size_t i);
 
     status_t allocateOutputBuffersFromNativeWindow();
-#ifdef USE_SAMSUNG_COLORFORMAT
-    void setNativeWindowColorFormat(OMX_COLOR_FORMATTYPE &eNativeColorFormat);
-#endif
     status_t cancelBufferToNativeWindow(BufferInfo *info);
     status_t freeOutputBuffersNotOwnedByComponent();
     BufferInfo *dequeueBufferFromNativeWindow();
@@ -237,7 +231,7 @@ private:
             OMX_U32 portIndex, OMX_AUDIO_CODINGTYPE desiredFormat);
 
     status_t setupAMRCodec(bool encoder, bool isWAMR, int32_t bitRate);
-    status_t setupG711Codec(bool encoder, int32_t numChannels);
+    status_t setupG711Codec(bool encoder, int32_t numChannels, int32_t sampleRate);
 
     status_t setupFlacCodec(
             bool encoder, int32_t numChannels, int32_t sampleRate, int32_t compressionLevel);

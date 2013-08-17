@@ -302,7 +302,7 @@ status_t OMXNodeInstance::enableGraphicBuffers(
     err = OMX_SetParameter(mHandle, index, &params);
 
     if (err != OMX_ErrorNone) {
-        ALOGE("OMX_EnableAndroidNativeBuffers failed with error %d (0x%08x)",
+        ALOGW("OMX_EnableAndroidNativeBuffers failed with error %d (0x%08x)",
                 err, err);
 
         return UNKNOWN_ERROR;
@@ -599,20 +599,15 @@ status_t OMXNodeInstance::freeBuffer(
         OMX_U32 portIndex, OMX::buffer_id buffer) {
     Mutex::Autolock autoLock(mLock);
 
+    removeActiveBuffer(portIndex, buffer);
+
     OMX_BUFFERHEADERTYPE *header = (OMX_BUFFERHEADERTYPE *)buffer;
     BufferMeta *buffer_meta = static_cast<BufferMeta *>(header->pAppPrivate);
 
     OMX_ERRORTYPE err = OMX_FreeBuffer(mHandle, portIndex, header);
 
-    if (err != OMX_ErrorNone) {
-        ALOGW("OMX_FreeBuffer failed w/ err %x, do not remove from active buffer list", err);
-    } else {
-        ALOGI("OMX_FreeBuffer for buffer header %p successful", header);
-        removeActiveBuffer(portIndex, buffer);
-
-        delete buffer_meta;
-        buffer_meta = NULL;
-    }
+    delete buffer_meta;
+    buffer_meta = NULL;
 
     return StatusFromOMXError(err);
 }

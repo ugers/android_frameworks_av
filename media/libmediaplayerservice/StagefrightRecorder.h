@@ -1,9 +1,5 @@
 /*
  * Copyright (C) 2009 The Android Open Source Project
- * Copyright (c) 2012-2013, The Linux Foundation. All rights reserved.
- *
- * Not a Contribution, Apache license notifications and license are retained
- * for attribution purposes only
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -27,6 +23,8 @@
 #include <utils/String8.h>
 
 #include <system/audio.h>
+
+#include <CedarXRecorder.h>
 
 namespace android {
 
@@ -70,6 +68,8 @@ struct StagefrightRecorder : public MediaRecorderBase {
     virtual status_t dump(int fd, const Vector<String16>& args) const;
     // Querying a SurfaceMediaSourcer
     virtual sp<ISurfaceTexture> querySurfaceMediaSource() const;
+    virtual status_t queueBuffer(int index, int addr_y, int addr_c, int64_t timestamp);
+    virtual	sp<IMemory> getOneBsFrame(int mode);
 
 private:
     sp<ICamera> mCamera;
@@ -78,6 +78,7 @@ private:
     sp<IMediaRecorderClient> mListener;
     sp<MediaWriter> mWriter;
     int mOutputFd;
+    char *mOutputPath;
     sp<AudioSource> mAudioSourceNode;
 
     audio_source_t mAudioSource;
@@ -135,13 +136,7 @@ private:
         sp<MetaData> *meta);
     status_t startMPEG4Recording();
     status_t startAMRRecording();
-#ifdef QCOM_FM_ENABLED
-    status_t startFMA2DPWriter();
-#endif
     status_t startAACRecording();
-#ifdef QCOM_HARDWARE
-    status_t startWAVERecording();
-#endif
     status_t startRawAudioRecording();
     status_t startRTPRecording();
     status_t startMPEG2TSRecording();
@@ -194,14 +189,12 @@ private:
     void clipNumberOfAudioChannels();
     void setDefaultProfileIfNecessary();
 
+private:    
+    CedarXRecorder * mpCedarXRecorder;
+    bool             mbHWEncoder;
 
     StagefrightRecorder(const StagefrightRecorder &);
     StagefrightRecorder &operator=(const StagefrightRecorder &);
-
-#ifdef QCOM_HARDWARE
-    /* extension */
-    status_t startExtendedRecording();
-#endif
 };
 
 }  // namespace android

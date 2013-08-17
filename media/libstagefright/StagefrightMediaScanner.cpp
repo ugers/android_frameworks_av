@@ -1,6 +1,5 @@
 /*
  * Copyright (C) 2009 The Android Open Source Project
- * Copyright (c) 2012, The Linux Foundation. All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -37,29 +36,44 @@ StagefrightMediaScanner::StagefrightMediaScanner() {}
 
 StagefrightMediaScanner::~StagefrightMediaScanner() {}
 
-static bool FileHasAcceptableExtension(const char *extension) {
+static int FileHasAcceptableExtension(const char *extension) {
     static const char *kValidExtensions[] = {
         ".mp3", ".mp4", ".m4a", ".3gp", ".3gpp", ".3g2", ".3gpp2",
         ".mpeg", ".ogg", ".mid", ".smf", ".imy", ".wma", ".aac",
         ".wav", ".amr", ".midi", ".xmf", ".rtttl", ".rtx", ".ota",
-        ".mkv", ".mka", ".webm", ".ts", ".fl", ".flac", ".mxmf",
-        ".avi", ".mpg",
-#ifndef QCOM_HARDWARE
-       ".mpeg"
-#else
-        ".qcp", ".awb", ".ac3", ".dts", ".wmv"
-#endif
+        ".mka", ".fl", ".flac", ".mxmf",
+        ".mpeg", ".mpg"
     };
-    static const size_t kNumValidExtensions =
+
+    static const char *kValidExtensionsAW[] = {
+       ".mkv", ".rmvb", ".rm", ".mov", ".flv", ".f4v", ".avi",
+       ".mp1", ".mp2", ".awb", ".oga", ".ape", ".ac3",
+       ".dts", ".omg", ".oma", ".midi", ".m4v", ".wmv", ".asf",
+       ".vob", ".pmp", ".m4r", ".ra", ".webm",
+       ".ts",".m2ts"
+    };
+
+    size_t kNumValidExtensions;
+    
+    kNumValidExtensions =
         sizeof(kValidExtensions) / sizeof(kValidExtensions[0]);
 
     for (size_t i = 0; i < kNumValidExtensions; ++i) {
         if (!strcasecmp(extension, kValidExtensions[i])) {
-            return true;
+            return 1;
         }
     }
 
-    return false;
+    kNumValidExtensions =
+            sizeof(kValidExtensionsAW) / sizeof(kValidExtensionsAW[0]);
+
+    for (size_t i = 0; i < kNumValidExtensions; ++i) {
+		if (!strcasecmp(extension, kValidExtensionsAW[i])) {
+			return 2;
+		}
+	}
+
+    return 0;
 }
 
 static MediaScanResult HandleMIDI(
@@ -126,12 +140,14 @@ MediaScanResult StagefrightMediaScanner::processFileInternal(
         const char *path, const char *mimeType,
         MediaScannerClient &client) {
     const char *extension = strrchr(path, '.');
-
+    int faccext_ret;
+    
     if (!extension) {
         return MEDIA_SCAN_RESULT_SKIPPED;
     }
 
-    if (!FileHasAcceptableExtension(extension)) {
+    faccext_ret = FileHasAcceptableExtension(extension);
+    if (!faccext_ret) {
         return MEDIA_SCAN_RESULT_SKIPPED;
     }
 
@@ -147,16 +163,22 @@ MediaScanResult StagefrightMediaScanner::processFileInternal(
         return HandleMIDI(path, &client);
     }
 
+    status_t status;
     sp<MediaMetadataRetriever> mRetriever(new MediaMetadataRetriever);
 
-    int fd = open(path, O_RDONLY | O_LARGEFILE);
-    status_t status;
-    if (fd < 0) {
-        // couldn't open it locally, maybe the media server can?
-        status = mRetriever->setDataSource(path);
-    } else {
-        status = mRetriever->setDataSource(fd, 0, 0x7ffffffffffffffL);
-        close(fd);
+    if(faccext_ret == 2) { //aw media scanner
+    	status = mRetriever->setDataSource(path);
+    }
+    else {
+        int fd = open(path, O_RDONLY | O_LARGEFILE);
+        status_t status;
+        if (fd < 0) {
+            // couldn't open it locally, maybe the media server can?
+            status = mRetriever->setDataSource(path);
+        } else {
+            status = mRetriever->setDataSource(fd, 0, 0x7ffffffffffffffL);
+            close(fd);
+        }
     }
 
     if (status) {
