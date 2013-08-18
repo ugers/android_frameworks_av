@@ -25,7 +25,14 @@
 #include <media/stagefright/foundation/AMessage.h>
 #include <media/stagefright/MediaErrors.h>
 
+//#define __SAVE_TS_STREAM_TO_FILE
+
 namespace android {
+
+#ifdef __SAVE_TS_STREAM_TO_FILE
+FILE *fp = NULL;
+static int fnum = 0;
+#endif
 
 NuPlayer::NuPlayerStreamListener::NuPlayerStreamListener(
         const sp<IStreamSource> &source,
@@ -47,6 +54,18 @@ NuPlayer::NuPlayerStreamListener::NuPlayerStreamListener(
 }
 
 void NuPlayer::NuPlayerStreamListener::start() {
+
+#ifdef __SAVE_TS_STREAM_TO_FILE
+	char path[64];
+	if(fp != NULL) {
+		fclose(fp);
+		fp = NULL;
+	}
+	sprintf(path,"/data/camera/nu_%d.ts",fnum);
+	fp = fopen(path,"wb");
+	ALOGW("write to file: %s",path);
+	fnum++;
+#endif
     for (size_t i = 0; i < kNumBuffers; ++i) {
         mSource->onBufferAvailable(i);
     }
@@ -109,7 +128,7 @@ ssize_t NuPlayer::NuPlayerStreamListener::read(
 
         return -EWOULDBLOCK;
     }
-
+    
     QueueEntry *entry = &*mQueue.begin();
 
     if (entry->mIsCommand) {
@@ -118,7 +137,13 @@ ssize_t NuPlayer::NuPlayerStreamListener::read(
             {
                 mQueue.erase(mQueue.begin());
                 entry = NULL;
-
+                
+#ifdef __SAVE_TS_STREAM_TO_FILE
+	if(fp) {
+		fclose(fp);
+		fp = NULL;
+	}
+#endif
                 mEOS = true;
                 return 0;
             }
@@ -149,6 +174,12 @@ ssize_t NuPlayer::NuPlayerStreamListener::read(
             + entry->mOffset,
            copy);
 
+#ifdef __SAVE_TS_STREAM_TO_FILE
+	if(fp) {
+		fwrite(data,1,copy,fp);
+	}
+#endif
+
     entry->mOffset += copy;
     entry->mSize -= copy;
 
@@ -162,3 +193,4 @@ ssize_t NuPlayer::NuPlayerStreamListener::read(
 }
 
 }  // namespace android
+
