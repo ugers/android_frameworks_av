@@ -30,7 +30,6 @@
 #include "TestPlayerStub.h"
 #include "StagefrightPlayer.h"
 #include "nuplayer/NuPlayerDriver.h"
-#include <dlfcn.h>
 
 #include "CedarPlayer.h"
 #include "CedarAPlayerWrapper.h"

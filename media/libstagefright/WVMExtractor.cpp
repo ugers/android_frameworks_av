@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+#define LOG_NDEBUG 0
 #define LOG_TAG "WVMExtractor"
 #include <utils/Log.h>
 
@@ -48,6 +49,8 @@ WVMExtractor::WVMExtractor(const sp<DataSource> &source)
     : mDataSource(source)
 {
     Mutex::Autolock autoLock(gWVMutex);
+
+    ALOGV("~~ WVMExtractor::WVMExtractor");
 
     if (!getVendorLibHandle()) {
         return;

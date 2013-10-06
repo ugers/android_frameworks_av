@@ -37,7 +37,7 @@ public:
 
     enum GetTrackMetaDataFlags {
         kIncludeExtensiveMetaData = 1,
-        kIncludeExtensiveMetaDataBitrate = 256
+        kIncludeExtensiveMetaDataBitrate = 256,
 };
     virtual sp<MetaData> getTrackMetaData(
             size_t index, uint32_t flags = 0) = 0;
@@ -51,7 +51,6 @@ public:
         CAN_SEEK_FORWARD   = 2,  // the "seek 10secs forward button"
         CAN_PAUSE          = 4,
         CAN_SEEK           = 8,  // the "seek bar"
-        CAN_SEEK_TO_ZERO   = 16, // the "previous button"
     };
 
     // If subclasses do _not_ override this, the default is

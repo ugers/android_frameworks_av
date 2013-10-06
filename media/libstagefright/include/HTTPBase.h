@@ -59,7 +59,7 @@ struct HTTPBase : public DataSource {
     static void UnRegisterSocketUserTag(int sockfd);
 
     //* add by chenxiaochuan for QQ live stream.
-    virtual AString getRedirectUri()
+    virtual AString getRedirectUri(bool getAll = false)
     {
       return AString("");
     }
@@ -83,6 +83,9 @@ struct HTTPBase : public DataSource {
     {
       return;
     }
+    virtual void setRedirectSpec(const char* path) = 0;
+    virtual void forceDisconnect(){};
+    virtual void setTimeoutLastUs(int64_t timeoutUs) {};
     //* end.
 
 protected:

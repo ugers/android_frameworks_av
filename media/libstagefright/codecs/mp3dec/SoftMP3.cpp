@@ -237,6 +237,7 @@ void SoftMP3::onQueueFilled(OMX_U32 portIndex) {
             if (decoderErr != NO_ENOUGH_MAIN_DATA_ERROR
                         && decoderErr != SIDE_INFO_ERROR) {
                 ALOGE("mp3 decoder returned error %d", decoderErr);
+
                 if(decoderErr == SYNCH_LOST_ERROR) {
                     mConfig->outputFrameSize = kOutputBufferSize / sizeof(int16_t);
                 } else {

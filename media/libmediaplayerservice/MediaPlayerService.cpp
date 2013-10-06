@@ -1899,6 +1899,14 @@ status_t MediaPlayerService::generalGlobalInterface(int cmd, int int1, int int2,
 }
 /* add by Gary. end   -----------------------------------}} */
 
+status_t MediaPlayerService::Client::generalInterface(int cmd, int int1, int int2, int int3, void *p)
+{
+    sp<MediaPlayerBase> mp = getPlayer();
+    if (mp == 0) 
+        return UNKNOWN_ERROR;
+    return mp->generalInterface(cmd, int1, int2, int3, p);
+}
+
 status_t MediaPlayerService::Client::setRetransmitEndpoint(
         const struct sockaddr_in* endpoint) {
 
@@ -2528,7 +2536,7 @@ void MediaPlayerService::AudioOutput::switchToNextOutput() {
 
 ssize_t MediaPlayerService::AudioOutput::write(const void* buffer, size_t size)
 {
-    LOG_FATAL_IF(mCallback != NULL, "Don't call write if supplying a callback.");
+    //LOG_FATAL_IF(mCallback != NULL, "Don't call write if supplying a callback.");
 
     //ALOGV("write(%p, %u)", buffer, size);
     if (mTrack) {

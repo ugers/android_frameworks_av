@@ -55,13 +55,11 @@ LOCAL_SHARED_LIBRARIES :=       \
     libstagefright_omx          \
     libstagefright_wfd          \
     libutils                    \
-    libdl                       \
     libvorbisidec               \
 
 LOCAL_STATIC_LIBRARIES :=       \
     libstagefright_nuplayer     \
     libstagefright_rtsp         \
-    libmedia_helper             \
     librotation                 \
 
 LOCAL_C_INCLUDES :=                                                 \
@@ -73,7 +71,6 @@ LOCAL_C_INCLUDES :=                                                 \
     $(TOP)/frameworks/av/media/CedarX-Projects/CedarA \
     $(TOP)/frameworks/av/media/CedarX-Projects/CedarA/include \
     $(TOP)/frameworks/av/media/libstagefright/include               \
-    $(TOP)/frameworks/av/include/media                              \
     $(TOP)/frameworks/av/media/libstagefright/rtsp                  \
     $(TOP)/frameworks/av/media/libstagefright/wifi-display          \
     $(TOP)/frameworks/native/include/media/openmax                  \

@@ -575,6 +575,23 @@ status_t ACodec::allocateOutputBuffersFromNativeWindow() {
             def.format.video.nFrameHeight,
             def.format.video.eColorFormat);
 #endif
+    if(def.format.video.eColorFormat == OMX_COLOR_FormatYUV420Planar)
+    {        
+        err = native_window_set_buffers_geometry(
+            mNativeWindow.get(),                
+            def.format.video.nFrameWidth,                
+            def.format.video.nFrameHeight,                
+            HAL_PIXEL_FORMAT_YV12); //need format conversion
+            ALOGD("manually change eColorFormat to  HAL_PIXEL_FORMAT_YV12!!!!");
+    }    
+    else    
+    {        
+        err = native_window_set_buffers_geometry(                
+            mNativeWindow.get(),                
+            def.format.video.nFrameWidth,                
+            def.format.video.nFrameHeight,                
+            def.format.video.eColorFormat);    
+    }
 
     if (err != 0) {
         ALOGE("native_window_set_buffers_geometry failed: %s (%d)",
@@ -1129,11 +1146,12 @@ status_t ACodec::configureCodec(
         // These are PCM-like formats with a fixed sample rate but
         // a variable number of channels.
 
-        int32_t numChannels;
-        if (!msg->findInt32("channel-count", &numChannels)) {
+        int32_t numChannels, sampleRate;
+        if (!msg->findInt32("channel-count", &numChannels)
+                || !msg->findInt32("sample-rate", &sampleRate)) {
             err = INVALID_OPERATION;
         } else {
-            err = setupG711Codec(encoder, numChannels);
+            err = setupG711Codec(encoder, numChannels, sampleRate);
         }
     } else if (!strcasecmp(mime, MEDIA_MIMETYPE_AUDIO_FLAC)) {
         int32_t numChannels, sampleRate, compressionLevel = -1;
@@ -1434,11 +1452,12 @@ status_t ACodec::setupAMRCodec(bool encoder, bool isWAMR, int32_t bitrate) {
             1 /* numChannels */);
 }
 
-status_t ACodec::setupG711Codec(bool encoder, int32_t numChannels) {
+status_t ACodec::setupG711Codec(bool encoder, int32_t numChannels, int32_t sampleRate) {
     CHECK(!encoder);  // XXX TODO
 
     return setupRawAudioFormat(
-            kPortIndexInput, 8000 /* sampleRate */, numChannels);
+            //kPortIndexInput, 8000 /* sampleRate */, numChannels);
+            kPortIndexInput,  sampleRate , numChannels);
 }
 
 status_t ACodec::setupFlacCodec(
@@ -3600,6 +3619,7 @@ bool ACodec::LoadedState::onConfigureComponent(
     sp<RefBase> obj;
     if (msg->findObject("native-window", &obj)
             && strncmp("OMX.google.", mCodec->mComponentName.c_str(), 11)) {
+            //&& (strncmp("OMX.google.", mCodec->mComponentName.c_str(), 11) || !strncmp("OMX.google.h264", mCodec->mComponentName.c_str(), 15))) {
         sp<NativeWindowWrapper> nativeWindow(
                 static_cast<NativeWindowWrapper *>(obj.get()));
         CHECK(nativeWindow != NULL);

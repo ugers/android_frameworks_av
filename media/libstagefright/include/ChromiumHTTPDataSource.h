@@ -65,6 +65,10 @@ struct ChromiumHTTPDataSource : public HTTPBase {
     virtual void setRedirectPath(const char* path);
 
     virtual void setRedirectSpec(const char* path);
+
+    virtual void forceDisconnect();
+
+    virtual void setTimeoutLastUs(int64_t timeoutUs);
     //* end.
 protected:
     virtual ~ChromiumHTTPDataSource();
@@ -102,6 +106,7 @@ private:
     AString mRedirectPath;
     AString mRedirectURI;
     bool    mIsRedirected;
+
     off64_t mCurrentOffset;
 
     // Any connection error or the result of a read operation
@@ -114,6 +119,9 @@ private:
 
     sp<DecryptHandle> mDecryptHandle;
     DrmManagerClient *mDrmManagerClient;
+
+    int64_t mReadTimeoutUs;
+    bool mForceDisconnect;
 
     void disconnect_l();
 

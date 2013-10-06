@@ -203,11 +203,11 @@ SfRequestContext::SfRequestContext() {
 
 const std::string &SfRequestContext::GetUserAgent(const GURL &url) const {
     if(!gIpadUAEnable) {
-		return mUserAgent;
-	}
-	else {
-		return gIpadUAString;
-	}
+    return mUserAgent;
+   }
+   else {
+    return gIpadUAString;
+   }
 }
 
 ////////////////////////////////////////////////////////////////////////////////

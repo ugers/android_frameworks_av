@@ -46,7 +46,7 @@ struct LiveSession : public AHandler {
     void disconnect();
 
     // Blocks until seek is complete.
-    void seekTo(int64_t timeUs);
+    int64_t seekTo(int64_t timeUs);
 
     status_t getDuration(int64_t *durationUs) const;
 
@@ -61,7 +61,7 @@ protected:
 private:
     enum {
         kMaxNumQueuedFragments = 3,
-        kMaxNumRetries         = 5,
+        kMaxNumRetries         = 10,
     };
 
     enum {
@@ -106,6 +106,9 @@ private:
     bool mSeekDone;
     bool mDisconnectPending;
 
+    bool mTimeout;
+    AString *mCurUri;
+
     int32_t mMonitorQueueGeneration;
 
     int64_t				mSeekTargetStartUs;
@@ -120,6 +123,9 @@ private:
 
     bool                                mIsPlaylistRedirected;
     char*				mPlaylistRedirectURL;
+    bool                                mDataSourceConnected;
+    sp<ABuffer>                         mBufferForFetchFile;
+
     enum RefreshState {
         INITIAL_MINIMUM_RELOAD_DELAY,
         FIRST_UNCHANGED_RELOAD_ATTEMPT,

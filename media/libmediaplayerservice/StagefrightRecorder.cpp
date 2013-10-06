@@ -46,7 +46,6 @@
 #include <camera/ICamera.h>
 #include <camera/CameraParameters.h>
 #include <gui/Surface.h>
-#include <utils/String8.h>
 
 #include <utils/Errors.h>
 #include <sys/types.h>
@@ -426,7 +425,7 @@ status_t StagefrightRecorder::setParamAudioSamplingRate(int32_t sampleRate) {
 
 status_t StagefrightRecorder::setParamAudioNumberOfChannels(int32_t channels) {
     ALOGV("setParamAudioNumberOfChannels: %d", channels);
-    if (channels != 1 && channels != 2 && channels != 6) {
+    if (channels <= 0 || channels >= 3) {
         ALOGE("Invalid number of audio channels: %d", channels);
         return BAD_VALUE;
     }
@@ -511,11 +510,6 @@ status_t StagefrightRecorder::setParamMaxFileSizeBytes(int64_t bytes) {
 
     if (bytes <= 100 * 1024) {
         ALOGW("Target file size (%lld bytes) is too small to be respected", bytes);
-    }
-
-    if (bytes >= 0xffffffffLL) {
-        ALOGW("Target file size (%lld bytes) too larger than supported, clip to 4GB", bytes);
-        bytes = 0xffffffffLL;
     }
 
     mMaxFileSizeBytes = bytes;
@@ -1649,7 +1643,6 @@ status_t StagefrightRecorder::setupCameraSource(
                 mTimeBetweenTimeLapseFrameCaptureUs);
         *cameraSource = mCameraSourceTimeLapse;
     } else {
-        bool useMeta = true;
 #ifdef QCOM_HARDWARE
         char value[PROPERTY_VALUE_MAX];
         if (property_get("debug.camcorder.disablemeta", value, NULL) &&
@@ -1659,7 +1652,7 @@ status_t StagefrightRecorder::setupCameraSource(
 #endif
         *cameraSource = CameraSource::CreateFromCamera(
                 mCamera, mCameraProxy, mCameraId, videoSize, mFrameRate,
-                mPreviewSurface, useMeta /*storeMetaDataInVideoBuffers*/);
+                mPreviewSurface, true /*storeMetaDataInVideoBuffers*/);
     }
     mCamera.clear();
     mCameraProxy.clear();

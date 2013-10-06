@@ -97,7 +97,7 @@ void LiveSession::disconnect() {
     (new AMessage(kWhatDisconnect, id()))->post();
 }
 
-void LiveSession::seekTo(int64_t timeUs) {
+int64_t LiveSession::seekTo(int64_t timeUs) {
     Mutex::Autolock autoLock(mLock);
     mSeekDone = false;
 

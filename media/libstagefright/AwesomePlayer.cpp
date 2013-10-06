@@ -70,8 +70,6 @@
 
 #define USE_SURFACE_ALLOC 1
 #define FRAME_DROP_FREQ 0
-#define LPA_MIN_DURATION_USEC_ALLOWED 30000000
-#define LPA_MIN_DURATION_USEC_DEFAULT 60000000
 
 namespace android {
 
@@ -687,7 +685,7 @@ void AwesomePlayer::notifyListener_l(int msg, int ext1, int ext2) {
 
 bool AwesomePlayer::getBitrate(int64_t *bitrate) {
     off64_t size;
-    if (mDurationUs > 0 && mCachedSource != NULL
+    if (mDurationUs >= 0 && mCachedSource != NULL
             && mCachedSource->getSize(&size) == OK) {
         *bitrate = size * 8000000ll / mDurationUs;  // in bits/sec
         return true;
@@ -1116,12 +1114,6 @@ status_t AwesomePlayer::play_l() {
         mTimeSource = &mSystemTimeSource;
     }
 
-    {
-        Mutex::Autolock autoLock(mStatsLock);
-        mStats.mFirstFrameLatencyStartUs = getTimeOfDayUs();
-        mStats.mVeryFirstFrame = true;
-    }
-
     if (mVideoSource != NULL) {
         // Kick off video playback
         postVideoEvent_l();
@@ -1347,8 +1339,8 @@ status_t AwesomePlayer::pause_l(bool at_eos) {
     }
 
     if(!(mFlags & VIDEO_AT_EOS)){
-        Mutex::Autolock autoLock(mStatsLock);
-        mStats.mLastPausedTimeMs = mVideoTimeUs/1000;
+         Mutex::Autolock autoLock(mStatsLock);
+         mStats.mLastPausedTimeMs = mVideoTimeUs/1000;
         printStats();
     }
 
@@ -1488,8 +1480,7 @@ status_t AwesomePlayer::getPosition(int64_t *positionUs) {
 status_t AwesomePlayer::seekTo(int64_t timeUs) {
     ATRACE_CALL();
 
-    if (((timeUs == 0) && (mExtractorFlags & MediaExtractor::CAN_SEEK_TO_ZERO)) ||
-        (mExtractorFlags & MediaExtractor::CAN_SEEK)) {
+    if (mExtractorFlags & MediaExtractor::CAN_SEEK) {
         Mutex::Autolock autoLock(mLock);
         return seekTo_l(timeUs);
     }
@@ -1512,12 +1503,6 @@ status_t AwesomePlayer::seekTo_l(int64_t timeUs) {
     }
 
     mSeeking = SEEK;
-
-    {
-        Mutex::Autolock autoLock(mStatsLock);
-        mStats.mFirstFrameLatencyStartUs = getTimeOfDayUs();
-        mStats.mVeryFirstFrame = true;
-    }
     mSeekNotificationSent = false;
     mSeekTimeUs = timeUs;
     modifyFlags((AT_EOS | AUDIO_AT_EOS | VIDEO_AT_EOS), CLEAR);
@@ -2100,8 +2085,8 @@ void AwesomePlayer::onVideoEvent() {
 
         if (latenessUs > 40000) {
             // We're more than 40ms late.
-            ALOGE("we're late by %lld us nowUs %lld, timeUs %lld",
-                  latenessUs, nowUs, timeUs);
+            ALOGV("we're late by %lld us (%.2f secs)",
+                 latenessUs, latenessUs / 1E6);
 
             if (!(mFlags & SLOW_DECODER_HACK)
                     || mSinceLastDropped > FRAME_DROP_FREQ)

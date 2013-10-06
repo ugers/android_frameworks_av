@@ -29,6 +29,7 @@
 #include <system/audio.h>
 
 #include <CedarXRecorder.h>
+
 namespace android {
 
 class Camera;

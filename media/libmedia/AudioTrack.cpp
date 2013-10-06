@@ -102,8 +102,7 @@ status_t AudioTrack::getMinFrameCount(
 // ---------------------------------------------------------------------------
 
 AudioTrack::AudioTrack()
-    : mCblk(NULL),
-      mStatus(NO_INIT),
+    : mStatus(NO_INIT),
       mIsTimed(false),
       mPreviousPriority(ANDROID_PRIORITY_NORMAL),
       mPreviousSchedulingGroup(SP_DEFAULT)
@@ -125,8 +124,7 @@ AudioTrack::AudioTrack(
         void* user,
         int notificationFrames,
         int sessionId)
-    : mCblk(NULL),
-      mStatus(NO_INIT),
+    : mStatus(NO_INIT),
       mIsTimed(false),
       mPreviousPriority(ANDROID_PRIORITY_NORMAL),
       mPreviousSchedulingGroup(SP_DEFAULT)
@@ -152,8 +150,7 @@ AudioTrack::AudioTrack(
         void* user,
         int notificationFrames,
         int sessionId)
-    : mCblk(NULL),
-      mStatus(NO_INIT),
+    : mStatus(NO_INIT),
       mIsTimed(false),
       mPreviousPriority(ANDROID_PRIORITY_NORMAL), mPreviousSchedulingGroup(SP_DEFAULT)
 #ifdef QCOM_HARDWARE
@@ -178,8 +175,7 @@ AudioTrack::AudioTrack(
         void* user,
         int notificationFrames,
         int sessionId)
-  :   mCblk(NULL),
-      mStatus(NO_INIT),
+  :   mStatus(NO_INIT),
       mIsTimed(false),
       mPreviousPriority(ANDROID_PRIORITY_NORMAL),
       mPreviousSchedulingGroup(SP_DEFAULT)
@@ -220,9 +216,7 @@ AudioTrack::~AudioTrack()
         mAudioTrack.clear();
 #endif
         IPCThreadState::self()->flushCommands();
-#ifndef QCOM_HARDWARE
         AudioSystem::releaseAudioSessionId(mSessionId);
-#endif
     }
 }
 
@@ -410,7 +404,7 @@ status_t AudioTrack::set(
 #ifndef QCOM_HARDWARE
     mSharedBuffer = sharedBuffer;
     mUserData = user;
-    AudioSystem::acquireAudioSessionId(mSessionId);
+     AudioSystem::acquireAudioSessionId(mSessionId);
 #endif
 
     mRestoreStatus = NO_ERROR;
@@ -903,11 +897,6 @@ int AudioTrack::getSessionId() const
     return mSessionId;
 }
 
-extern "C" int _ZNK7android10AudioTrack12getSessionIdEv();
-extern "C" int _ZN7android10AudioTrack12getSessionIdEv() {
-    return _ZNK7android10AudioTrack12getSessionIdEv();
-}
-
 status_t AudioTrack::attachAuxEffect(int effectId)
 {
     ALOGV("attachAuxEffect(%d)", effectId);
@@ -1017,7 +1006,6 @@ status_t AudioTrack::createTrack_l(
         if (minBufCount < 2) minBufCount = 2;
 
         uint32_t minFrameCount = (afFrameCount*sampleRate*minBufCount)/afSampleRate;
-
         ALOGV("minFrameCount: %d, afFrameCount=%d, minBufCount=%d, sampleRate=%d, afSampleRate=%d"
                 ", afLatency=%d",
                 minFrameCount, afFrameCount, minBufCount, sampleRate, afSampleRate, afLatency);
@@ -1310,8 +1298,8 @@ ssize_t AudioTrack::write(const void* buffer, size_t userSize)
         } else {
             toWrite = audioBuffer.size;
             memcpy(audioBuffer.i8, src, toWrite);
+            src += toWrite;
         }
-        src += toWrite;
         userSize -= toWrite;
         written += toWrite;
 
@@ -1630,8 +1618,7 @@ status_t AudioTrack::dump(int fd, const Vector<String16>& args) const
     result.append(" AudioTrack::dump\n");
     snprintf(buffer, 255, "  stream type(%d), left - right volume(%f, %f)\n", mStreamType, mVolume[0], mVolume[1]);
     result.append(buffer);
-    snprintf(buffer, 255, "  format(%d), channel count(%d), frame count(%d)\n", mFormat, mChannelCount,
-             (mCblk == 0) ? 0 : mCblk->frameCount);
+    snprintf(buffer, 255, "  format(%d), channel count(%d), frame count(%d)\n", mFormat, mChannelCount, mCblk->frameCount);
     result.append(buffer);
     snprintf(buffer, 255, "  sample rate(%d), status(%d), muted(%d)\n", (mCblk == 0) ? 0 : mCblk->sampleRate, mStatus, mMuted);
     result.append(buffer);

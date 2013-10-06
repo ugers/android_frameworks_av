@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-//#define LOG_NDEBUG 0
+// #define LOG_NDEBUG 0
 #define LOG_TAG "AudioSource"
 #include <utils/Log.h>
 
@@ -64,15 +64,9 @@ AudioSource::AudioSource(
       mSampleRate(sampleRate),
       mPrevSampleTimeUs(0),
       mNumFramesReceived(0),
-      mNumClientOwnedBuffers(0)
-#ifdef QCOM_ENHANCED_AUDIO
-      ,mFormat(AUDIO_FORMAT_PCM_16_BIT),
-      mMime(MEDIA_MIMETYPE_AUDIO_RAW)
-#endif
-{
-
+      mNumClientOwnedBuffers(0) {
     ALOGV("sampleRate: %d, channelCount: %d", sampleRate, channelCount);
-    CHECK(channelCount == 1 || channelCount == 2 || channelCount == 6);
+    CHECK(channelCount == 1 || channelCount == 2);
 
     int minFrameCount;
     status_t status = AudioRecord::getMinFrameCount(&minFrameCount,
@@ -115,17 +109,6 @@ AudioSource::AudioSource(
                     this,
                     frameCount);
         mInitCheck = mRecord->initCheck();
-
-        //configure the auto ramp start duration
-        mAutoRampStartUs = kAutoRampStartUs;
-        uint32_t playbackLatencyMs = 0;
-        if (AudioSystem::getOutputLatency(&playbackLatencyMs,
-                                          AUDIO_STREAM_DEFAULT) == OK) {
-            if (2*playbackLatencyMs*1000LL > kAutoRampStartUs) {
-                mAutoRampStartUs = 2*playbackLatencyMs*1000LL;
-            }
-        }
-        ALOGD("Start autoramp from %lld", mAutoRampStartUs);
     } else {
         mInitCheck = status;
     }
@@ -349,14 +332,14 @@ status_t AudioSource::read(
 #ifdef QCOM_ENHANCED_AUDIO
     if ( mFormat == AUDIO_FORMAT_PCM_16_BIT ) {
 #endif
-        if (elapsedTimeUs < mAutoRampStartUs) {
+        if (elapsedTimeUs < kAutoRampStartUs) {
             memset((uint8_t *) buffer->data(), 0, buffer->range_length());
-        } else if (elapsedTimeUs < mAutoRampStartUs + kAutoRampDurationUs) {
+        } else if (elapsedTimeUs < kAutoRampStartUs + kAutoRampDurationUs) {
             int32_t autoRampDurationFrames =
                         (kAutoRampDurationUs * mSampleRate + 500000LL) / 1000000LL;
 
             int32_t autoRampStartFrames =
-                        (mAutoRampStartUs * mSampleRate + 500000LL) / 1000000LL;
+                        (kAutoRampStartUs * mSampleRate + 500000LL) / 1000000LL;
 
             int32_t nFrames = mNumFramesReceived - autoRampStartFrames;
             rampVolume(nFrames, autoRampDurationFrames,
@@ -427,9 +410,7 @@ status_t AudioSource::dataCallback(const AudioRecord::Buffer& audioBuffer) {
     }
 
     CHECK_EQ(numLostBytes & 1, 0u);
-#ifndef QCOM_ENHANCED_AUDIO
     CHECK_EQ(audioBuffer.size & 1, 0u);
-#endif
     if (numLostBytes > 0) {
         // Loss of audio frames should happen rarely; thus the LOGW should
         // not cause a logging spam

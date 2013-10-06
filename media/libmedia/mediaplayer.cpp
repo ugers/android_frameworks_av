@@ -505,6 +505,7 @@ status_t MediaPlayer::reset_l()
             ALOGE("reset() failed with return code (%d)", ret);
             mCurrentState = MEDIA_PLAYER_STATE_ERROR;
         } else {
+            usleep(1000);
             mCurrentState = MEDIA_PLAYER_IDLE;
         }
         // setDataSource has to be called again to create a

@@ -66,7 +66,6 @@ public:
         EVENT_MARKER = 3,           // Playback head is at the specified marker position (See setMarkerPosition()).
         EVENT_NEW_POS = 4,          // Playback head is at a new position (See setPositionUpdatePeriod()).
         EVENT_BUFFER_END = 5,       // Playback head is at the end of the buffer.
-        EVENT_HW_FAIL = 6,          // ADSP failure.
     };
 
     /* Client should declare Buffer on the stack and pass address to obtainBuffer()

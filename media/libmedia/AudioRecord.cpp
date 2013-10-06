@@ -287,9 +287,7 @@ status_t AudioRecord::set(
     mMarkerReached = false;
     mNewPosition = 0;
     mUpdatePeriod = 0;
-#ifndef QCOM_HARDWARE
     mInputSource = inputSource;
-#endif
     mInput = input;
     AudioSystem::acquireAudioSessionId(mSessionId);
 

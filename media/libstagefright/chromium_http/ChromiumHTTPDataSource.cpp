@@ -37,7 +37,9 @@ ChromiumHTTPDataSource::ChromiumHTTPDataSource(uint32_t flags)
       mIOResult(OK),
       mContentSize(-1),
       mDecryptHandle(NULL),
-      mDrmManagerClient(NULL) {
+      mDrmManagerClient(NULL),
+      mReadTimeoutUs(kDefaultReadTimeOutUs),
+      mForceDisconnect(false){
     mDelegate->setOwner(this);
     mDelegate->setUA(!!(mFlags & kFlagUAIPAD));
     mIsRedirected = false;
@@ -169,6 +171,7 @@ void ChromiumHTTPDataSource::setRedirectSpec(const char* path)
 }
 //* end.
 
+
 status_t ChromiumHTTPDataSource::connect_l(
         const char *uri,
         const KeyedVector<String8, String8> *headers,
@@ -184,8 +187,8 @@ status_t ChromiumHTTPDataSource::connect_l(
 
     mURI = uri;
     mIsRedirected = false;
+    //LOG_PRI(ANDROID_LOG_VERBOSE, LOG_TAG, "uri = %s.", uri);
 
-	//LOG_PRI(ANDROID_LOG_VERBOSE, LOG_TAG, "uri = %s.", uri);
     mContentType = String8("application/octet-stream");
 
     if (headers != NULL) {
@@ -202,6 +205,10 @@ status_t ChromiumHTTPDataSource::connect_l(
 
     while (mState == CONNECTING || mState == DISCONNECTING) {
         mCondition.wait(mLock);
+        if(mForceDisconnect) {
+        	LOG_PRI(ANDROID_LOG_INFO, LOG_TAG, "disconnected, return");
+        	return ERROR_IO;
+        }
     }
 
     return mState == CONNECTED ? OK : mIOResult;
@@ -297,8 +304,30 @@ ssize_t ChromiumHTTPDataSource::readAt(off64_t offset, void *data, size_t size) 
 
     mDelegate->initiateRead(data, size);
 
+    int32_t bandwidth_bps;
+    estimateBandwidth(&bandwidth_bps);
+    int64_t readTimeoutUs = 0;
+    if(bandwidth_bps > 0) {
+	readTimeoutUs = (size * 8000000ll)/bandwidth_bps;
+    }
+
+    readTimeoutUs += mReadTimeoutUs;
+
     while (mState == READING) {
-        mCondition.wait(mLock);
+        //mCondition.wait(mLock);
+        status_t err = mCondition.waitRelative(mLock, readTimeoutUs *1000ll);
+
+        if(mForceDisconnect) {
+          LOG_PRI(ANDROID_LOG_INFO, LOG_TAG, "disconnected, read return");
+          return ERROR_IO;
+        }
+        
+        if(err == -ETIMEDOUT) {
+	    LOG_PRI(ANDROID_LOG_INFO, LOG_TAG, "Read data timeout,"
+		    "maybe server didn't response us, return %d", err);
+
+		return err;
+	}
     }
 
     if (mIOResult < OK) {
@@ -325,6 +354,10 @@ void ChromiumHTTPDataSource::onReadCompleted(ssize_t size) {
     mIOResult = size;
 
     if (mState == READING) {
+        if(mForceDisconnect) {
+            LOG_PRI(ANDROID_LOG_INFO, LOG_TAG, "onReadCompleted, but we have disconnected");
+            return ;
+        }
         mState = CONNECTED;
         mCondition.broadcast();
     }
@@ -437,6 +470,23 @@ status_t ChromiumHTTPDataSource::reconnectAtOffset(off64_t offset) {
     }
 
     return err;
+}
+
+void ChromiumHTTPDataSource::forceDisconnect()
+{
+	if(mState == CONNECTING || mState == READING) {
+		//broadcast the signal, don't change the state.
+		mForceDisconnect = true;
+		mIOResult = ERROR_IO;
+		mCondition.broadcast();
+	}
+}
+
+void ChromiumHTTPDataSource::setTimeoutLastUs(int64_t timeoutUs)
+{
+	if(timeoutUs >= 0) {
+		mReadTimeoutUs = timeoutUs;
+	}
 }
 
 }  // namespace android
