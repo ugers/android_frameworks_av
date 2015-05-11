@@ -13,42 +13,50 @@ include $(BUILD_STATIC_LIBRARY)
 
 include $(CLEAR_VARS)
 
+<<<<<<< HEAD
 ifeq ($(TARGET_QCOM_AUDIO_VARIANT),caf)
 LOCAL_CFLAGS += -DQCOM_ENHANCED_AUDIO
 endif
+=======
+LOCAL_SRC_FILES := \
+    ServiceUtilities.cpp
+
+# FIXME Move this library to frameworks/native
+LOCAL_MODULE := libserviceutility
+
+include $(BUILD_STATIC_LIBRARY)
+
+include $(CLEAR_VARS)
+>>>>>>> 8b8d02886bd9fb8d5ad451c03e486cfad74aa74e
 
 LOCAL_SRC_FILES:=               \
     AudioFlinger.cpp            \
+    Threads.cpp                 \
+    Tracks.cpp                  \
+    Effects.cpp                 \
     AudioMixer.cpp.arm          \
-    AudioResampler.cpp.arm      \
-    AudioPolicyService.cpp      \
-    ServiceUtilities.cpp        \
-	AudioResamplerCubic.cpp.arm \
-    AudioResamplerSinc.cpp.arm
+    PatchPanel.cpp
 
 LOCAL_SRC_FILES += StateQueue.cpp
 
-# uncomment for debugging timing problems related to StateQueue::push()
-LOCAL_CFLAGS += -DSTATE_QUEUE_DUMP
-
 LOCAL_C_INCLUDES := \
+    $(TOPDIR)frameworks/av/services/audiopolicy \
     $(call include-path-for, audio-effects) \
     $(call include-path-for, audio-utils)
 
-# FIXME keep libmedia_native but remove libmedia after split
 LOCAL_SHARED_LIBRARIES := \
+    libaudioresampler \
     libaudioutils \
     libcommon_time_client \
     libcutils \
     libutils \
+    liblog \
     libbinder \
     libmedia \
-    libmedia_native \
     libnbaio \
     libhardware \
     libhardware_legacy \
     libeffects \
-    libdl \
     libpowermanager
 
 # SRS Processing
@@ -62,31 +70,34 @@ endif
 LOCAL_STATIC_LIBRARIES := \
     libscheduling_policy \
     libcpustats \
-    libmedia_helper
+    libmedia_helper \
+    libserviceutility
+
+#QTI Resampler
+ifeq ($(call is-vendor-board-platform,QCOM),true)
+ifeq ($(strip $(AUDIO_FEATURE_ENABLED_EXTN_RESAMPLER)),true)
+LOCAL_CFLAGS += -DQTI_RESAMPLER
+endif
+endif
+#QTI Resampler
 
 LOCAL_MODULE:= libaudioflinger
+LOCAL_32_BIT_ONLY := true
 
-LOCAL_SRC_FILES += FastMixer.cpp FastMixerState.cpp
-
-LOCAL_CFLAGS += -DFAST_MIXER_STATISTICS
-
-# uncomment to display CPU load adjusted for CPU frequency
-# LOCAL_CFLAGS += -DCPU_FREQUENCY_STATISTICS
+LOCAL_SRC_FILES += FastMixer.cpp FastMixerState.cpp AudioWatchdog.cpp
+LOCAL_SRC_FILES += FastThread.cpp FastThreadState.cpp
+LOCAL_SRC_FILES += FastCapture.cpp FastCaptureState.cpp
 
 LOCAL_CFLAGS += -DSTATE_QUEUE_INSTANTIATIONS='"StateQueueInstantiations.cpp"'
 
-LOCAL_CFLAGS += -UFAST_TRACKS_AT_NON_NATIVE_SAMPLE_RATE
+# Define ANDROID_SMP appropriately. Used to get inline tracing fast-path.
+ifeq ($(TARGET_CPU_SMP),true)
+    LOCAL_CFLAGS += -DANDROID_SMP=1
+else
+    LOCAL_CFLAGS += -DANDROID_SMP=0
+endif
 
-# uncomment for systrace
-# LOCAL_CFLAGS += -DATRACE_TAG=ATRACE_TAG_AUDIO
-
-# uncomment for dumpsys to write most recent audio output to .wav file
-# 47.5 seconds at 44.1 kHz, 8 megabytes
-# LOCAL_CFLAGS += -DTEE_SINK_FRAMES=0x200000
-
-# uncomment to enable the audio watchdog
-# LOCAL_SRC_FILES += AudioWatchdog.cpp
-# LOCAL_CFLAGS += -DAUDIO_WATCHDOG
+LOCAL_CFLAGS += -fvisibility=hidden
 
 include $(BUILD_SHARED_LIBRARY)
 
@@ -96,15 +107,21 @@ include $(BUILD_SHARED_LIBRARY)
 include $(CLEAR_VARS)
 
 LOCAL_SRC_FILES:=               \
-	test-resample.cpp 			\
-    AudioResampler.cpp.arm      \
-	AudioResamplerCubic.cpp.arm \
-    AudioResamplerSinc.cpp.arm
+    test-resample.cpp           \
+
+LOCAL_C_INCLUDES := \
+    $(call include-path-for, audio-utils)
+
+LOCAL_STATIC_LIBRARIES := \
+    libsndfile
 
 LOCAL_SHARED_LIBRARIES := \
-	libdl \
+    libaudioresampler \
+    libaudioutils \
+    libdl \
     libcutils \
-    libutils
+    libutils \
+    liblog
 
 LOCAL_MODULE:= test-resample
 
@@ -112,5 +129,42 @@ LOCAL_MODULE_TAGS := optional
 
 include $(BUILD_EXECUTABLE)
 
+include $(CLEAR_VARS)
+
+LOCAL_SRC_FILES:= \
+    AudioResampler.cpp.arm \
+    AudioResamplerCubic.cpp.arm \
+    AudioResamplerSinc.cpp.arm \
+    AudioResamplerDyn.cpp.arm
+
+LOCAL_C_INCLUDES := \
+    $(call include-path-for, audio-utils)
+
+LOCAL_SHARED_LIBRARIES := \
+    libcutils \
+    libdl \
+    liblog
+
+#QTI Resampler
+ifeq ($(call is-vendor-board-platform,QCOM),true)
+ifeq ($(strip $(AUDIO_FEATURE_ENABLED_EXTN_RESAMPLER)),true)
+ifdef TARGET_2ND_ARCH
+LOCAL_SRC_FILES_$(TARGET_2ND_ARCH) += AudioResamplerQTI.cpp.arm
+LOCAL_C_INCLUDES_$(TARGET_2ND_ARCH) += $(TARGET_OUT_HEADERS)/mm-audio/audio-src
+LOCAL_SHARED_LIBRARIES_$(TARGET_2ND_ARCH) += libqct_resampler
+LOCAL_CFLAGS_$(TARGET_2ND_ARCH) += -DQTI_RESAMPLER
+else
+LOCAL_SRC_FILES += AudioResamplerQTI.cpp.arm
+LOCAL_C_INCLUDES += $(TARGET_OUT_HEADERS)/mm-audio/audio-src
+LOCAL_SHARED_LIBRARIES += libqct_resampler
+LOCAL_CFLAGS += -DQTI_RESAMPLER
+endif
+endif
+endif
+#QTI Resampler
+
+LOCAL_MODULE := libaudioresampler
+
+include $(BUILD_SHARED_LIBRARY)
 
 include $(call all-makefiles-under,$(LOCAL_PATH))

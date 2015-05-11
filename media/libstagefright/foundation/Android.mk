@@ -10,7 +10,10 @@ LOCAL_SRC_FILES:=                 \
     ALooper.cpp                   \
     ALooperRoster.cpp             \
     AMessage.cpp                  \
+    ANetworkSession.cpp           \
     AString.cpp                   \
+    AWakeLock.cpp                 \
+    ParsedMessage.cpp             \
     base64.cpp                    \
     hexdump.cpp
 
@@ -20,8 +23,10 @@ LOCAL_C_INCLUDES:= \
 LOCAL_SHARED_LIBRARIES := \
         libbinder         \
         libutils          \
+        liblog            \
+        libpowermanager
 
-LOCAL_CFLAGS += -Wno-multichar
+LOCAL_CFLAGS += -Wno-multichar -Werror
 
 LOCAL_MODULE:= libstagefright_foundation
 

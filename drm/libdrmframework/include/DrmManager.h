@@ -70,8 +70,6 @@ public:
     status_t setDrmServiceListener(
             int uniqueId, const sp<IDrmServiceListener>& drmServiceListener);
 
-    status_t installDrmEngine(int uniqueId, const String8& drmEngineFile);
-
     DrmConstraints* getConstraints(int uniqueId, const String8* path, const int action);
 
     DrmMetadata* getMetadata(int uniqueId, const String8* path);
@@ -144,7 +142,11 @@ private:
     bool canHandle(int uniqueId, const String8& path);
 
 private:
-    Vector<int> mUniqueIdVector;
+    enum {
+        kMaxNumUniqueIds = 0x1000,
+    };
+
+    bool mUniqueIdArray[kMaxNumUniqueIds];
     static const String8 EMPTY_STRING;
 
     int mDecryptSessionId;

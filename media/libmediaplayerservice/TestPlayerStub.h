@@ -66,7 +66,9 @@ class TestPlayerStub : public MediaPlayerInterface {
 
     // @param url Should be a test url. See class comment.
     virtual status_t setDataSource(
-            const char* url, const KeyedVector<String8, String8> *headers);
+            const sp<IMediaHTTPService> &httpService,
+            const char* url,
+            const KeyedVector<String8, String8> *headers);
 
     // Test player for a file descriptor source is not supported.
     virtual status_t setDataSource(int, int64_t, int64_t)  {
@@ -76,7 +78,7 @@ class TestPlayerStub : public MediaPlayerInterface {
 
     // All the methods below wrap the mPlayer instance.
     virtual status_t setVideoSurfaceTexture(
-            const android::sp<android::ISurfaceTexture>& st)  {
+            const android::sp<android::IGraphicBufferProducer>& st)  {
         return mPlayer->setVideoSurfaceTexture(st);
     }
     virtual status_t prepare() {return mPlayer->prepare();}

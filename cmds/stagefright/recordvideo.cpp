@@ -16,6 +16,7 @@
 
 #include "SineSource.h"
 
+#include <inttypes.h>
 #include <binder/ProcessState.h>
 #include <media/stagefright/foundation/ADebug.h>
 #include <media/stagefright/AudioPlayer.h>
@@ -44,7 +45,7 @@ static void usage(const char *me) {
     fprintf(stderr, "       -p encoder profile. see omx il header (default: encoder specific)\n");
     fprintf(stderr, "       -v video codec: [0] AVC [1] M4V [2] H263 (default: 0)\n");
     fprintf(stderr, "       -s(oftware) prefer software codec\n");
-    fprintf(stderr, "The output file is /sdcard/output.mp4\n");
+    fprintf(stderr, "       -o filename: output file (default: /sdcard/output.mp4)\n");
     exit(1);
 }
 
@@ -72,7 +73,7 @@ public:
         return meta;
     }
 
-    virtual status_t start(MetaData *params) {
+    virtual status_t start(MetaData *params __unused) {
         mNumFramesOutput = 0;
         return OK;
     }
@@ -82,7 +83,7 @@ public:
     }
 
     virtual status_t read(
-            MediaBuffer **buffer, const MediaSource::ReadOptions *options) {
+            MediaBuffer **buffer, const MediaSource::ReadOptions *options __unused) {
 
         if (mNumFramesOutput % 10 == 0) {
             fprintf(stderr, ".");
@@ -99,8 +100,12 @@ public:
         // We don't care about the contents. we just test video encoder
         // Also, by skipping the content generation, we can return from
         // read() much faster.
-        //char x = (char)((double)rand() / RAND_MAX * 255);
-        //memset((*buffer)->data(), x, mSize);
+#if 0
+        // iterate through solid planes of color.
+        static unsigned char x = 0x60;
+        memset((*buffer)->data(), x, mSize);
+        x = x >= 0xa0 ? 0x60 : x + 1;
+#endif
         (*buffer)->set_range(0, mSize);
         (*buffer)->meta_data()->clear();
         (*buffer)->meta_data()->setInt64(
@@ -167,7 +172,7 @@ int main(int argc, char **argv) {
 
     android::ProcessState::self()->startThreadPool();
     int res;
-    while ((res = getopt(argc, argv, "b:c:f:i:n:w:t:l:p:v:hs")) >= 0) {
+    while ((res = getopt(argc, argv, "b:c:f:i:n:w:t:l:p:v:o:hs")) >= 0) {
         switch (res) {
             case 'b':
             {
@@ -232,6 +237,12 @@ int main(int argc, char **argv) {
                 if (codec < 0 || codec > 2) {
                     usage(argv[0]);
                 }
+                break;
+            }
+
+            case 'o':
+            {
+                fileName = optarg;
                 break;
             }
 
@@ -306,7 +317,7 @@ int main(int argc, char **argv) {
         fprintf(stderr, "record failed: %d\n", err);
         return 1;
     }
-    fprintf(stderr, "encoding %d frames in %lld us\n", nFrames, (end-start)/1000);
+    fprintf(stderr, "encoding %d frames in %" PRId64 " us\n", nFrames, (end-start)/1000);
     fprintf(stderr, "encoding speed is: %.2f fps\n", (nFrames * 1E9) / (end-start));
     return 0;
 }

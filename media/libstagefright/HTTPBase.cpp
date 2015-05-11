@@ -20,15 +20,13 @@
 
 #include "include/HTTPBase.h"
 
-#if CHROMIUM_AVAILABLE
-#include "include/chromium_http_stub.h"
-#endif
-
 #include <media/stagefright/foundation/ADebug.h>
 #include <media/stagefright/foundation/ALooper.h>
 
 #include <cutils/properties.h>
 #include <cutils/qtaguid.h>
+
+#include <NetdClient.h>
 
 namespace android {
 
@@ -39,23 +37,7 @@ HTTPBase::HTTPBase()
       mPrevBandwidthMeasureTimeUs(0),
       mPrevEstimatedBandWidthKbps(0),
       mBandWidthCollectFreqMs(5000),
-      mUIDValid(false),
-      mUID(0) {
-}
-
-// static
-sp<HTTPBase> HTTPBase::Create(uint32_t flags) {
-#if CHROMIUM_AVAILABLE
-        HTTPBase *dataSource = createChromiumHTTPDataSource(flags);
-        if (dataSource) {
-           return dataSource;
-        }
-#endif
-    {
-        TRESPASS();
-
-        return NULL;
-    }
+      mMaxBandwidthHistoryItems(100) {
 }
 
 void HTTPBase::addBandwidthMeasurement(
@@ -69,7 +51,7 @@ void HTTPBase::addBandwidthMeasurement(
     mTotalTransferBytes += numBytes;
 
     mBandwidthHistory.push_back(entry);
-    if (++mNumBandwidthHistoryItems > 100) {
+    if (++mNumBandwidthHistoryItems > mMaxBandwidthHistoryItems) {
         BandwidthEntry *entry = &*mBandwidthHistory.begin();
         mTotalTransferTimeUs -= entry->mDelayUs;
         mTotalTransferBytes -= entry->mNumBytes;
@@ -123,19 +105,8 @@ status_t HTTPBase::setBandwidthStatCollectFreq(int32_t freqMs) {
     return OK;
 }
 
-void HTTPBase::setUID(uid_t uid) {
-    mUIDValid = true;
-    mUID = uid;
-}
-
-bool HTTPBase::getUID(uid_t *uid) const {
-    if (!mUIDValid) {
-        return false;
-    }
-
-    *uid = mUID;
-
-    return true;
+void HTTPBase::setBandwidthHistorySize(size_t numHistoryItems) {
+    mMaxBandwidthHistoryItems = numHistoryItems;
 }
 
 // static
@@ -152,6 +123,16 @@ void HTTPBase::UnRegisterSocketUserTag(int sockfd) {
     if (res != 0) {
         ALOGE("Failed untagging socket %d (My UID=%d)", sockfd, geteuid());
     }
+}
+
+// static
+void HTTPBase::RegisterSocketUserMark(int sockfd, uid_t uid) {
+    setNetworkForUser(uid, sockfd);
+}
+
+// static
+void HTTPBase::UnRegisterSocketUserMark(int sockfd) {
+    RegisterSocketUserMark(sockfd, geteuid());
 }
 
 }  // namespace android

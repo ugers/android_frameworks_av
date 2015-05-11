@@ -115,30 +115,13 @@ struct EqualizerContext {
 
 int Equalizer_init(EqualizerContext *pContext);
 int Equalizer_setConfig(EqualizerContext *pContext, effect_config_t *pConfig);
-int Equalizer_getParameter(AudioEqualizer * pEqualizer, int32_t *pParam, size_t *pValueSize, void *pValue);
+int Equalizer_getParameter(AudioEqualizer * pEqualizer, int32_t *pParam, uint32_t *pValueSize, void *pValue);
 int Equalizer_setParameter(AudioEqualizer * pEqualizer, int32_t *pParam, void *pValue);
 
 
 //
 //--- Effect Library Interface Implementation
 //
-
-extern "C" int EffectQueryNumberEffects(uint32_t *pNumEffects) {
-    *pNumEffects = 1;
-    return 0;
-} /* end EffectQueryNumberEffects */
-
-extern "C" int EffectQueryEffect(uint32_t index,
-                                 effect_descriptor_t *pDescriptor) {
-    if (pDescriptor == NULL) {
-        return -EINVAL;
-    }
-    if (index > 0) {
-        return -EINVAL;
-    }
-    *pDescriptor = gEqualizerDescriptor;
-    return 0;
-} /* end EffectQueryNext */
 
 extern "C" int EffectCreate(const effect_uuid_t *uuid,
                             int32_t sessionId,
@@ -251,8 +234,7 @@ int Equalizer_setConfig(EqualizerContext *pContext, effect_config_t *pConfig)
               (pConfig->inputCfg.channels == AUDIO_CHANNEL_OUT_STEREO));
     CHECK_ARG(pConfig->outputCfg.accessMode == EFFECT_BUFFER_ACCESS_WRITE
               || pConfig->outputCfg.accessMode == EFFECT_BUFFER_ACCESS_ACCUMULATE);
-    CHECK_ARG(pConfig->inputCfg.format == AUDIO_FORMAT_PCM_8_24_BIT
-              || pConfig->inputCfg.format == AUDIO_FORMAT_PCM_16_BIT);
+    CHECK_ARG(pConfig->inputCfg.format == AUDIO_FORMAT_PCM_16_BIT);
 
     int channelCount;
     if (pConfig->inputCfg.channels == AUDIO_CHANNEL_OUT_MONO) {
@@ -378,7 +360,7 @@ int Equalizer_init(EqualizerContext *pContext)
 //
 //----------------------------------------------------------------------------
 
-int Equalizer_getParameter(AudioEqualizer * pEqualizer, int32_t *pParam, size_t *pValueSize, void *pValue)
+int Equalizer_getParameter(AudioEqualizer * pEqualizer, int32_t *pParam, uint32_t *pValueSize, void *pValue)
 {
     int status = 0;
     int32_t param = *pParam++;
@@ -680,8 +662,8 @@ extern "C" int Equalizer_command(effect_handle_t self, uint32_t cmdCode, uint32_
         Equalizer_setConfig(pContext, &pContext->config);
         break;
     case EFFECT_CMD_GET_PARAM: {
-        if (pCmdData == NULL || cmdSize < (int)(sizeof(effect_param_t) + sizeof(int32_t)) ||
-            pReplyData == NULL || *replySize < (int) (sizeof(effect_param_t) + sizeof(int32_t))) {
+        if (pCmdData == NULL || cmdSize < (sizeof(effect_param_t) + sizeof(int32_t)) ||
+            pReplyData == NULL || *replySize < (sizeof(effect_param_t) + sizeof(int32_t))) {
             return -EINVAL;
         }
         effect_param_t *p = (effect_param_t *)pCmdData;
@@ -700,7 +682,7 @@ extern "C" int Equalizer_command(effect_handle_t self, uint32_t cmdCode, uint32_
     case EFFECT_CMD_SET_PARAM: {
         ALOGV("Equalizer_command EFFECT_CMD_SET_PARAM cmdSize %d pCmdData %p, *replySize %d, pReplyData %p",
              cmdSize, pCmdData, *replySize, pReplyData);
-        if (pCmdData == NULL || cmdSize < (int)(sizeof(effect_param_t) + sizeof(int32_t)) ||
+        if (pCmdData == NULL || cmdSize < (sizeof(effect_param_t) + sizeof(int32_t)) ||
             pReplyData == NULL || *replySize != sizeof(int32_t)) {
             return -EINVAL;
         }
@@ -771,8 +753,6 @@ audio_effect_library_t AUDIO_EFFECT_LIBRARY_INFO_SYM = {
     version : EFFECT_LIBRARY_API_VERSION,
     name : "Test Equalizer Library",
     implementor : "The Android Open Source Project",
-    query_num_effects : android::EffectQueryNumberEffects,
-    query_effect : android::EffectQueryEffect,
     create_effect : android::EffectCreate,
     release_effect : android::EffectRelease,
     get_descriptor : android::EffectGetDescriptor,

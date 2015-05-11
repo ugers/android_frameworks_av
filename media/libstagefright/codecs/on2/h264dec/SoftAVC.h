@@ -18,7 +18,7 @@
 
 #define SOFT_AVC_H_
 
-#include "SimpleSoftOMXComponent.h"
+#include "SoftVideoDecoderOMXComponent.h"
 #include <utils/KeyedVector.h>
 
 #include "H264SwDecApi.h"
@@ -26,7 +26,7 @@
 
 namespace android {
 
-struct SoftAVC : public SimpleSoftOMXComponent {
+struct SoftAVC : public SoftVideoDecoderOMXComponent {
     SoftAVC(const char *name,
             const OMX_CALLBACKTYPE *callbacks,
             OMX_PTR appData,
@@ -35,22 +35,12 @@ struct SoftAVC : public SimpleSoftOMXComponent {
 protected:
     virtual ~SoftAVC();
 
-    virtual OMX_ERRORTYPE internalGetParameter(
-            OMX_INDEXTYPE index, OMX_PTR params);
-
-    virtual OMX_ERRORTYPE internalSetParameter(
-            OMX_INDEXTYPE index, const OMX_PTR params);
-
-    virtual OMX_ERRORTYPE getConfig(OMX_INDEXTYPE index, OMX_PTR params);
-
     virtual void onQueueFilled(OMX_U32 portIndex);
     virtual void onPortFlushCompleted(OMX_U32 portIndex);
-    virtual void onPortEnableCompleted(OMX_U32 portIndex, bool enabled);
+    virtual void onReset();
 
 private:
     enum {
-        kInputPortIndex   = 0,
-        kOutputPortIndex  = 1,
         kNumInputBuffers  = 8,
         kNumOutputBuffers = 2,
     };
@@ -65,10 +55,6 @@ private:
 
     size_t mInputBufferCount;
 
-    uint32_t mWidth, mHeight, mPictureSize;
-    uint32_t mCropLeft, mCropTop;
-    uint32_t mCropWidth, mCropHeight;
-
     uint8_t *mFirstPicture;
     int32_t mFirstPictureId;
 
@@ -81,23 +67,13 @@ private:
 
     EOSStatus mEOSStatus;
 
-    enum OutputPortSettingChange {
-        NONE,
-        AWAITING_DISABLED,
-        AWAITING_ENABLED
-    };
-    OutputPortSettingChange mOutputPortSettingsChange;
-
     bool mSignalledError;
 
-    void initPorts();
     status_t initDecoder();
-    void updatePortDefinitions();
-    bool drainAllOutputBuffers();
+    void drainAllOutputBuffers(bool eos);
     void drainOneOutputBuffer(int32_t picId, uint8_t *data);
     void saveFirstOutputBuffer(int32_t pidId, uint8_t *data);
-    bool handleCropRectEvent(const CropParams* crop);
-    bool handlePortSettingChangeEvent(const H264SwDecInfo *info);
+    CropSettingsMode handleCropParams(const H264SwDecInfo& decInfo);
 
     DISALLOW_EVIL_CONSTRUCTORS(SoftAVC);
 };

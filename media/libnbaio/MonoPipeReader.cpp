@@ -39,7 +39,7 @@ ssize_t MonoPipeReader::availableToRead()
         return NEGOTIATE;
     }
     ssize_t ret = android_atomic_acquire_load(&mPipe->mRear) - mPipe->mFront;
-    ALOG_ASSERT((0 <= ret) && (ret <= mMaxFrames));
+    ALOG_ASSERT((0 <= ret) && (ret <= mPipe->mMaxFrames));
     return ret;
 }
 
@@ -73,17 +73,22 @@ ssize_t MonoPipeReader::read(void *buffer, size_t count, int64_t readPTS)
         part1 = red;
     }
     if (CC_LIKELY(part1 > 0)) {
-        memcpy(buffer, (char *) mPipe->mBuffer + (front << mBitShift), part1 << mBitShift);
+        memcpy(buffer, (char *) mPipe->mBuffer + (front * mFrameSize), part1 * mFrameSize);
         if (CC_UNLIKELY(front + part1 == mPipe->mMaxFrames)) {
             size_t part2 = red - part1;
             if (CC_LIKELY(part2 > 0)) {
-                memcpy((char *) buffer + (part1 << mBitShift), mPipe->mBuffer, part2 << mBitShift);
+                memcpy((char *) buffer + (part1 * mFrameSize), mPipe->mBuffer, part2 * mFrameSize);
             }
         }
         mPipe->updateFrontAndNRPTS(red + mPipe->mFront, nextReadPTS);
         mFramesRead += red;
     }
     return red;
+}
+
+void MonoPipeReader::onTimestamp(const AudioTimestamp& timestamp)
+{
+    mPipe->mTimestampMutator.push(timestamp);
 }
 
 }   // namespace android

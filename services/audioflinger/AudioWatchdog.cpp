@@ -17,8 +17,11 @@
 #define LOG_TAG "AudioWatchdog"
 //#define LOG_NDEBUG 0
 
+#include "Configuration.h"
 #include <utils/Log.h>
 #include "AudioWatchdog.h"
+
+#ifdef AUDIO_WATCHDOG
 
 namespace android {
 
@@ -31,7 +34,7 @@ void AudioWatchdogDump::dump(int fd)
     } else {
         strcpy(buf, "N/A\n");
     }
-    fdprintf(fd, "Watchdog: underruns=%u, logs=%u, most recent underrun log at %s",
+    dprintf(fd, "Watchdog: underruns=%u, logs=%u, most recent underrun log at %s",
             mUnderruns, mLogs, buf);
 }
 
@@ -132,3 +135,5 @@ void AudioWatchdog::setDump(AudioWatchdogDump *dump)
 }
 
 }   // namespace android
+
+#endif // AUDIO_WATCHDOG

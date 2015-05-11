@@ -20,8 +20,6 @@
 
 #include "MatroskaExtractor.h"
 
-#include "mkvparser.hpp"
-
 #include <media/stagefright/foundation/ADebug.h>
 #include <media/stagefright/foundation/hexdump.h>
 #include <media/stagefright/DataSource.h>
@@ -32,8 +30,29 @@
 #include <media/stagefright/MetaData.h>
 #include <media/stagefright/Utils.h>
 #include <utils/String8.h>
+#include <media/stagefright/foundation/ABitReader.h>
+
+#include <inttypes.h>
+
+#ifdef ENABLE_AV_ENHANCEMENTS
+#include <ExtendedUtils.h>
+#endif
 
 namespace android {
+
+typedef struct {
+    uint32_t biSize;
+    uint32_t biWidth;
+    uint32_t biHeight;
+    uint16_t biPlanes;
+    uint16_t biBitCount;
+    uint32_t biCompression;
+    uint32_t biSizeImage;
+    uint32_t biXPelsPerMeter;
+    uint32_t biYPelsPerMeter;
+    uint32_t biClrUsed;
+    uint32_t biClrImportant;
+} BITMAPINFOHEADER;
 
 struct DataSourceReader : public mkvparser::IMkvReader {
     DataSourceReader(const sp<DataSource> &source)
@@ -87,7 +106,7 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 struct BlockIterator {
-    BlockIterator(MatroskaExtractor *extractor, unsigned long trackNum);
+    BlockIterator(MatroskaExtractor *extractor, unsigned long trackNum, unsigned long index);
 
     bool eos() const;
 
@@ -103,7 +122,8 @@ struct BlockIterator {
 
 private:
     MatroskaExtractor *mExtractor;
-    unsigned long mTrackNum;
+    long long mTrackNum;
+    unsigned long mIndex;
 
     const mkvparser::Cluster *mCluster;
     const mkvparser::BlockEntry *mBlockEntry;
@@ -134,6 +154,13 @@ private:
     enum Type {
         AVC,
         AAC,
+        MP3,
+        AC3,
+        EAC3,
+        DTS,
+        FLAC,
+        MPEG4,
+        HEVC,
         OTHER
     };
 
@@ -155,6 +182,53 @@ private:
     MatroskaSource &operator=(const MatroskaSource &);
 };
 
+const mkvparser::Track* MatroskaExtractor::TrackInfo::getTrack() const {
+    return mExtractor->mSegment->GetTracks()->GetTrackByNumber(mTrackNum);
+}
+
+// This function does exactly the same as mkvparser::Cues::Find, except that it
+// searches in our own track based vectors. We should not need this once mkvparser
+// adds the same functionality.
+const mkvparser::CuePoint::TrackPosition *MatroskaExtractor::TrackInfo::find(
+        long long timeNs) const {
+    ALOGV("mCuePoints.size %zu", mCuePoints.size());
+    if (mCuePoints.empty()) {
+        return NULL;
+    }
+
+    const mkvparser::CuePoint* cp = mCuePoints.itemAt(0);
+    const mkvparser::Track* track = getTrack();
+    if (timeNs <= cp->GetTime(mExtractor->mSegment)) {
+        return cp->Find(track);
+    }
+
+    // Binary searches through relevant cues; assumes cues are ordered by timecode.
+    // If we do detect out-of-order cues, return NULL.
+    size_t lo = 0;
+    size_t hi = mCuePoints.size();
+    while (lo < hi) {
+        const size_t mid = lo + (hi - lo) / 2;
+        const mkvparser::CuePoint* const midCp = mCuePoints.itemAt(mid);
+        const long long cueTimeNs = midCp->GetTime(mExtractor->mSegment);
+        if (cueTimeNs <= timeNs) {
+            lo = mid + 1;
+        } else {
+            hi = mid;
+        }
+    }
+
+    if (lo == 0) {
+        return NULL;
+    }
+
+    cp = mCuePoints.itemAt(lo - 1);
+    if (cp->GetTime(mExtractor->mSegment) > timeNs) {
+        return NULL;
+    }
+
+    return cp->Find(track);
+}
+
 MatroskaSource::MatroskaSource(
         const sp<MatroskaExtractor> &extractor, size_t index)
     : mExtractor(extractor),
@@ -162,7 +236,8 @@ MatroskaSource::MatroskaSource(
       mType(OTHER),
       mIsAudio(false),
       mBlockIter(mExtractor.get(),
-                 mExtractor->mTracks.itemAt(index).mTrackNum),
+                 mExtractor->mTracks.itemAt(index).mTrackNum,
+                 index),
       mNALSizeLen(0) {
     sp<MetaData> meta = mExtractor->mTracks.itemAt(index).mMeta;
 
@@ -183,9 +258,33 @@ MatroskaSource::MatroskaSource(
         CHECK_GE(avccSize, 5u);
 
         mNALSizeLen = 1 + (avcc[4] & 3);
-        ALOGV("mNALSizeLen = %d", mNALSizeLen);
+        ALOGV("mNALSizeLen = %zu", mNALSizeLen);
+    } else if (!strcasecmp(mime, MEDIA_MIMETYPE_VIDEO_HEVC)) {
+        mType = HEVC;
+
+        uint32_t type;
+        const void *data;
+        size_t size;
+        CHECK(meta->findData(kKeyHVCC, &type, &data, &size));
+
+        const uint8_t *ptr = (const uint8_t *)data;
+        CHECK(size >= 7);
+        mNALSizeLen = 1 + (ptr[14 + 7] & 3);
+        ALOGV("mNALSizeLen = %zu", mNALSizeLen);
     } else if (!strcasecmp(mime, MEDIA_MIMETYPE_AUDIO_AAC)) {
         mType = AAC;
+    } else if (!strcasecmp(mime, MEDIA_MIMETYPE_AUDIO_AC3)) {
+        mType = AC3;
+    } else if (!strcasecmp(mime, MEDIA_MIMETYPE_AUDIO_EAC3)) {
+        mType = EAC3;
+    } else if (!strcasecmp(mime, MEDIA_MIMETYPE_AUDIO_MPEG)) {
+        mType = MP3;
+    } else if (!strcasecmp(mime, MEDIA_MIMETYPE_VIDEO_MPEG4)) {
+        mType = MPEG4;
+    } else if (!strcasecmp(mime, MEDIA_MIMETYPE_AUDIO_DTS)) {
+        mType = DTS;
+    } else if (!strcasecmp(mime, MEDIA_MIMETYPE_AUDIO_FLAC)) {
+        mType = FLAC;
     }
 }
 
@@ -193,7 +292,7 @@ MatroskaSource::~MatroskaSource() {
     clearPendingFrames();
 }
 
-status_t MatroskaSource::start(MetaData *params) {
+status_t MatroskaSource::start(MetaData * /* params */) {
     mBlockIter.reset();
 
     return OK;
@@ -212,9 +311,10 @@ sp<MetaData> MatroskaSource::getFormat() {
 ////////////////////////////////////////////////////////////////////////////////
 
 BlockIterator::BlockIterator(
-        MatroskaExtractor *extractor, unsigned long trackNum)
+        MatroskaExtractor *extractor, unsigned long trackNum, unsigned long index)
     : mExtractor(extractor),
       mTrackNum(trackNum),
+      mIndex(index),
       mCluster(NULL),
       mBlockEntry(NULL),
       mBlockEntryIndex(0) {
@@ -263,8 +363,8 @@ void BlockIterator::advance_l() {
                     mCluster, nextCluster, pos, len);
             ALOGV("ParseNext returned %ld", res);
 
-            if (res > 0) {
-                // EOF
+            if (res != 0) {
+                // EOF or error
 
                 mCluster = NULL;
                 break;
@@ -313,14 +413,14 @@ void BlockIterator::seek(
 
     *actualFrameTimeUs = -1ll;
 
-    const int64_t seekTimeNs = seekTimeUs * 1000ll;
+    const int64_t seekTimeNs = seekTimeUs * 1000ll - mExtractor->mSeekPreRollNs;
 
     mkvparser::Segment* const pSegment = mExtractor->mSegment;
 
     // Special case the 0 seek to avoid loading Cues when the application
     // extraneously seeks to 0 before playing.
     if (seekTimeNs <= 0) {
-        ALOGV("Seek to beginning: %lld", seekTimeUs);
+        ALOGV("Seek to beginning: %" PRId64, seekTimeUs);
         mCluster = pSegment->GetFirst();
         mBlockEntryIndex = 0;
         do {
@@ -329,7 +429,7 @@ void BlockIterator::seek(
         return;
     }
 
-    ALOGV("Seeking to: %lld", seekTimeUs);
+    ALOGV("Seeking to: %" PRId64, seekTimeUs);
 
     // If the Cues have not been located then find them.
     const mkvparser::Cues* pCues = pSegment->GetCues();
@@ -362,9 +462,20 @@ void BlockIterator::seek(
     }
 
     const mkvparser::CuePoint* pCP;
+    mkvparser::Tracks const *pTracks = pSegment->GetTracks();
+    unsigned long int trackCount = pTracks->GetTracksCount();
     while (!pCues->DoneParsing()) {
         pCues->LoadCuePoint();
         pCP = pCues->GetLast();
+        CHECK(pCP);
+
+        for (size_t index = 0; index < trackCount; ++index) {
+            const mkvparser::Track *pTrack = pTracks->GetTrackByIndex(index);
+            if (pTrack && pTrack->GetType() == 1 && pCP->Find(pTrack)) { // VIDEO_TRACK
+                MatroskaExtractor::TrackInfo& track = mExtractor->mTracks.editItemAt(index);
+                track.mCuePoints.push_back(pCP);
+            }
+        }
 
         if (pCP->GetTime(pSegment) >= seekTimeNs) {
             ALOGV("Parsed past relevant Cue");
@@ -372,22 +483,25 @@ void BlockIterator::seek(
         }
     }
 
-    // The Cue index is built around video keyframes
-    mkvparser::Tracks const *pTracks = pSegment->GetTracks();
-    const mkvparser::Track *pTrack = NULL;
-    for (size_t index = 0; index < pTracks->GetTracksCount(); ++index) {
-        pTrack = pTracks->GetTrackByIndex(index);
-        if (pTrack && pTrack->GetType() == 1) { // VIDEO_TRACK
-            ALOGV("Video track located at %d", index);
-            break;
+    const mkvparser::CuePoint::TrackPosition *pTP = NULL;
+    const mkvparser::Track *thisTrack = pTracks->GetTrackByIndex(mIndex);
+    if (thisTrack->GetType() == 1) { // video
+        MatroskaExtractor::TrackInfo& track = mExtractor->mTracks.editItemAt(mIndex);
+        pTP = track.find(seekTimeNs);
+    } else {
+        // The Cue index is built around video keyframes
+        for (size_t index = 0; index < trackCount; ++index) {
+            const mkvparser::Track *pTrack = pTracks->GetTrackByIndex(index);
+            if (pTrack && pTrack->GetType() == 1 && pCues->Find(seekTimeNs, pTrack, pCP, pTP)) {
+                ALOGV("Video track located at %zu", index);
+                break;
+            }
         }
     }
 
+
     // Always *search* based on the video track, but finalize based on mTrackNum
-    const mkvparser::CuePoint::TrackPosition* pTP;
-    if (pTrack && pTrack->GetType() == 1) {
-        pCues->Find(seekTimeNs, pTrack, pCP, pTP);
-    } else {
+    if (!pTP) {
         ALOGE("Did not locate the video track for seeking");
         return;
     }
@@ -408,10 +522,13 @@ void BlockIterator::seek(
 
         if (isAudio || block()->IsKey()) {
             // Accept the first key frame
-            *actualFrameTimeUs = (block()->GetTime(mCluster) + 500LL) / 1000LL;
-            ALOGV("Requested seek point: %lld actual: %lld",
-                  seekTimeUs, actualFrameTimeUs);
-            break;
+            int64_t frameTimeUs = (block()->GetTime(mCluster) + 500LL) / 1000LL;
+            if (thisTrack->GetType() == 1 || frameTimeUs >= seekTimeUs) {
+                *actualFrameTimeUs = frameTimeUs;
+                ALOGV("Requested seek point: %" PRId64 " actual: %" PRId64,
+                      seekTimeUs, *actualFrameTimeUs);
+                break;
+            }
         }
     }
 }
@@ -430,17 +547,6 @@ int64_t BlockIterator::blockTimeUs() const {
 
 static unsigned U24_AT(const uint8_t *ptr) {
     return ptr[0] << 16 | ptr[1] << 8 | ptr[2];
-}
-
-static size_t clz(uint8_t x) {
-    size_t numLeadingZeroes = 0;
-
-    while (!(x & 0x80)) {
-        ++numLeadingZeroes;
-        x = x << 1;
-    }
-
-    return numLeadingZeroes;
 }
 
 void MatroskaSource::clearPendingFrames() {
@@ -463,8 +569,9 @@ status_t MatroskaSource::readBlock() {
     const mkvparser::Block *block = mBlockIter.block();
 
     int64_t timeUs = mBlockIter.blockTimeUs();
+    int frameCount = block->GetFrameCount();
 
-    for (int i = 0; i < block->GetFrameCount(); ++i) {
+    for (int i = 0; i < frameCount; ++i) {
         const mkvparser::Block::Frame &frame = block->GetFrame(i);
 
         MediaBuffer *mbuf = new MediaBuffer(frame.len);
@@ -483,6 +590,27 @@ status_t MatroskaSource::readBlock() {
     }
 
     mBlockIter.advance();
+
+    if (!mBlockIter.eos() && frameCount > 1) {
+        // For files with lacing enabled, we need to amend they kKeyTime of
+        // each frame so that their kKeyTime are advanced accordingly (instead
+        // of being set to the same value). To do this, we need to find out
+        // the duration of the block using the start time of the next block.
+        int64_t duration = mBlockIter.blockTimeUs() - timeUs;
+        int64_t durationPerFrame = duration / frameCount;
+        int64_t durationRemainder = duration % frameCount;
+
+        // We split duration to each of the frame, distributing the remainder (if any)
+        // to the later frames. The later frames are processed first due to the
+        // use of the iterator for the doubly linked list
+        List<MediaBuffer *>::iterator it = mPendingFrames.end();
+        for (int i = frameCount - 1; i >= 0; --i) {
+            --it;
+            int64_t frameRemainder = durationRemainder >= frameCount - i ? 1 : 0;
+            int64_t frameTimeUs = timeUs + durationPerFrame * i + frameRemainder;
+            (*it)->meta_data()->setInt64(kKeyTime, frameTimeUs);
+        }
+    }
 
     return OK;
 }
@@ -523,7 +651,7 @@ status_t MatroskaSource::read(
     MediaBuffer *frame = *mPendingFrames.begin();
     mPendingFrames.erase(mPendingFrames.begin());
 
-    if (mType != AVC) {
+    if (mType != AVC && mType != HEVC) {
         if (targetSampleTimeUs >= 0ll) {
             frame->meta_data()->setInt64(
                     kKeyTargetTime, targetSampleTimeUs);
@@ -628,7 +756,8 @@ MatroskaExtractor::MatroskaExtractor(const sp<DataSource> &source)
       mReader(new DataSourceReader(mDataSource)),
       mSegment(NULL),
       mExtractedThumbnails(false),
-      mIsWebm(false) {
+      mIsWebm(false),
+      mSeekPreRollNs(0) {
     off64_t size;
     mIsLiveStreaming =
         (mDataSource->flags()
@@ -654,14 +783,22 @@ MatroskaExtractor::MatroskaExtractor(const sp<DataSource> &source)
         return;
     }
 
+    // from mkvparser::Segment::Load(), but stop at first cluster
     ret = mSegment->ParseHeaders();
-    CHECK_EQ(ret, 0);
-
-    long len;
-    ret = mSegment->LoadCluster(pos, len);
-    CHECK_EQ(ret, 0);
+    if (ret == 0) {
+        long len;
+        ret = mSegment->LoadCluster(pos, len);
+        if (ret >= 1) {
+            // no more clusters
+            ret = 0;
+        }
+    } else if (ret > 0) {
+        ret = mkvparser::E_BUFFER_NOT_FULL;
+    }
 
     if (ret < 0) {
+        ALOGW("Corrupt %s source: %s", mIsWebm ? "webm" : "matroska",
+                uriDebugString(mDataSource->getUri()).c_str());
         delete mSegment;
         mSegment = NULL;
         return;
@@ -716,73 +853,146 @@ bool MatroskaExtractor::isLiveStreaming() const {
     return mIsLiveStreaming;
 }
 
+static int bytesForSize(size_t size) {
+    // use at most 28 bits (4 times 7)
+    CHECK(size <= 0xfffffff);
+
+    if (size > 0x1fffff) {
+        return 4;
+    } else if (size > 0x3fff) {
+        return 3;
+    } else if (size > 0x7f) {
+        return 2;
+    }
+    return 1;
+}
+
+static void storeSize(uint8_t *data, size_t &idx, size_t size) {
+    int numBytes = bytesForSize(size);
+    idx += numBytes;
+
+    data += idx;
+    size_t next = 0;
+    while (numBytes--) {
+        *--data = (size & 0x7f) | next;
+        size >>= 7;
+        next = 0x80;
+    }
+}
+
 static void addESDSFromCodecPrivate(
         const sp<MetaData> &meta,
         bool isAudio, const void *priv, size_t privSize) {
-    static const uint8_t kStaticESDS[] = {
-        0x03, 22,
-        0x00, 0x00,     // ES_ID
-        0x00,           // streamDependenceFlag, URL_Flag, OCRstreamFlag
 
-        0x04, 17,
-        0x40,           // ObjectTypeIndication
-        0x00, 0x00, 0x00, 0x00,
-        0x00, 0x00, 0x00, 0x00,
-        0x00, 0x00, 0x00, 0x00,
+    if(isAudio) {
+        ABitReader br((const uint8_t *)priv, privSize);
+        uint32_t objectType = br.getBits(5);
 
-        0x05,
-        // CodecSpecificInfo (with size prefix) follows
-    };
+        if (objectType == 31) {  // AAC-ELD => additional 6 bits
+            objectType = 32 + br.getBits(6);
+        }
 
-    // Make sure all sizes can be coded in a single byte.
-    CHECK(privSize + 22 - 2 < 128);
-    size_t esdsSize = sizeof(kStaticESDS) + privSize + 1;
+        meta->setInt32(kKeyAACAOT, objectType);
+    }
+
+    int privSizeBytesRequired = bytesForSize(privSize);
+    int esdsSize2 = 14 + privSizeBytesRequired + privSize;
+    int esdsSize2BytesRequired = bytesForSize(esdsSize2);
+    int esdsSize1 = 4 + esdsSize2BytesRequired + esdsSize2;
+    int esdsSize1BytesRequired = bytesForSize(esdsSize1);
+    size_t esdsSize = 1 + esdsSize1BytesRequired + esdsSize1;
     uint8_t *esds = new uint8_t[esdsSize];
-    memcpy(esds, kStaticESDS, sizeof(kStaticESDS));
-    uint8_t *ptr = esds + sizeof(kStaticESDS);
-    *ptr++ = privSize;
-    memcpy(ptr, priv, privSize);
 
-    // Increment by codecPrivateSize less 2 bytes that are accounted for
-    // already in lengths of 22/17
-    esds[1] += privSize - 2;
-    esds[6] += privSize - 2;
-
-    // Set ObjectTypeIndication.
-    esds[7] = isAudio ? 0x40   // Audio ISO/IEC 14496-3
-                      : 0x20;  // Visual ISO/IEC 14496-2
+    size_t idx = 0;
+    esds[idx++] = 0x03;
+    storeSize(esds, idx, esdsSize1);
+    esds[idx++] = 0x00; // ES_ID
+    esds[idx++] = 0x00; // ES_ID
+    esds[idx++] = 0x00; // streamDependenceFlag, URL_Flag, OCRstreamFlag
+    esds[idx++] = 0x04;
+    storeSize(esds, idx, esdsSize2);
+    esds[idx++] = isAudio ? 0x40   // Audio ISO/IEC 14496-3
+                          : 0x20;  // Visual ISO/IEC 14496-2
+    for (int i = 0; i < 12; i++) {
+        esds[idx++] = 0x00;
+    }
+    esds[idx++] = 0x05;
+    storeSize(esds, idx, privSize);
+    memcpy(esds + idx, priv, privSize);
 
     meta->setData(kKeyESDS, 0, esds, esdsSize);
+
+#ifdef ENABLE_AV_ENHANCEMENTS
+    ExtendedUtils::updateVideoTrackInfoFromESDS_MPEG4Video(meta);
+#endif
 
     delete[] esds;
     esds = NULL;
 }
 
-void addVorbisCodecInfo(
+status_t addVorbisCodecInfo(
         const sp<MetaData> &meta,
         const void *_codecPrivate, size_t codecPrivateSize) {
-    // printf("vorbis private data follows:\n");
     // hexdump(_codecPrivate, codecPrivateSize);
 
-    CHECK(codecPrivateSize >= 3);
+    if (codecPrivateSize < 1) {
+        return ERROR_MALFORMED;
+    }
 
     const uint8_t *codecPrivate = (const uint8_t *)_codecPrivate;
-    CHECK(codecPrivate[0] == 0x02);
 
-    size_t len1 = codecPrivate[1];
-    size_t len2 = codecPrivate[2];
+    if (codecPrivate[0] != 0x02) {
+        return ERROR_MALFORMED;
+    }
 
-    CHECK(codecPrivateSize > 3 + len1 + len2);
+    // codecInfo starts with two lengths, len1 and len2, that are
+    // "Xiph-style-lacing encoded"...
 
-    CHECK(codecPrivate[3] == 0x01);
-    meta->setData(kKeyVorbisInfo, 0, &codecPrivate[3], len1);
+    size_t offset = 1;
+    size_t len1 = 0;
+    while (offset < codecPrivateSize && codecPrivate[offset] == 0xff) {
+        len1 += 0xff;
+        ++offset;
+    }
+    if (offset >= codecPrivateSize) {
+        return ERROR_MALFORMED;
+    }
+    len1 += codecPrivate[offset++];
 
-    CHECK(codecPrivate[len1 + 3] == 0x03);
+    size_t len2 = 0;
+    while (offset < codecPrivateSize && codecPrivate[offset] == 0xff) {
+        len2 += 0xff;
+        ++offset;
+    }
+    if (offset >= codecPrivateSize) {
+        return ERROR_MALFORMED;
+    }
+    len2 += codecPrivate[offset++];
 
-    CHECK(codecPrivate[len1 + len2 + 3] == 0x05);
+    if (codecPrivateSize < offset + len1 + len2) {
+        return ERROR_MALFORMED;
+    }
+
+    if (codecPrivate[offset] != 0x01) {
+        return ERROR_MALFORMED;
+    }
+    meta->setData(kKeyVorbisInfo, 0, &codecPrivate[offset], len1);
+
+    offset += len1;
+    if (codecPrivate[offset] != 0x03) {
+        return ERROR_MALFORMED;
+    }
+
+    offset += len2;
+    if (codecPrivate[offset] != 0x05) {
+        return ERROR_MALFORMED;
+    }
+
     meta->setData(
-            kKeyVorbisBooks, 0, &codecPrivate[len1 + len2 + 3],
-            codecPrivateSize - len1 - len2 - 3);
+            kKeyVorbisBooks, 0, &codecPrivate[offset],
+            codecPrivateSize - offset);
+
+    return OK;
 }
 
 void MatroskaExtractor::addTracks() {
@@ -809,6 +1019,8 @@ void MatroskaExtractor::addTracks() {
 
         sp<MetaData> meta = new MetaData;
 
+        status_t err = OK;
+
         switch (track->GetType()) {
             case VIDEO_TRACK:
             {
@@ -818,19 +1030,69 @@ void MatroskaExtractor::addTracks() {
                 if (!strcmp("V_MPEG4/ISO/AVC", codecID)) {
                     meta->setCString(kKeyMIMEType, MEDIA_MIMETYPE_VIDEO_AVC);
                     meta->setData(kKeyAVCC, 0, codecPrivate, codecPrivateSize);
-                } else if (!strcmp("V_MPEG4/ISO/ASP", codecID)) {
+                } else if (!strcmp("V_MPEG4/ISO/SP", codecID)
+                        || !strcmp("V_MPEG4/ISO/ASP", codecID)
+                        || !strcmp("V_MPEG4/ISO/AP", codecID)) {
+                    meta->setCString(
+                            kKeyMIMEType, MEDIA_MIMETYPE_VIDEO_MPEG4);
                     if (codecPrivateSize > 0) {
-                        meta->setCString(
-                                kKeyMIMEType, MEDIA_MIMETYPE_VIDEO_MPEG4);
                         addESDSFromCodecPrivate(
                                 meta, false, codecPrivate, codecPrivateSize);
                     } else {
                         ALOGW("%s is detected, but does not have configuration.",
                                 codecID);
+                    }
+                } else if (!strcmp("V_MPEGH/ISO/HEVC", codecID)) {
+                    meta->setCString(kKeyMIMEType, MEDIA_MIMETYPE_VIDEO_HEVC);
+                    meta->setData(kKeyHVCC, 0, codecPrivate, codecPrivateSize);
+
+                } else if (!strcmp("V_VP8", codecID)) {
+                    meta->setCString(kKeyMIMEType, MEDIA_MIMETYPE_VIDEO_VP8);
+                } else if (!strcmp("V_VP9", codecID)) {
+                    meta->setCString(kKeyMIMEType, MEDIA_MIMETYPE_VIDEO_VP9);
+                } else if (!strcmp("V_MS/VFW/FOURCC", codecID)) {
+                    if (codecPrivateSize >= sizeof(BITMAPINFOHEADER)) {
+                        char *fourcc = (char *) &((BITMAPINFOHEADER *) codecPrivate)->biCompression;
+
+                        switch (FOURCC(fourcc[0], fourcc[1], fourcc[2], fourcc[3])) {
+                        case 'XVID':
+                        case 'xvid':
+                        case 'FMP4':
+                        case 'fmp4':
+                        case 'MP4V':
+                        case 'mp4v':
+                            meta->setCString(kKeyMIMEType, MEDIA_MIMETYPE_VIDEO_MPEG4);
+                            break;
+                        case 'H263':
+                        case 'h263':
+                            meta->setCString(kKeyMIMEType, MEDIA_MIMETYPE_VIDEO_H263);
+                            break;
+                        case 'DIV3':
+                        case 'div3':
+                        case 'DIV4':
+                        case 'div4':
+                            ALOGW("DivX 3.11 codec not supported");
+                            continue;
+                        case 'DIVX':
+                        case 'divx':
+                            ALOGW("DivX 4 codec not supported");
+                            continue;
+                        case 'DX50':
+                        case 'dx50':
+                            ALOGW("DivX 5 codec not supported");
+                            continue;
+                        case 'MP42':
+                        default:
+                            ALOGW("fourcc id: %hhX%hhX%hhX%hhX is not supported\n",
+                                    fourcc[0], fourcc[1], fourcc[2], fourcc[3]);
+                            continue;
+                        }
+
+                        ALOGV("fourcc id: %.4s", fourcc);
+                    } else {
+                        ALOGW("fourcc size: %d is not supported\n", codecPrivateSize);
                         continue;
                     }
-                } else if (!strcmp("V_VP8", codecID)) {
-                    meta->setCString(kKeyMIMEType, MEDIA_MIMETYPE_VIDEO_VPX);
                 } else {
                     ALOGW("%s is not supported.", codecID);
                     continue;
@@ -855,9 +1117,24 @@ void MatroskaExtractor::addTracks() {
                 } else if (!strcmp("A_VORBIS", codecID)) {
                     meta->setCString(kKeyMIMEType, MEDIA_MIMETYPE_AUDIO_VORBIS);
 
-                    addVorbisCodecInfo(meta, codecPrivate, codecPrivateSize);
+                    err = addVorbisCodecInfo(
+                            meta, codecPrivate, codecPrivateSize);
+                } else if (!strcmp("A_OPUS", codecID)) {
+                    meta->setCString(kKeyMIMEType, MEDIA_MIMETYPE_AUDIO_OPUS);
+                    meta->setData(kKeyOpusHeader, 0, codecPrivate, codecPrivateSize);
+                    meta->setInt64(kKeyOpusCodecDelay, track->GetCodecDelay());
+                    meta->setInt64(kKeyOpusSeekPreRoll, track->GetSeekPreRoll());
+                    mSeekPreRollNs = track->GetSeekPreRoll();
                 } else if (!strcmp("A_MPEG/L3", codecID)) {
                     meta->setCString(kKeyMIMEType, MEDIA_MIMETYPE_AUDIO_MPEG);
+                } else if (!strcmp("A_AC3", codecID)) {
+                    meta->setCString(kKeyMIMEType, MEDIA_MIMETYPE_AUDIO_AC3);
+                } else if (!strcmp("A_EAC3", codecID)) {
+                    meta->setCString(kKeyMIMEType, MEDIA_MIMETYPE_AUDIO_EAC3);
+                } else if (!strcmp("A_DTS", codecID)) {
+                    meta->setCString(kKeyMIMEType, MEDIA_MIMETYPE_AUDIO_DTS);
+                } else if (!strcmp("A_FLAC", codecID)) {
+                    meta->setCString(kKeyMIMEType, MEDIA_MIMETYPE_AUDIO_FLAC);
                 } else {
                     ALOGW("%s is not supported.", codecID);
                     continue;
@@ -865,11 +1142,19 @@ void MatroskaExtractor::addTracks() {
 
                 meta->setInt32(kKeySampleRate, atrack->GetSamplingRate());
                 meta->setInt32(kKeyChannelCount, atrack->GetChannels());
+
+                long long bits = atrack->GetBitDepth();
+                meta->setInt32(kKeyBitsPerSample, bits > 16 ? 24 : bits);
                 break;
             }
 
             default:
                 continue;
+        }
+
+        if (err != OK) {
+            ALOGE("skipping track, codec specific data was malformed.");
+            continue;
         }
 
         long long durationNs = mSegment->GetDuration();
@@ -879,6 +1164,7 @@ void MatroskaExtractor::addTracks() {
         TrackInfo *trackInfo = &mTracks.editItemAt(mTracks.size() - 1);
         trackInfo->mTrackNum = track->GetNumber();
         trackInfo->mMeta = meta;
+        trackInfo->mExtractor = this;
     }
 }
 
@@ -893,7 +1179,7 @@ void MatroskaExtractor::findThumbnails() {
             continue;
         }
 
-        BlockIterator iter(this, info->mTrackNum);
+        BlockIterator iter(this, info->mTrackNum, i);
         int32_t j = 0;
         int64_t thumbnailTimeUs = 0;
         size_t maxBlockSize = 0;

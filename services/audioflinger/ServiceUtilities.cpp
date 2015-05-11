@@ -21,8 +21,9 @@
 
 namespace android {
 
-// This optimization assumes mediaserver process doesn't fork, which it doesn't
-const pid_t getpid_cached = getpid();
+// Not valid until initialized by AudioFlinger constructor.  It would have to be
+// re-initialized if the process containing AudioFlinger service forks (which it doesn't).
+pid_t getpid_cached;
 
 bool recordingAllowed() {
     if (getpid_cached == IPCThreadState::self()->getCallingPid()) return true;
@@ -33,12 +34,35 @@ bool recordingAllowed() {
     return ok;
 }
 
+bool captureAudioOutputAllowed() {
+    if (getpid_cached == IPCThreadState::self()->getCallingPid()) return true;
+    static const String16 sCaptureAudioOutput("android.permission.CAPTURE_AUDIO_OUTPUT");
+    // don't use PermissionCache; this is not a system permission
+    bool ok = checkCallingPermission(sCaptureAudioOutput);
+    if (!ok) ALOGE("Request requires android.permission.CAPTURE_AUDIO_OUTPUT");
+    return ok;
+}
+
+bool captureHotwordAllowed() {
+    static const String16 sCaptureHotwordAllowed("android.permission.CAPTURE_AUDIO_HOTWORD");
+    bool ok = checkCallingPermission(sCaptureHotwordAllowed);
+    if (!ok) ALOGE("android.permission.CAPTURE_AUDIO_HOTWORD");
+    return ok;
+}
+
 bool settingsAllowed() {
     if (getpid_cached == IPCThreadState::self()->getCallingPid()) return true;
     static const String16 sAudioSettings("android.permission.MODIFY_AUDIO_SETTINGS");
     // don't use PermissionCache; this is not a system permission
     bool ok = checkCallingPermission(sAudioSettings);
     if (!ok) ALOGE("Request requires android.permission.MODIFY_AUDIO_SETTINGS");
+    return ok;
+}
+
+bool modifyAudioRoutingAllowed() {
+    static const String16 sModifyAudioRoutingAllowed("android.permission.MODIFY_AUDIO_ROUTING");
+    bool ok = checkCallingPermission(sModifyAudioRoutingAllowed);
+    if (!ok) ALOGE("android.permission.MODIFY_AUDIO_ROUTING");
     return ok;
 }
 

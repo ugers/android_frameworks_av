@@ -29,7 +29,12 @@ struct SampleIterator {
     uint32_t getDescIndex() const { return mChunkDesc; }
     off64_t getSampleOffset() const { return mCurrentSampleOffset; }
     size_t getSampleSize() const { return mCurrentSampleSize; }
+<<<<<<< HEAD
     uint64_t getSampleTime() const { return mCurrentSampleTime; }
+=======
+    uint32_t getSampleTime() const { return mCurrentSampleTime; }
+    uint32_t getSampleDuration() const { return mCurrentSampleDuration; }
+>>>>>>> 8b8d02886bd9fb8d5ad451c03e486cfad74aa74e
 
     status_t getSampleSizeDirect(
             uint32_t sampleIndex, size_t *size);
@@ -60,12 +65,21 @@ private:
     uint32_t mCurrentSampleIndex;
     off64_t mCurrentSampleOffset;
     size_t mCurrentSampleSize;
+<<<<<<< HEAD
     uint64_t mCurrentSampleTime;
+=======
+    uint32_t mCurrentSampleTime;
+    uint32_t mCurrentSampleDuration;
+>>>>>>> 8b8d02886bd9fb8d5ad451c03e486cfad74aa74e
 
     void reset();
     status_t findChunkRange(uint32_t sampleIndex);
     status_t getChunkOffset(uint32_t chunk, off64_t *offset);
+<<<<<<< HEAD
     status_t findSampleTime(uint32_t sampleIndex, uint64_t *time);
+=======
+    status_t findSampleTimeAndDuration(uint32_t sampleIndex, uint32_t *time, uint32_t *duration);
+>>>>>>> 8b8d02886bd9fb8d5ad451c03e486cfad74aa74e
 
     SampleIterator(const SampleIterator &);
     SampleIterator &operator=(const SampleIterator &);

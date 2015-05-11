@@ -34,7 +34,18 @@ enum camcorder_quality {
     CAMCORDER_QUALITY_720P = 5,
     CAMCORDER_QUALITY_1080P = 6,
     CAMCORDER_QUALITY_QVGA = 7,
-    CAMCORDER_QUALITY_LIST_END = 7,
+    CAMCORDER_QUALITY_2160P = 8, // a.k.a 4K-UHD
+    CAMCORDER_QUALITY_WVGA = 9,
+    CAMCORDER_QUALITY_VGA = 10,
+    CAMCORDER_QUALITY_WQVGA = 11,
+    CAMCORDER_QUALITY_FWVGA = 12,
+    CAMCORDER_QUALITY_4kDCI = 13,
+    CAMCORDER_QUALITY_HEVC720P = 14,
+    CAMCORDER_QUALITY_HEVC1080P = 15,
+    CAMCORDER_QUALITY_HEVC4kUHD = 16,
+    CAMCORDER_QUALITY_HEVC4kDCI = 17,
+    CAMCORDER_QUALITY_HVGA = 18,
+    CAMCORDER_QUALITY_LIST_END = 18,
 
     CAMCORDER_QUALITY_TIME_LAPSE_LIST_START = 1000,
     CAMCORDER_QUALITY_TIME_LAPSE_LOW  = 1000,
@@ -45,9 +56,23 @@ enum camcorder_quality {
     CAMCORDER_QUALITY_TIME_LAPSE_720P = 1005,
     CAMCORDER_QUALITY_TIME_LAPSE_1080P = 1006,
     CAMCORDER_QUALITY_TIME_LAPSE_QVGA = 1007,
-    CAMCORDER_QUALITY_TIME_LAPSE_LIST_END = 1007,
-};
+    CAMCORDER_QUALITY_TIME_LAPSE_2160P = 1008,
+    CAMCORDER_QUALITY_TIME_LAPSE_WVGA = 1009,
+    CAMCORDER_QUALITY_TIME_LAPSE_VGA = 1010,
+    CAMCORDER_QUALITY_TIME_LAPSE_WQVGA = 1011,
+    CAMCORDER_QUALITY_TIME_LAPSE_FWVGA = 1012,
+    CAMCORDER_QUALITY_TIME_LAPSE_4kDCI = 1013,
+    CAMCORDER_QUALITY_TIME_LAPSE_LIST_END = 1013,
 
+    CAMCORDER_QUALITY_HIGH_SPEED_LIST_START = 2000,
+    CAMCORDER_QUALITY_HIGH_SPEED_LOW  = 2000,
+    CAMCORDER_QUALITY_HIGH_SPEED_HIGH = 2001,
+    CAMCORDER_QUALITY_HIGH_SPEED_480P = 2002,
+    CAMCORDER_QUALITY_HIGH_SPEED_720P = 2003,
+    CAMCORDER_QUALITY_HIGH_SPEED_1080P = 2004,
+    CAMCORDER_QUALITY_HIGH_SPEED_2160P = 2005,
+    CAMCORDER_QUALITY_HIGH_SPEED_LIST_END = 2005,
+};
 /**
  * Set CIF as default maximum import and export resolution of video editor.
  * The maximum import and export resolutions are platform specific,
@@ -134,6 +159,9 @@ public:
      * enc.vid.bps.max - max bit rate in bits per second
      * enc.vid.fps.min - min frame rate in frames per second
      * enc.vid.fps.max - max frame rate in frames per second
+     * enc.vid.hfr.width.max - max hfr video frame width
+     * enc.vid.hfr.height.max - max hfr video frame height
+     * enc.vid.hfr.mode.max - max hfr mode
      */
     int getVideoEncoderParamByName(const char *name, video_encoder codec) const;
 
@@ -298,12 +326,16 @@ private:
                         int minBitRate, int maxBitRate,
                         int minFrameWidth, int maxFrameWidth,
                         int minFrameHeight, int maxFrameHeight,
-                        int minFrameRate, int maxFrameRate)
+                        int minFrameRate, int maxFrameRate,
+                        int maxHFRFrameWidth, int maxHFRFrameHeight,
+                        int maxHFRMode)
             : mCodec(codec),
               mMinBitRate(minBitRate), mMaxBitRate(maxBitRate),
               mMinFrameWidth(minFrameWidth), mMaxFrameWidth(maxFrameWidth),
               mMinFrameHeight(minFrameHeight), mMaxFrameHeight(maxFrameHeight),
-              mMinFrameRate(minFrameRate), mMaxFrameRate(maxFrameRate) {}
+              mMinFrameRate(minFrameRate), mMaxFrameRate(maxFrameRate),
+              mMaxHFRFrameWidth(maxHFRFrameWidth), mMaxHFRFrameHeight(maxHFRFrameHeight),
+              mMaxHFRMode(maxHFRMode) {}
 
          ~VideoEncoderCap() {}
 
@@ -312,6 +344,8 @@ private:
         int mMinFrameWidth, mMaxFrameWidth;
         int mMinFrameHeight, mMaxFrameHeight;
         int mMinFrameRate, mMaxFrameRate;
+        int mMaxHFRFrameWidth, mMaxHFRFrameHeight;
+        int mMaxHFRMode;
     };
 
     struct AudioEncoderCap {
@@ -457,10 +491,15 @@ private:
     static VideoEncoderCap* createDefaultH263VideoEncoderCap();
     static VideoEncoderCap* createDefaultM4vVideoEncoderCap();
     static AudioEncoderCap* createDefaultAmrNBEncoderCap();
+<<<<<<< HEAD
 #ifdef QCOM_HARDWARE
     static AudioEncoderCap* createDefaultAacEncoderCap();
     static AudioEncoderCap* createDefaultLpcmEncoderCap();
 #endif
+=======
+    static AudioEncoderCap* createDefaultAacEncoderCap();
+    static AudioEncoderCap* createDefaultLpcmEncoderCap();
+>>>>>>> 8b8d02886bd9fb8d5ad451c03e486cfad74aa74e
 
     static int findTagForName(const NameToTagMap *map, size_t nMappings, const char *name);
 

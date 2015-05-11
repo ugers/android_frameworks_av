@@ -16,6 +16,7 @@
 
 //#define LOG_NDEBUG 0
 #define LOG_TAG "OMXHarness"
+#include <inttypes.h>
 #include <utils/Log.h>
 
 #include "OMXHarness.h"
@@ -25,6 +26,7 @@
 #include <binder/ProcessState.h>
 #include <binder/IServiceManager.h>
 #include <binder/MemoryDealer.h>
+#include <media/IMediaHTTPService.h>
 #include <media/IMediaPlayerService.h>
 #include <media/stagefright/foundation/ADebug.h>
 #include <media/stagefright/foundation/ALooper.h>
@@ -241,36 +243,14 @@ private:
 };
 
 static sp<MediaExtractor> CreateExtractorFromURI(const char *uri) {
-    sp<DataSource> source = DataSource::CreateFromURI(uri);
+    sp<DataSource> source =
+        DataSource::CreateFromURI(NULL /* httpService */, uri);
 
     if (source == NULL) {
         return NULL;
     }
 
     return MediaExtractor::Create(source);
-}
-
-static sp<MediaSource> MakeSource(
-        const char *uri,
-        const char *mimeType) {
-    sp<MediaExtractor> extractor = CreateExtractorFromURI(uri);
-
-    if (extractor == NULL) {
-        return NULL;
-    }
-
-    for (size_t i = 0; i < extractor->countTracks(); ++i) {
-        sp<MetaData> meta = extractor->getTrackMetaData(i);
-
-        const char *trackMIME;
-        CHECK(meta->findCString(kKeyMIMEType, &trackMIME));
-
-        if (!strcasecmp(trackMIME, mimeType)) {
-            return extractor->getTrack(i);
-        }
-    }
-
-    return NULL;
 }
 
 status_t Harness::testStateTransitions(
@@ -449,7 +429,8 @@ static const char *GetMimeFromComponentRole(const char *componentRole) {
         { "video_decoder.avc", "video/avc" },
         { "video_decoder.mpeg4", "video/mp4v-es" },
         { "video_decoder.h263", "video/3gpp" },
-        { "video_decoder.vpx", "video/x-vnd.on2.vp8" },
+        { "video_decoder.vp8", "video/x-vnd.on2.vp8" },
+        { "video_decoder.vp9", "video/x-vnd.on2.vp9" },
 
         // we appear to use this as a synonym to amrnb.
         { "audio_decoder.amr", "audio/3gpp" },
@@ -459,6 +440,7 @@ static const char *GetMimeFromComponentRole(const char *componentRole) {
         { "audio_decoder.aac", "audio/mp4a-latm" },
         { "audio_decoder.mp3", "audio/mpeg" },
         { "audio_decoder.vorbis", "audio/vorbis" },
+        { "audio_decoder.opus", "audio/opus" },
         { "audio_decoder.g711alaw", MEDIA_MIMETYPE_AUDIO_G711_ALAW },
         { "audio_decoder.g711mlaw", MEDIA_MIMETYPE_AUDIO_G711_MLAW },
     };
@@ -491,6 +473,7 @@ static const char *GetURLForMime(const char *mime) {
         { "audio/mpeg",
           "file:///sdcard/media_api/music/MP3_48KHz_128kbps_s_1_17_CBR.mp3" },
         { "audio/vorbis", NULL },
+        { "audio/opus", NULL },
         { "video/x-vnd.on2.vp8",
           "file:///sdcard/media_api/video/big-buck-bunny_trailer.webm" },
         { MEDIA_MIMETYPE_AUDIO_G711_ALAW, "file:///sdcard/M1F1-Alaw-AFsp.wav" },
@@ -710,11 +693,11 @@ status_t Harness::testSeek(
             int64_t bufferTimeUs;
             CHECK(buffer->meta_data()->findInt64(kKeyTime, &bufferTimeUs));
             if (!CloseEnough(bufferTimeUs, actualSeekTimeUs)) {
-                printf("\n  * Attempted seeking to %lld us (%.2f secs)",
+                printf("\n  * Attempted seeking to %" PRId64 " us (%.2f secs)",
                        requestedSeekTimeUs, requestedSeekTimeUs / 1E6);
-                printf("\n  * Nearest keyframe is at %lld us (%.2f secs)",
+                printf("\n  * Nearest keyframe is at %" PRId64 " us (%.2f secs)",
                        actualSeekTimeUs, actualSeekTimeUs / 1E6);
-                printf("\n  * Returned buffer was at %lld us (%.2f secs)\n\n",
+                printf("\n  * Returned buffer was at %" PRId64 " us (%.2f secs)\n\n",
                        bufferTimeUs, bufferTimeUs / 1E6);
 
                 buffer->release();

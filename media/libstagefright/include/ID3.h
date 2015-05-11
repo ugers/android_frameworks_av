@@ -35,7 +35,8 @@ struct ID3 {
         ID3_V2_4,
     };
 
-    ID3(const sp<DataSource> &source, bool ignoreV1 = false);
+    ID3(const sp<DataSource> &source, bool ignoreV1 = false, off64_t offset = 0);
+    ID3(const uint8_t *data, size_t size, bool ignoreV1 = false);
     ~ID3();
 
     bool isValid() const;
@@ -71,6 +72,8 @@ struct ID3 {
         Iterator &operator=(const Iterator &);
     };
 
+    size_t rawSize() const { return mRawSize; }
+
 private:
     bool mIsValid;
     uint8_t *mData;
@@ -78,8 +81,12 @@ private:
     size_t mFirstFrameOffset;
     Version mVersion;
 
+    // size of the ID3 tag including header before any unsynchronization.
+    // only valid for IDV2+
+    size_t mRawSize;
+
     bool parseV1(const sp<DataSource> &source);
-    bool parseV2(const sp<DataSource> &source);
+    bool parseV2(const sp<DataSource> &source, off64_t offset);
     void removeUnsynchronization();
     bool removeUnsynchronizationV2_4(bool iTunesHack);
 

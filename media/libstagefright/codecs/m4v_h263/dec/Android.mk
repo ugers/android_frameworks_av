@@ -46,6 +46,8 @@ LOCAL_C_INCLUDES := \
 
 LOCAL_CFLAGS := -DOSCL_EXPORT_REF= -DOSCL_IMPORT_REF=
 
+LOCAL_CFLAGS += -Werror
+
 include $(BUILD_STATIC_LIBRARY)
 
 ################################################################################
@@ -67,9 +69,11 @@ LOCAL_STATIC_LIBRARIES := \
         libstagefright_m4vh263dec
 
 LOCAL_SHARED_LIBRARIES := \
-        libstagefright libstagefright_omx libstagefright_foundation libutils
+        libstagefright libstagefright_omx libstagefright_foundation libutils liblog
 
 LOCAL_MODULE := libstagefright_soft_mpeg4dec
 LOCAL_MODULE_TAGS := optional
+
+LOCAL_CFLAGS += -Werror
 
 include $(BUILD_SHARED_LIBRARY)

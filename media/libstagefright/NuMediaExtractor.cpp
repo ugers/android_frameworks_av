@@ -23,6 +23,9 @@
 #include "include/ESDS.h"
 #include "include/NuCachedSource2.h"
 #include "include/WVMExtractor.h"
+#ifdef QTI_FLAC_DECODER
+#include "include/FLACDecoder.h"
+#endif
 
 #include <media/stagefright/foundation/ABuffer.h>
 #include <media/stagefright/foundation/ADebug.h>
@@ -58,7 +61,9 @@ NuMediaExtractor::~NuMediaExtractor() {
 }
 
 status_t NuMediaExtractor::setDataSource(
-        const char *path, const KeyedVector<String8, String8> *headers) {
+        const sp<IMediaHTTPService> &httpService,
+        const char *path,
+        const KeyedVector<String8, String8> *headers) {
     Mutex::Autolock autoLock(mLock);
 
     if (mImpl != NULL) {
@@ -66,7 +71,7 @@ status_t NuMediaExtractor::setDataSource(
     }
 
     sp<DataSource> dataSource =
-        DataSource::CreateFromURI(path, headers);
+        DataSource::CreateFromURI(httpService, path, headers);
 
     if (dataSource == NULL) {
         return -ENOENT;
@@ -228,6 +233,34 @@ status_t NuMediaExtractor::getTrackFormat(
     return convertMetaDataToMessage(meta, format);
 }
 
+status_t NuMediaExtractor::getFileFormat(sp<AMessage> *format) const {
+    Mutex::Autolock autoLock(mLock);
+
+    *format = NULL;
+
+    if (mImpl == NULL) {
+        return -EINVAL;
+    }
+
+    sp<MetaData> meta = mImpl->getMetaData();
+
+    const char *mime;
+    CHECK(meta->findCString(kKeyMIMEType, &mime));
+    *format = new AMessage();
+    (*format)->setString("mime", mime);
+
+    uint32_t type;
+    const void *pssh;
+    size_t psshsize;
+    if (meta->findData(kKeyPssh, &type, &pssh, &psshsize)) {
+        sp<ABuffer> buf = new ABuffer(psshsize);
+        memcpy(buf->data(), pssh, psshsize);
+        (*format)->setBuffer("pssh", buf);
+    }
+
+    return OK;
+}
+
 status_t NuMediaExtractor::selectTrack(size_t index) {
     Mutex::Autolock autoLock(mLock);
 
@@ -247,23 +280,30 @@ status_t NuMediaExtractor::selectTrack(size_t index) {
             return OK;
         }
     }
-
     sp<MediaSource> source = mImpl->getTrack(index);
-
-    CHECK_EQ((status_t)OK, source->start());
-
     mSelectedTracks.push();
     TrackInfo *info = &mSelectedTracks.editItemAt(mSelectedTracks.size() - 1);
 
-    info->mSource = source;
+    const char *mime;
+    CHECK(source->getFormat()->findCString(kKeyMIMEType, &mime));
+#ifdef QTI_FLAC_DECODER
+    if (!strcasecmp(mime, MEDIA_MIMETYPE_AUDIO_FLAC)) {
+        sp<MediaSource> mFlacSource = new FLACDecoder(source);
+        info->mSource = mFlacSource;
+        mFlacSource->start();
+    }
+#else
+    {
+        CHECK_EQ((status_t)OK, source->start());
+        info->mSource = source;
+    }
+#endif
+
     info->mTrackIndex = index;
     info->mFinalResult = OK;
     info->mSample = NULL;
     info->mSampleTimeUs = -1ll;
     info->mTrackFlags = 0;
-
-    const char *mime;
-    CHECK(source->getFormat()->findCString(kKeyMIMEType, &mime));
 
     if (!strcasecmp(mime, MEDIA_MIMETYPE_AUDIO_VORBIS)) {
         info->mTrackFlags |= kIsVorbis;
@@ -359,7 +399,7 @@ ssize_t NuMediaExtractor::fetchTrackSamples(
                 info->mFinalResult = err;
 
                 if (info->mFinalResult != ERROR_END_OF_STREAM) {
-                    ALOGW("read on track %d failed with error %d",
+                    ALOGW("read on track %zu failed with error %d",
                           info->mTrackIndex, err);
                 }
 

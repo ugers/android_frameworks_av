@@ -3,21 +3,16 @@ LOCAL_PATH:= $(call my-dir)
 include $(CLEAR_VARS)
 
 LOCAL_SRC_FILES:= \
-        ANetworkSession.cpp             \
+        MediaSender.cpp                 \
         Parameters.cpp                  \
-        ParsedMessage.cpp               \
-        sink/LinearRegression.cpp       \
-        sink/RTPSink.cpp                \
-        sink/TunnelRenderer.cpp         \
-        sink/WifiDisplaySink.cpp        \
+        rtp/RTPSender.cpp               \
         source/Converter.cpp            \
         source/MediaPuller.cpp          \
         source/PlaybackSession.cpp      \
         source/RepeaterSource.cpp       \
-        source/Sender.cpp               \
         source/TSPacketizer.cpp         \
         source/WifiDisplaySource.cpp    \
-        TimeSeries.cpp                  \
+        VideoFormats.cpp                \
 
 LOCAL_C_INCLUDES:= \
         $(TOP)/frameworks/av/media/libstagefright \
@@ -27,6 +22,7 @@ LOCAL_C_INCLUDES:= \
 LOCAL_SHARED_LIBRARIES:= \
         libbinder                       \
         libcutils                       \
+        liblog                          \
         libgui                          \
         libmedia                        \
         libstagefright                  \
@@ -39,6 +35,7 @@ LOCAL_MODULE:= libstagefright_wfd
 LOCAL_MODULE_TAGS:= optional
 
 include $(BUILD_SHARED_LIBRARY)
+<<<<<<< HEAD
 
 ################################################################################
 
@@ -87,3 +84,5 @@ LOCAL_MODULE:= udptest
 LOCAL_MODULE_TAGS := debug
 
 include $(BUILD_EXECUTABLE)
+=======
+>>>>>>> 8b8d02886bd9fb8d5ad451c03e486cfad74aa74e

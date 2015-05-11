@@ -34,6 +34,24 @@ using namespace android;
 static Vector<uid_t> trustedUids;
 
 static bool isProtectedCallAllowed() {
+    // TODO
+    // Following implementation is just for reference.
+    // Each OEM manufacturer should implement/replace with their own solutions.
+
+    // Disabling the reference to allow all process to access DRM API.
+    /*
+    IPCThreadState* ipcState = IPCThreadState::self();
+    uid_t uid = ipcState->getCallingUid();
+
+    for (unsigned int i = 0; i < trustedUids.size(); ++i) {
+        if (trustedUids[i] == uid) {
+            return true;
+        }
+    }
+    return false;
+    */
+
+    // All process can access DRM  Framework APIs.
     return true;
 }
 
@@ -85,11 +103,6 @@ status_t DrmManagerService::setDrmServiceListener(
     ALOGV("Entering setDrmServiceListener");
     mDrmManager->setDrmServiceListener(uniqueId, drmServiceListener);
     return DRM_NO_ERROR;
-}
-
-status_t DrmManagerService::installDrmEngine(int uniqueId, const String8& drmEngineFile) {
-    ALOGV("Entering installDrmEngine");
-    return mDrmManager->installDrmEngine(uniqueId, drmEngineFile);
 }
 
 DrmConstraints* DrmManagerService::getConstraints(

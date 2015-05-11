@@ -26,7 +26,7 @@
 
 namespace android {
 
-class ISurfaceTexture;
+class IGraphicBufferProducer;
 
 class IRemoteDisplayClient : public IInterface
 {
@@ -48,8 +48,8 @@ public:
     // Indicates that the remote display has been connected successfully.
     // Provides a surface texture that the client should use to stream buffers to
     // the remote display.
-    virtual void onDisplayConnected(const sp<ISurfaceTexture>& surfaceTexture,
-            uint32_t width, uint32_t height, uint32_t flags) = 0; // one-way
+    virtual void onDisplayConnected(const sp<IGraphicBufferProducer>& bufferProducer,
+            uint32_t width, uint32_t height, uint32_t flags, uint32_t session) = 0; // one-way
 
     // Indicates that the remote display has been disconnected normally.
     // This method should only be called once the client has called 'dispose()'

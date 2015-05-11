@@ -20,7 +20,7 @@
 #include <cutils/log.h>
 #include <pthread.h>
 #include <dirent.h>
-#include <media/EffectsFactoryApi.h>
+#include <hardware/audio_effect.h>
 
 #if __cplusplus
 extern "C" {
@@ -31,6 +31,15 @@ typedef struct list_elem_s {
     void *object;
     struct list_elem_s *next;
 } list_elem_t;
+
+// Structure used for storing effects with their sub effects.
+// Used in creating gSubEffectList. Here,
+// object holds the effect desc and the list sub_elem holds the sub effects
+typedef struct list_sub_elem_s {
+    void *object;
+    list_elem_t *sub_elem;
+    struct list_sub_elem_s *next;
+} list_sub_elem_t;
 
 typedef struct lib_entry_s {
     audio_effect_library_t *desc;
@@ -46,6 +55,42 @@ typedef struct effect_entry_s {
     effect_handle_t subItfe;
     lib_entry_t *lib;
 } effect_entry_t;
+
+// Structure used to store the lib entry
+// and the descriptor of the sub effects.
+// The library entry is to be stored in case of
+// sub effects as the sub effects are not linked
+// to the library list - gLibraryList.
+typedef struct sub_effect_entry_s {
+    lib_entry_t *lib;
+    void *object;
+} sub_effect_entry_t;
+
+
+////////////////////////////////////////////////////////////////////////////////
+//
+//    Function:       EffectGetSubEffects
+//
+//    Description:    Returns the descriptors of the sub effects of the effect
+//                    whose uuid is pointed to by first argument.
+//
+//    Input:
+//          pEffectUuid:    pointer to the effect uuid.
+//          size:           max number of sub_effect_entry_t * in pSube.
+//
+//    Input/Output:
+//          pSube:          address where to return the sub effect structures.
+//    Output:
+//        returned value:    0          successful operation.
+//                          -ENODEV     factory failed to initialize
+//                          -EINVAL     invalid pEffectUuid or pDescriptor
+//                          -ENOENT     no effect with this uuid found
+//        *pDescriptor:     updated with the sub effect descriptors.
+//
+////////////////////////////////////////////////////////////////////////////////
+int EffectGetSubEffects(const effect_uuid_t *pEffectUuid,
+                        sub_effect_entry_t **pSube,
+                        size_t size);
 
 #if __cplusplus
 }  // extern "C"

@@ -18,9 +18,12 @@
 
 #define UTILS_H_
 
+#include <media/stagefright/foundation/AString.h>
 #include <stdint.h>
 #include <utils/Errors.h>
 #include <utils/RefBase.h>
+#include <system/audio.h>
+#include <media/MediaPlayerInterface.h>
 
 namespace android {
 
@@ -44,6 +47,24 @@ status_t convertMetaDataToMessage(
         const sp<MetaData> &meta, sp<AMessage> *format);
 void convertMessageToMetaData(
         const sp<AMessage> &format, sp<MetaData> &meta);
+
+AString MakeUserAgent();
+
+// Convert a MIME type to a AudioSystem::audio_format
+status_t mapMimeToAudioFormat(audio_format_t& format, const char* mime);
+
+// Convert a aac profile to a AudioSystem::audio_format
+void mapAACProfileToAudioFormat(audio_format_t& format, uint64_t eAacProfile);
+
+// Send information from MetaData to the HAL via AudioSink
+status_t sendMetaDataToHal(sp<MediaPlayerBase::AudioSink>& sink, const sp<MetaData>& meta);
+
+// Check whether the stream defined by meta can be offloaded to hardware
+bool canOffloadStream(const sp<MetaData>& meta, bool hasVideo, const sp<MetaData>& vMeta,
+                      bool isStreaming, audio_stream_type_t streamType);
+void printFileName(int fd);
+
+AString uriDebugString(const AString &uri, bool incognito = false);
 
 }  // namespace android
 

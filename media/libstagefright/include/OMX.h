@@ -71,6 +71,14 @@ public:
     virtual status_t storeMetaDataInBuffers(
             node_id node, OMX_U32 port_index, OMX_BOOL enable);
 
+    virtual status_t prepareForAdaptivePlayback(
+            node_id node, OMX_U32 portIndex, OMX_BOOL enable,
+            OMX_U32 max_frame_width, OMX_U32 max_frame_height);
+
+    virtual status_t configureVideoTunnelMode(
+            node_id node, OMX_U32 portIndex, OMX_BOOL tunneled,
+            OMX_U32 audioHwSync, native_handle_t **sidebandHandle);
+
     virtual status_t useBuffer(
             node_id node, OMX_U32 port_index, const sp<IMemory> &params,
             buffer_id *buffer);
@@ -78,6 +86,16 @@ public:
     virtual status_t useGraphicBuffer(
             node_id node, OMX_U32 port_index,
             const sp<GraphicBuffer> &graphicBuffer, buffer_id *buffer);
+
+    virtual status_t updateGraphicBufferInMeta(
+            node_id node, OMX_U32 port_index,
+            const sp<GraphicBuffer> &graphicBuffer, buffer_id buffer);
+
+    virtual status_t createInputSurface(
+            node_id node, OMX_U32 port_index,
+            sp<IGraphicBufferProducer> *bufferProducer);
+
+    virtual status_t signalEndOfInputStream(node_id node);
 
     virtual status_t allocateBuffer(
             node_id node, OMX_U32 port_index, size_t size,
@@ -103,6 +121,13 @@ public:
             const char *parameter_name,
             OMX_INDEXTYPE *index);
 
+    virtual status_t setInternalOption(
+            node_id node,
+            OMX_U32 port_index,
+            InternalOptionType type,
+            const void *data,
+            size_t size);
+
     virtual void binderDied(const wp<IBinder> &the_late_who);
 
     OMX_ERRORTYPE OnEvent(
@@ -113,10 +138,10 @@ public:
             OMX_IN OMX_PTR pEventData);
 
     OMX_ERRORTYPE OnEmptyBufferDone(
-            node_id node, OMX_IN OMX_BUFFERHEADERTYPE *pBuffer);
+            node_id node, buffer_id buffer, OMX_IN OMX_BUFFERHEADERTYPE *pBuffer);
 
     OMX_ERRORTYPE OnFillBufferDone(
-            node_id node, OMX_IN OMX_BUFFERHEADERTYPE *pBuffer);
+            node_id node, buffer_id buffer, OMX_IN OMX_BUFFERHEADERTYPE *pBuffer);
 
     void invalidateNodeID(node_id node);
 

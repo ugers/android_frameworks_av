@@ -17,6 +17,9 @@
 
 //#define LOG_NDEBUG 0
 #define LOG_TAG "MediaRecorder"
+
+#include <inttypes.h>
+
 #include <utils/Log.h>
 #include <media/mediarecorder.h>
 #include <binder/IServiceManager.h>
@@ -24,7 +27,7 @@
 #include <media/IMediaPlayerService.h>
 #include <media/IMediaRecorder.h>
 #include <media/mediaplayer.h>  // for MEDIA_ERROR_SERVER_DIED
-#include <gui/ISurfaceTexture.h>
+#include <gui/IGraphicBufferProducer.h>
 
 namespace android {
 
@@ -49,7 +52,7 @@ status_t MediaRecorder::setCamera(const sp<ICamera>& camera, const sp<ICameraRec
     return ret;
 }
 
-status_t MediaRecorder::setPreviewSurface(const sp<Surface>& surface)
+status_t MediaRecorder::setPreviewSurface(const sp<IGraphicBufferProducer>& surface)
 {
     ALOGV("setPreviewSurface(%p)", surface.get());
     if (mMediaRecorder == NULL) {
@@ -183,8 +186,16 @@ status_t MediaRecorder::setOutputFormat(int of)
         ALOGE("setOutputFormat called in an invalid state: %d", mCurrentState);
         return INVALID_OPERATION;
     }
+<<<<<<< HEAD
     if (mIsVideoSourceSet && of >= OUTPUT_FORMAT_AUDIO_ONLY_START && of != OUTPUT_FORMAT_RTP_AVP && of != OUTPUT_FORMAT_MPEG2TS && of != OUTPUT_FORMAT_AWTS && of != OUTPUT_FORMAT_RAW) { //first non-video output format
         ALOGE("output format (%d) is meant for audio recording only and incompatible with video recording", of);
+=======
+    if (mIsVideoSourceSet
+            && of >= OUTPUT_FORMAT_AUDIO_ONLY_START //first non-video output format
+            && of < OUTPUT_FORMAT_AUDIO_ONLY_END) {
+        ALOGE("output format (%d) is meant for audio recording only"
+              " and incompatible with video recording", of);
+>>>>>>> 8b8d02886bd9fb8d5ad451c03e486cfad74aa74e
         return INVALID_OPERATION;
     }
 
@@ -286,7 +297,7 @@ status_t MediaRecorder::setOutputFile(const char* path)
 
 status_t MediaRecorder::setOutputFile(int fd, int64_t offset, int64_t length)
 {
-    ALOGV("setOutputFile(%d, %lld, %lld)", fd, offset, length);
+    ALOGV("setOutputFile(%d, %" PRId64 ", %" PRId64 ")", fd, offset, length);
     if (mMediaRecorder == NULL) {
         ALOGE("media recorder is not initialized yet");
         return INVALID_OPERATION;
@@ -348,9 +359,9 @@ status_t MediaRecorder::setVideoSize(int width, int height)
 }
 
 // Query a SurfaceMediaSurface through the Mediaserver, over the
-// binder interface. This is used by the Filter Framework (MeidaEncoder)
-// to get an <ISurfaceTexture> object to hook up to ANativeWindow.
-sp<ISurfaceTexture> MediaRecorder::
+// binder interface. This is used by the Filter Framework (MediaEncoder)
+// to get an <IGraphicBufferProducer> object to hook up to ANativeWindow.
+sp<IGraphicBufferProducer> MediaRecorder::
         querySurfaceMediaSourceFromMediaServer()
 {
     Mutex::Autolock _l(mLock);
@@ -510,7 +521,7 @@ status_t MediaRecorder::start()
         ALOGE("media recorder is not initialized yet");
         return INVALID_OPERATION;
     }
-    if (!(mCurrentState & MEDIA_RECORDER_PREPARED)) {
+    if (!(mCurrentState & (MEDIA_RECORDER_PREPARED | MEDIA_RECORDER_PAUSED))) {
         ALOGE("start called in an invalid state: %d", mCurrentState);
         return INVALID_OPERATION;
     }
@@ -525,6 +536,29 @@ status_t MediaRecorder::start()
     return ret;
 }
 
+status_t MediaRecorder::pause()
+{
+    ALOGV("pause");
+    if (mMediaRecorder == NULL) {
+        ALOGE("media recorder is not initialized yet");
+        return INVALID_OPERATION;
+    }
+    if (!(mCurrentState & MEDIA_RECORDER_RECORDING)) {
+        ALOGE("pause called in an invalid state: %d", mCurrentState);
+        return INVALID_OPERATION;
+    }
+
+    status_t ret = mMediaRecorder->pause();
+    if (OK != ret) {
+        ALOGE("pause failed: %d", ret);
+        mCurrentState = MEDIA_RECORDER_ERROR;
+        return ret;
+    }
+
+    mCurrentState = MEDIA_RECORDER_PAUSED;
+    return ret;
+}
+
 status_t MediaRecorder::stop()
 {
     ALOGV("stop");
@@ -532,7 +566,7 @@ status_t MediaRecorder::stop()
         ALOGE("media recorder is not initialized yet");
         return INVALID_OPERATION;
     }
-    if (!(mCurrentState & MEDIA_RECORDER_RECORDING)) {
+    if (!(mCurrentState & (MEDIA_RECORDER_RECORDING | MEDIA_RECORDER_PAUSED))) {
         ALOGE("stop called in an invalid state: %d", mCurrentState);
         return INVALID_OPERATION;
     }
@@ -568,6 +602,7 @@ status_t MediaRecorder::reset()
             ret = OK;
             break;
 
+        case MEDIA_RECORDER_PAUSED:
         case MEDIA_RECORDER_RECORDING:
         case MEDIA_RECORDER_DATASOURCE_CONFIGURED:
         case MEDIA_RECORDER_PREPARED:
@@ -647,7 +682,7 @@ MediaRecorder::MediaRecorder() : mSurfaceMediaSource(NULL)
 
     const sp<IMediaPlayerService>& service(getMediaPlayerService());
     if (service != NULL) {
-        mMediaRecorder = service->createMediaRecorder(getpid());
+        mMediaRecorder = service->createMediaRecorder();
     }
     if (mMediaRecorder != NULL) {
         mCurrentState = MEDIA_RECORDER_IDLE;
@@ -679,6 +714,27 @@ status_t MediaRecorder::setListener(const sp<MediaRecorderListener>& listener)
     ALOGV("setListener");
     Mutex::Autolock _l(mLock);
     mListener = listener;
+
+    return NO_ERROR;
+}
+
+status_t MediaRecorder::setClientName(const String16& clientName)
+{
+    ALOGV("setClientName");
+    if (mMediaRecorder == NULL) {
+        ALOGE("media recorder is not initialized yet");
+        return INVALID_OPERATION;
+    }
+    bool isInvalidState = (mCurrentState &
+                           (MEDIA_RECORDER_PREPARED |
+                            MEDIA_RECORDER_RECORDING |
+                            MEDIA_RECORDER_ERROR));
+    if (isInvalidState) {
+        ALOGE("setClientName is called in an invalid state: %d", mCurrentState);
+        return INVALID_OPERATION;
+    }
+
+    mMediaRecorder->setClientName(clientName);
 
     return NO_ERROR;
 }

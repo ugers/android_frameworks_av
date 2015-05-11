@@ -22,73 +22,42 @@
 
 namespace android {
 
-size_t Format_frameSize(NBAIO_Format format)
+size_t Format_frameSize(const NBAIO_Format& format)
 {
-    switch (format) {
-    case Format_SR44_1_C2_I16:
-    case Format_SR48_C2_I16:
-        return 2 * sizeof(short);
-    case Format_SR44_1_C1_I16:
-    case Format_SR48_C1_I16:
-        return 1 * sizeof(short);
-    case Format_Invalid:
-    default:
-        return 0;
-    }
+    return format.mFrameSize;
 }
 
-size_t Format_frameBitShift(NBAIO_Format format)
+const NBAIO_Format Format_Invalid = { 0, 0, AUDIO_FORMAT_INVALID, 0 };
+
+unsigned Format_sampleRate(const NBAIO_Format& format)
 {
-    switch (format) {
-    case Format_SR44_1_C2_I16:
-    case Format_SR48_C2_I16:
-        return 2;   // 1 << 2 == 2 * sizeof(short)
-    case Format_SR44_1_C1_I16:
-    case Format_SR48_C1_I16:
-        return 1;   // 1 << 1 == 1 * sizeof(short)
-    case Format_Invalid:
-    default:
+    if (!Format_isValid(format)) {
         return 0;
     }
+    return format.mSampleRate;
 }
 
-unsigned Format_sampleRate(NBAIO_Format format)
+unsigned Format_channelCount(const NBAIO_Format& format)
 {
-    switch (format) {
-    case Format_SR44_1_C1_I16:
-    case Format_SR44_1_C2_I16:
-        return 44100;
-    case Format_SR48_C1_I16:
-    case Format_SR48_C2_I16:
-        return 48000;
-    case Format_Invalid:
-    default:
+    if (!Format_isValid(format)) {
         return 0;
     }
+    return format.mChannelCount;
 }
 
-unsigned Format_channelCount(NBAIO_Format format)
+NBAIO_Format Format_from_SR_C(unsigned sampleRate, unsigned channelCount,
+        audio_format_t format)
 {
-    switch (format) {
-    case Format_SR44_1_C1_I16:
-    case Format_SR48_C1_I16:
-        return 1;
-    case Format_SR44_1_C2_I16:
-    case Format_SR48_C2_I16:
-        return 2;
-    case Format_Invalid:
-    default:
-        return 0;
+    if (sampleRate == 0 || channelCount == 0 || !audio_is_valid_format(format)) {
+        return Format_Invalid;
     }
-}
-
-NBAIO_Format Format_from_SR_C(unsigned sampleRate, unsigned channelCount)
-{
-    if (sampleRate == 44100 && channelCount == 2) return Format_SR44_1_C2_I16;
-    if (sampleRate == 48000 && channelCount == 2) return Format_SR48_C2_I16;
-    if (sampleRate == 44100 && channelCount == 1) return Format_SR44_1_C1_I16;
-    if (sampleRate == 48000 && channelCount == 1) return Format_SR48_C1_I16;
-    return Format_Invalid;
+    NBAIO_Format ret;
+    ret.mSampleRate = sampleRate;
+    ret.mChannelCount = channelCount;
+    ret.mFormat = format;
+    ret.mFrameSize = audio_is_linear_pcm(format) ?
+            channelCount * audio_bytes_per_sample(format) : sizeof(uint8_t);
+    return ret;
 }
 
 // This is a default implementation; it is expected that subclasses will optimize this.
@@ -168,11 +137,11 @@ ssize_t NBAIO_Source::readVia(readVia_t via, size_t total, void *user,
 ssize_t NBAIO_Port::negotiate(const NBAIO_Format offers[], size_t numOffers,
                                   NBAIO_Format counterOffers[], size_t& numCounterOffers)
 {
-    ALOGV("negotiate offers=%p numOffers=%u countersOffers=%p numCounterOffers=%u",
+    ALOGV("negotiate offers=%p numOffers=%zu countersOffers=%p numCounterOffers=%zu",
             offers, numOffers, counterOffers, numCounterOffers);
-    if (mFormat != Format_Invalid) {
+    if (Format_isValid(mFormat)) {
         for (size_t i = 0; i < numOffers; ++i) {
-            if (offers[i] == mFormat) {
+            if (Format_isEqual(offers[i], mFormat)) {
                 mNegotiated = true;
                 return i;
             }
@@ -185,6 +154,19 @@ ssize_t NBAIO_Port::negotiate(const NBAIO_Format offers[], size_t numOffers,
         numCounterOffers = 0;
     }
     return (ssize_t) NEGOTIATE;
+}
+
+bool Format_isValid(const NBAIO_Format& format)
+{
+    return format.mSampleRate != 0 && format.mChannelCount != 0 &&
+            format.mFormat != AUDIO_FORMAT_INVALID && format.mFrameSize != 0;
+}
+
+bool Format_isEqual(const NBAIO_Format& format1, const NBAIO_Format& format2)
+{
+    return format1.mSampleRate == format2.mSampleRate &&
+            format1.mChannelCount == format2.mChannelCount && format1.mFormat == format2.mFormat &&
+            format1.mFrameSize == format2.mFrameSize;
 }
 
 }   // namespace android

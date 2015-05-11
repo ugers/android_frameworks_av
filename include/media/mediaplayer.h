@@ -34,7 +34,7 @@ class ANativeWindow;
 namespace android {
 
 class Surface;
-class ISurfaceTexture;
+class IGraphicBufferProducer;
 
 //add by Bevis, for Dlna source detector
 #define DLNA_SOURCE_DETECTOR "com.softwinner.dlnasourcedetector"
@@ -46,10 +46,19 @@ enum media_event_type {
     MEDIA_BUFFERING_UPDATE  = 3,
     MEDIA_SEEK_COMPLETE     = 4,
     MEDIA_SET_VIDEO_SIZE    = 5,
+    MEDIA_STARTED           = 6,
+    MEDIA_PAUSED            = 7,
+    MEDIA_STOPPED           = 8,
+    MEDIA_SKIPPED           = 9,
     MEDIA_TIMED_TEXT        = 99,
     MEDIA_ERROR             = 100,
     MEDIA_INFO              = 200,
+<<<<<<< HEAD
     MEDIA_SOURCE_DETECTED	= 234,		//add by Bevis, for Dlna source detector
+=======
+    MEDIA_SUBTITLE_DATA     = 201,
+    MEDIA_QOE               = 300,
+>>>>>>> 8b8d02886bd9fb8d5ad451c03e486cfad74aa74e
 };
 
 // Generic error codes for the media player framework.  Errors are fatal, the
@@ -149,7 +158,8 @@ enum media_player_states {
     MEDIA_PLAYER_STARTED            = 1 << 4,
     MEDIA_PLAYER_PAUSED             = 1 << 5,
     MEDIA_PLAYER_STOPPED            = 1 << 6,
-    MEDIA_PLAYER_PLAYBACK_COMPLETE  = 1 << 7
+    MEDIA_PLAYER_PLAYBACK_COMPLETE  = 1 << 7,
+    MEDIA_PLAYER_SUSPENDED          = 1 << 8
 };
 
 // Keep KEY_PARAMETER_* in sync with MediaPlayer.java.
@@ -166,6 +176,9 @@ enum media_parameter_keys {
     // Playback rate expressed in permille (1000 is normal speed), saved as int32_t, with negative
     // values used for rewinding or reverse playback.
     KEY_PARAMETER_PLAYBACK_RATE_PERMILLE = 1300,                // set only
+
+    // Set a Parcel containing the value of a parcelled Java AudioAttribute instance
+    KEY_PARAMETER_AUDIO_ATTRIBUTES = 1400                       // set only
 };
 
 // Keep INVOKE_ID_* in sync with MediaPlayer.java.
@@ -176,6 +189,7 @@ enum media_player_invoke_ids {
     INVOKE_ID_SELECT_TRACK = 4,
     INVOKE_ID_UNSELECT_TRACK = 5,
     INVOKE_ID_SET_VIDEO_SCALING_MODE = 6,
+    INVOKE_ID_GET_SELECTED_TRACK = 7
 };
 
 // Keep MEDIA_TRACK_TYPE_* in sync with MediaPlayer.java.
@@ -184,6 +198,7 @@ enum media_track_type {
     MEDIA_TRACK_TYPE_VIDEO = 1,
     MEDIA_TRACK_TYPE_AUDIO = 2,
     MEDIA_TRACK_TYPE_TIMEDTEXT = 3,
+    MEDIA_TRACK_TYPE_SUBTITLE = 4,
 };
 
 // ----------------------------------------------------------------------------
@@ -194,6 +209,8 @@ public:
     virtual void notify(int msg, int ext1, int ext2, const Parcel *obj) = 0;
 };
 
+struct IMediaHTTPService;
+
 class MediaPlayer : public BnMediaPlayerClient,
                     public virtual IMediaDeathNotifier
 {
@@ -203,14 +220,21 @@ public:
             void            died();
             void            disconnect();
 
+#ifdef SAMSUNG_CAMERA_LEGACY
             status_t        setDataSource(
+                    const char *url,
+                    const KeyedVector<String8, String8> *headers);
+#endif
+
+            status_t        setDataSource(
+                    const sp<IMediaHTTPService> &httpService,
                     const char *url,
                     const KeyedVector<String8, String8> *headers);
 
             status_t        setDataSource(int fd, int64_t offset, int64_t length);
             status_t        setDataSource(const sp<IStreamSource> &source);
             status_t        setVideoSurfaceTexture(
-                                    const sp<ISurfaceTexture>& surfaceTexture);
+                                    const sp<IGraphicBufferProducer>& bufferProducer);
             status_t        setListener(const sp<MediaPlayerListener>& listener);
             status_t        prepare();
             status_t        prepareAsync();
@@ -225,12 +249,33 @@ public:
             status_t        getDuration(int *msec);
             status_t        reset();
             status_t        setAudioStreamType(audio_stream_type_t type);
+            status_t        getAudioStreamType(audio_stream_type_t *type);
             status_t        setLooping(int loop);
             bool            isLooping();
             status_t        setVolume(float leftVolume, float rightVolume);
             void            notify(int msg, int ext1, int ext2, const Parcel *obj = NULL);
-    static  sp<IMemory>     decode(const char* url, uint32_t *pSampleRate, int* pNumChannels, audio_format_t* pFormat);
-    static  sp<IMemory>     decode(int fd, int64_t offset, int64_t length, uint32_t *pSampleRate, int* pNumChannels, audio_format_t* pFormat);
+
+#ifdef SAMSUNG_CAMERA_LEGACY
+    static  status_t        decode(
+            const char* url,
+            uint32_t *pSampleRate,
+            int* pNumChannels,
+            audio_format_t* pFormat,
+            const sp<IMemoryHeap>& heap,
+            size_t *pSize);
+#endif
+
+    static  status_t        decode(
+            const sp<IMediaHTTPService> &httpService,
+            const char* url,
+            uint32_t *pSampleRate,
+            int* pNumChannels,
+            audio_format_t* pFormat,
+            const sp<IMemoryHeap>& heap,
+            size_t *pSize);
+    static  status_t        decode(int fd, int64_t offset, int64_t length, uint32_t *pSampleRate,
+                                   int* pNumChannels, audio_format_t* pFormat,
+                                   const sp<IMemoryHeap>& heap, size_t *pSize);
             status_t        invoke(const Parcel& request, Parcel *reply);
             status_t        setMetadataFilter(const Parcel& filter);
             status_t        getMetadata(bool update_only, bool apply_filter, Parcel *metadata);
@@ -242,6 +287,7 @@ public:
             status_t        getParameter(int key, Parcel* reply);
             status_t        setRetransmitEndpoint(const char* addrString, uint16_t port);
             status_t        setNextMediaPlayer(const sp<MediaPlayer>& player);
+<<<<<<< HEAD
             /* add by Gary. start {{----------------------------------- */
             static  status_t        setScreen(int screen);
             static  status_t        getScreen(int *screen);
@@ -327,6 +373,10 @@ public:
             status_t        generalInterface(int cmd, int int1, int int2, int int3, void *p);
     static  status_t        generalGlobalInterface(int cmd, int int1, int int2, int int3, void *p);
     /* add by Gary. end   -----------------------------------}} */
+=======
+            status_t        suspend();
+            status_t        resume();
+>>>>>>> 8b8d02886bd9fb8d5ad451c03e486cfad74aa74e
 
 private:
             void            clear_l();
@@ -336,6 +386,7 @@ private:
             status_t        attachNewPlayer(const sp<IMediaPlayer>& player);
             status_t        reset_l();
             status_t        doSetRetransmitEndpoint(const sp<IMediaPlayer>& player);
+            status_t        checkStateForKeySet_l(int key);
 
     sp<IMediaPlayer>            mPlayer;
     thread_id_t                 mLockThreadId;
@@ -350,6 +401,7 @@ private:
     bool                        mPrepareSync;
     status_t                    mPrepareStatus;
     audio_stream_type_t         mStreamType;
+    Parcel*                     mAudioAttributesParcel;
     bool                        mLoop;
     float                       mLeftVolume;
     float                       mRightVolume;

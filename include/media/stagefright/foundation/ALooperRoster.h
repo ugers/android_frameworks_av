@@ -30,6 +30,7 @@ struct ALooperRoster {
             const sp<ALooper> looper, const sp<AHandler> &handler);
 
     void unregisterHandler(ALooper::handler_id handlerID);
+    void unregisterStaleHandlers();
 
     status_t postMessage(const sp<AMessage> &msg, int64_t delayUs = 0);
     void deliverMessage(const sp<AMessage> &msg);
@@ -54,8 +55,6 @@ private:
     Condition mRepliesCondition;
 
     KeyedVector<uint32_t, sp<AMessage> > mReplies;
-
-    status_t postMessage_l(const sp<AMessage> &msg, int64_t delayUs);
 
     DISALLOW_EVIL_CONSTRUCTORS(ALooperRoster);
 };

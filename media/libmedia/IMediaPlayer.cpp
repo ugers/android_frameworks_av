@@ -21,10 +21,11 @@
 
 #include <binder/Parcel.h>
 
+#include <media/IMediaHTTPService.h>
 #include <media/IMediaPlayer.h>
 #include <media/IStreamSource.h>
 
-#include <gui/ISurfaceTexture.h>
+#include <gui/IGraphicBufferProducer.h>
 #include <utils/String8.h>
 
 namespace android {
@@ -57,6 +58,7 @@ enum {
     SET_RETRANSMIT_ENDPOINT,
     GET_RETRANSMIT_ENDPOINT,
     SET_NEXT_PLAYER,
+<<<<<<< HEAD
     /* add by Gary. start {{----------------------------------- */
     /* 2011-9-15 10:51:10 */
     /* expend interfaces about subtitle, track and so on */
@@ -115,6 +117,10 @@ enum {
     /* add by Gary. end   -----------------------------------}} */
 
     SET_DATA_SOURCE_STREAM2,
+=======
+    SUSPEND,
+    RESUME,
+>>>>>>> 8b8d02886bd9fb8d5ad451c03e486cfad74aa74e
 };
 
 class BpMediaPlayer: public BpInterface<IMediaPlayer>
@@ -133,11 +139,17 @@ public:
         remote()->transact(DISCONNECT, data, &reply);
     }
 
-    status_t setDataSource(const char* url,
+    status_t setDataSource(
+            const sp<IMediaHTTPService> &httpService,
+            const char* url,
             const KeyedVector<String8, String8>* headers)
     {
         Parcel data, reply;
         data.writeInterfaceToken(IMediaPlayer::getInterfaceDescriptor());
+        data.writeInt32(httpService != NULL);
+        if (httpService != NULL) {
+            data.writeStrongBinder(httpService->asBinder());
+        }
         data.writeCString(url);
         if (headers == NULL) {
             data.writeInt32(0);
@@ -171,6 +183,7 @@ public:
         return reply.readInt32();
     }
 
+<<<<<<< HEAD
     status_t setDataSource(const sp<IStreamSource> &source, int type) {
 		Parcel data, reply;
 		data.writeInterfaceToken(IMediaPlayer::getInterfaceDescriptor());
@@ -182,10 +195,14 @@ public:
 
     // pass the buffered ISurfaceTexture to the media player service
     status_t setVideoSurfaceTexture(const sp<ISurfaceTexture>& surfaceTexture)
+=======
+    // pass the buffered IGraphicBufferProducer to the media player service
+    status_t setVideoSurfaceTexture(const sp<IGraphicBufferProducer>& bufferProducer)
+>>>>>>> 8b8d02886bd9fb8d5ad451c03e486cfad74aa74e
     {
         Parcel data, reply;
         data.writeInterfaceToken(IMediaPlayer::getInterfaceDescriptor());
-        sp<IBinder> b(surfaceTexture->asBinder());
+        sp<IBinder> b(bufferProducer->asBinder());
         data.writeStrongBinder(b);
         remote()->transact(SET_VIDEO_SURFACETEXTURE, data, &reply);
         return reply.readInt32();
@@ -406,6 +423,7 @@ public:
         return err;
     }
 
+<<<<<<< HEAD
     /* add by Gary. start {{----------------------------------- */
     /* 2011-9-14 14:27:12 */
     /* expend interfaces about subtitle, track and so on */
@@ -795,6 +813,23 @@ public:
         return ret;
     }
     /* add by Gary. end   -----------------------------------}} */
+=======
+    status_t suspend()
+    {
+        Parcel data, reply;
+        data.writeInterfaceToken(IMediaPlayer::getInterfaceDescriptor());
+        remote()->transact(SUSPEND, data, &reply);
+        return reply.readInt32();
+     }
+
+     status_t resume()
+     {
+        Parcel data, reply;
+        data.writeInterfaceToken(IMediaPlayer::getInterfaceDescriptor());
+        remote()->transact(RESUME, data, &reply);
+        return reply.readInt32();
+     }
+>>>>>>> 8b8d02886bd9fb8d5ad451c03e486cfad74aa74e
 };
 
 IMPLEMENT_META_INTERFACE(MediaPlayer, "android.media.IMediaPlayer");
@@ -812,6 +847,13 @@ status_t BnMediaPlayer::onTransact(
         } break;
         case SET_DATA_SOURCE_URL: {
             CHECK_INTERFACE(IMediaPlayer, data, reply);
+
+            sp<IMediaHTTPService> httpService;
+            if (data.readInt32()) {
+                httpService =
+                    interface_cast<IMediaHTTPService>(data.readStrongBinder());
+            }
+
             const char* url = data.readCString();
             KeyedVector<String8, String8> headers;
             int32_t numHeaders = data.readInt32();
@@ -820,7 +862,8 @@ status_t BnMediaPlayer::onTransact(
                 String8 value = data.readString8();
                 headers.add(key, value);
             }
-            reply->writeInt32(setDataSource(url, numHeaders > 0 ? &headers : NULL));
+            reply->writeInt32(setDataSource(
+                        httpService, url, numHeaders > 0 ? &headers : NULL));
             return NO_ERROR;
         } break;
         case SET_DATA_SOURCE_FD: {
@@ -848,9 +891,9 @@ status_t BnMediaPlayer::onTransact(
         }
         case SET_VIDEO_SURFACETEXTURE: {
             CHECK_INTERFACE(IMediaPlayer, data, reply);
-            sp<ISurfaceTexture> surfaceTexture =
-                    interface_cast<ISurfaceTexture>(data.readStrongBinder());
-            reply->writeInt32(setVideoSurfaceTexture(surfaceTexture));
+            sp<IGraphicBufferProducer> bufferProducer =
+                    interface_cast<IGraphicBufferProducer>(data.readStrongBinder());
+            reply->writeInt32(setVideoSurfaceTexture(bufferProducer));
             return NO_ERROR;
         } break;
         case PREPARE_ASYNC: {
@@ -1002,6 +1045,7 @@ status_t BnMediaPlayer::onTransact(
 
             return NO_ERROR;
         } break;
+<<<<<<< HEAD
         /* add by Gary. start {{----------------------------------- */
         /* 2011-9-15 13:06:54 */
         /* expend interfaces about subtitle, track and so on */
@@ -1304,6 +1348,20 @@ status_t BnMediaPlayer::onTransact(
             return NO_ERROR;
         } break;
         /* add by Gary. end   -----------------------------------}} */
+=======
+        case SUSPEND: {
+            CHECK_INTERFACE(IMediaPlayer, data, reply);
+            status_t ret = suspend();
+            reply->writeInt32(ret);
+            return NO_ERROR;
+        } break;
+        case RESUME: {
+            CHECK_INTERFACE(IMediaPlayer, data, reply);
+            status_t ret = resume();
+            reply->writeInt32(ret);
+            return NO_ERROR;
+        } break;
+>>>>>>> 8b8d02886bd9fb8d5ad451c03e486cfad74aa74e
         default:
             return BBinder::onTransact(code, data, reply, flags);
     }

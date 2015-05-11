@@ -42,7 +42,8 @@ const String8 DrmManager::EMPTY_STRING("");
 DrmManager::DrmManager() :
     mDecryptSessionId(0),
     mConvertId(0) {
-
+    srand(time(NULL));
+    memset(mUniqueIdArray, 0, sizeof(bool) * kMaxNumUniqueIds);
 }
 
 DrmManager::~DrmManager() {
@@ -52,52 +53,44 @@ DrmManager::~DrmManager() {
 int DrmManager::addUniqueId(bool isNative) {
     Mutex::Autolock _l(mLock);
 
-    int temp = 0;
-    bool foundUniqueId = false;
-    const int size = mUniqueIdVector.size();
-    const int uniqueIdRange = 0xfff;
-    int maxLoopTimes = (uniqueIdRange - 1) / 2;
-    srand(time(NULL));
+    int uniqueId = -1;
+    int random = rand();
 
-    while (!foundUniqueId) {
-        temp = rand() & uniqueIdRange;
+    for (size_t index = 0; index < kMaxNumUniqueIds; ++index) {
+        int temp = (random + index) % kMaxNumUniqueIds;
+        if (!mUniqueIdArray[temp]) {
+            uniqueId = temp;
+            mUniqueIdArray[uniqueId] = true;
 
-        if (isNative) {
-            // set a flag to differentiate DrmManagerClient
-            // created from native side and java side
-            temp |= 0x1000;
-        }
-
-        int index = 0;
-        for (; index < size; ++index) {
-            if (mUniqueIdVector.itemAt(index) == temp) {
-                foundUniqueId = false;
-                break;
+            if (isNative) {
+                // set a flag to differentiate DrmManagerClient
+                // created from native side and java side
+                uniqueId |= 0x1000;
             }
+            break;
         }
-        if (index == size) {
-            foundUniqueId = true;
-        }
-
-        maxLoopTimes --;
-        LOG_FATAL_IF(maxLoopTimes <= 0, "cannot find an unique ID for this session");
     }
 
-    mUniqueIdVector.push(temp);
-    return temp;
+    // -1 indicates that no unique id can be allocated.
+    return uniqueId;
 }
 
 void DrmManager::removeUniqueId(int uniqueId) {
     Mutex::Autolock _l(mLock);
-    for (unsigned int i = 0; i < mUniqueIdVector.size(); i++) {
-        if (uniqueId == mUniqueIdVector.itemAt(i)) {
-            mUniqueIdVector.removeAt(i);
-            break;
-        }
+    if (uniqueId & 0x1000) {
+        // clear the flag for the native side.
+        uniqueId &= ~(0x1000);
+    }
+
+    if (uniqueId >= 0 && uniqueId < kMaxNumUniqueIds) {
+        mUniqueIdArray[uniqueId] = false;
     }
 }
 
 status_t DrmManager::loadPlugIns() {
+
+    String8 vendorPluginDirPath64("/vendor/lib64/drm");
+    loadPlugIns(vendorPluginDirPath64);
 
     String8 vendorPluginDirPath("/vendor/lib/drm");
     loadPlugIns(vendorPluginDirPath);
@@ -111,7 +104,7 @@ status_t DrmManager::loadPlugIns() {
 status_t DrmManager::loadPlugIns(const String8& plugInDirPath) {
     mPlugInManager.loadPlugIns(plugInDirPath);
     Vector<String8> plugInPathList = mPlugInManager.getPlugInIdList();
-    for (unsigned int i = 0; i < plugInPathList.size(); ++i) {
+    for (size_t i = 0; i < plugInPathList.size(); ++i) {
         String8 plugInPath = plugInPathList[i];
         DrmSupportInfo* info = mPlugInManager.getPlugIn(plugInPath).getSupportInfo(0);
         if (NULL != info) {
@@ -148,7 +141,7 @@ void DrmManager::addClient(int uniqueId) {
     Mutex::Autolock _l(mLock);
     if (!mSupportInfoToPlugInIdMap.isEmpty()) {
         Vector<String8> plugInIdList = mPlugInManager.getPlugInIdList();
-        for (unsigned int index = 0; index < plugInIdList.size(); index++) {
+        for (size_t index = 0; index < plugInIdList.size(); index++) {
             IDrmEngine& rDrmEngine = mPlugInManager.getPlugIn(plugInIdList.itemAt(index));
             rDrmEngine.initialize(uniqueId);
             rDrmEngine.setOnInfoListener(uniqueId, this);
@@ -159,7 +152,7 @@ void DrmManager::addClient(int uniqueId) {
 void DrmManager::removeClient(int uniqueId) {
     Mutex::Autolock _l(mLock);
     Vector<String8> plugInIdList = mPlugInManager.getPlugInIdList();
-    for (unsigned int index = 0; index < plugInIdList.size(); index++) {
+    for (size_t index = 0; index < plugInIdList.size(); index++) {
         IDrmEngine& rDrmEngine = mPlugInManager.getPlugIn(plugInIdList.itemAt(index));
         rDrmEngine.terminate(uniqueId);
     }
@@ -183,21 +176,6 @@ DrmMetadata* DrmManager::getMetadata(int uniqueId, const String8* path) {
         return rDrmEngine.getMetadata(uniqueId, path);
     }
     return NULL;
-}
-
-status_t DrmManager::installDrmEngine(int uniqueId, const String8& absolutePath) {
-    Mutex::Autolock _l(mLock);
-    mPlugInManager.loadPlugIn(absolutePath);
-
-    IDrmEngine& rDrmEngine = mPlugInManager.getPlugIn(absolutePath);
-    rDrmEngine.initialize(uniqueId);
-    rDrmEngine.setOnInfoListener(uniqueId, this);
-
-    DrmSupportInfo* info = rDrmEngine.getSupportInfo(0);
-    mSupportInfoToPlugInIdMap.add(*info, absolutePath);
-    delete info;
-
-    return DRM_NO_ERROR;
 }
 
 bool DrmManager::canHandle(int uniqueId, const String8& path, const String8& mimeType) {
@@ -233,7 +211,7 @@ bool DrmManager::canHandle(int uniqueId, const String8& path) {
     bool result = false;
     Vector<String8> plugInPathList = mPlugInManager.getPlugInIdList();
 
-    for (unsigned int i = 0; i < plugInPathList.size(); ++i) {
+    for (size_t i = 0; i < plugInPathList.size(); ++i) {
         IDrmEngine& rDrmEngine = mPlugInManager.getPlugIn(plugInPathList[i]);
         result = rDrmEngine.canHandle(uniqueId, path);
 
@@ -343,7 +321,7 @@ status_t DrmManager::removeRights(int uniqueId, const String8& path) {
 status_t DrmManager::removeAllRights(int uniqueId) {
     Vector<String8> plugInIdList = mPlugInManager.getPlugInIdList();
     status_t result = DRM_ERROR_UNKNOWN;
-    for (unsigned int index = 0; index < plugInIdList.size(); index++) {
+    for (size_t index = 0; index < plugInIdList.size(); index++) {
         IDrmEngine& rDrmEngine = mPlugInManager.getPlugIn(plugInIdList.itemAt(index));
         result = rDrmEngine.removeAllRights(uniqueId);
         if (DRM_NO_ERROR != result) {
@@ -437,7 +415,7 @@ DecryptHandle* DrmManager::openDecryptSession(
     if (NULL != handle) {
         handle->decryptId = mDecryptSessionId + 1;
 
-        for (unsigned int index = 0; index < plugInIdList.size(); index++) {
+        for (size_t index = 0; index < plugInIdList.size(); index++) {
             String8 plugInId = plugInIdList.itemAt(index);
             IDrmEngine& rDrmEngine = mPlugInManager.getPlugIn(plugInId);
             result = rDrmEngine.openDecryptSession(uniqueId, handle, fd, offset, length, mime);
@@ -465,7 +443,7 @@ DecryptHandle* DrmManager::openDecryptSession(
     if (NULL != handle) {
         handle->decryptId = mDecryptSessionId + 1;
 
-        for (unsigned int index = 0; index < plugInIdList.size(); index++) {
+        for (size_t index = 0; index < plugInIdList.size(); index++) {
             String8 plugInId = plugInIdList.itemAt(index);
             IDrmEngine& rDrmEngine = mPlugInManager.getPlugIn(plugInId);
             result = rDrmEngine.openDecryptSession(uniqueId, handle, uri, mime);
@@ -590,7 +568,7 @@ String8 DrmManager::getSupportedPlugInId(const String8& mimeType) {
     String8 plugInId("");
 
     if (EMPTY_STRING != mimeType) {
-        for (unsigned int index = 0; index < mSupportInfoToPlugInIdMap.size(); index++) {
+        for (size_t index = 0; index < mSupportInfoToPlugInIdMap.size(); index++) {
             const DrmSupportInfo& drmSupportInfo = mSupportInfoToPlugInIdMap.keyAt(index);
 
             if (drmSupportInfo.isSupportedMimeType(mimeType)) {
@@ -606,7 +584,7 @@ String8 DrmManager::getSupportedPlugInIdFromPath(int uniqueId, const String8& pa
     String8 plugInId("");
     const String8 fileSuffix = path.getPathExtension();
 
-    for (unsigned int index = 0; index < mSupportInfoToPlugInIdMap.size(); index++) {
+    for (size_t index = 0; index < mSupportInfoToPlugInIdMap.size(); index++) {
         const DrmSupportInfo& drmSupportInfo = mSupportInfoToPlugInIdMap.keyAt(index);
 
         if (drmSupportInfo.isSupportedFileSuffix(fileSuffix)) {
@@ -624,7 +602,7 @@ String8 DrmManager::getSupportedPlugInIdFromPath(int uniqueId, const String8& pa
 
 void DrmManager::onInfo(const DrmInfoEvent& event) {
     Mutex::Autolock _l(mListenerLock);
-    for (unsigned int index = 0; index < mServiceListeners.size(); index++) {
+    for (size_t index = 0; index < mServiceListeners.size(); index++) {
         int uniqueId = mServiceListeners.keyAt(index);
 
         if (uniqueId == event.getUniqueId()) {

@@ -21,6 +21,8 @@
 #include <string.h>
 #include <stdlib.h>
 #include <camera/CameraParameters.h>
+#include "camera/CameraParametersExtra.h"
+#include <system/graphics.h>
 
 namespace android {
 // Parameter keys to communicate between camera application and driver.
@@ -163,6 +165,7 @@ const char CameraParameters::KEY_VIDEO_SNAPSHOT_SUPPORTED[] = "video-snapshot-su
 const char CameraParameters::KEY_FULL_VIDEO_SNAP_SUPPORTED[] = "full-video-snap-supported";
 const char CameraParameters::KEY_VIDEO_STABILIZATION[] = "video-stabilization";
 const char CameraParameters::KEY_VIDEO_STABILIZATION_SUPPORTED[] = "video-stabilization-supported";
+<<<<<<< HEAD
 #ifdef QCOM_HARDWARE
 const char CameraParameters::KEY_ZSL[] = "zsl";
 const char CameraParameters::KEY_SUPPORTED_ZSL_MODES[] = "zsl-values";
@@ -254,6 +257,9 @@ const char CameraParameters::VIDEO_WDR_ON[] = "video-wdr";
 const char CameraParameters::OBJECT_TRACKING_ON[] = "object-tracking";
 const char CameraParameters::OBJECT_TRACKING_OFF[] = "object-tracking";
 #endif
+=======
+const char CameraParameters::KEY_LIGHTFX[] = "light-fx";
+>>>>>>> 8b8d02886bd9fb8d5ad451c03e486cfad74aa74e
 
 const char CameraParameters::TRUE[] = "true";
 const char CameraParameters::FALSE[] = "false";
@@ -268,6 +274,7 @@ const char CameraParameters::WHITE_BALANCE_DAYLIGHT[] = "daylight";
 const char CameraParameters::WHITE_BALANCE_CLOUDY_DAYLIGHT[] = "cloudy-daylight";
 const char CameraParameters::WHITE_BALANCE_TWILIGHT[] = "twilight";
 const char CameraParameters::WHITE_BALANCE_SHADE[] = "shade";
+const char CameraParameters::WHITE_BALANCE_MANUAL_CCT[] = "manual-cct";
 
 // Values for effect settings.
 const char CameraParameters::EFFECT_NONE[] = "none";
@@ -376,6 +383,7 @@ const char CameraParameters::FOCUS_MODE_FIXED[] = "fixed";
 const char CameraParameters::FOCUS_MODE_EDOF[] = "edof";
 const char CameraParameters::FOCUS_MODE_CONTINUOUS_VIDEO[] = "continuous-video";
 const char CameraParameters::FOCUS_MODE_CONTINUOUS_PICTURE[] = "continuous-picture";
+<<<<<<< HEAD
 #if defined(QCOM_HARDWARE)
 #ifdef QCOM_LEGACY_CAM_PARAMS
 const char CameraParameters::FOCUS_MODE_CONTINUOUS_CAMERA[] = "continuous-camera";
@@ -531,6 +539,17 @@ void CameraParameters::setOrientation(int orientation)
 }
 #endif
 
+=======
+const char CameraParameters::FOCUS_MODE_MANUAL_POSITION[] = "manual";
+
+// Values for light fx settings
+const char CameraParameters::LIGHTFX_LOWLIGHT[] = "low-light";
+const char CameraParameters::LIGHTFX_HDR[] = "high-dynamic-range";
+
+#ifdef CAMERA_PARAMETERS_EXTRA_C
+CAMERA_PARAMETERS_EXTRA_C
+#endif
+>>>>>>> 8b8d02886bd9fb8d5ad451c03e486cfad74aa74e
 
 CameraParameters::CameraParameters()
                 : mMap()
@@ -605,10 +624,18 @@ void CameraParameters::set(const char *key, const char *value)
         return;
     }
 
-    if (strchr(value, '=') || strchr(key, ';')) {
+    if (strchr(value, '=') || strchr(value, ';')) {
         //XXX ALOGE("Value \"%s\"contains invalid character (= or ;)", value);
         return;
     }
+#ifdef QCOM_HARDWARE
+    // qcom cameras default to delivering an extra zero-exposure frame on HDR.
+    // The android SDK only wants one frame, so disable this unless the app
+    // explicitly asks for it
+    if (!get("hdr-need-1x")) {
+        mMap.replaceValueFor(String8("hdr-need-1x"), String8("false"));
+    }
+#endif
 
     mMap.replaceValueFor(String8(key), String8(value));
 }
@@ -891,7 +918,7 @@ const char *CameraParameters::getPictureFormat() const
 
 void CameraParameters::dump() const
 {
-    ALOGD("dump: mMap.size = %d", mMap.size());
+    ALOGD("dump: mMap.size = %zu", mMap.size());
     for (size_t i = 0; i < mMap.size(); i++) {
         String8 k, v;
         k = mMap.keyAt(i);
@@ -900,6 +927,7 @@ void CameraParameters::dump() const
     }
 }
 
+<<<<<<< HEAD
 #ifdef QCOM_HARDWARE
 void CameraParameters::setTouchIndexAec(int x, int y)
 {
@@ -966,11 +994,14 @@ void CameraParameters::getTouchIndexAf(int *x, int *y) const
 #endif
 
 status_t CameraParameters::dump(int fd, const Vector<String16>& args) const
+=======
+status_t CameraParameters::dump(int fd, const Vector<String16>& /*args*/) const
+>>>>>>> 8b8d02886bd9fb8d5ad451c03e486cfad74aa74e
 {
     const size_t SIZE = 256;
     char buffer[SIZE];
     String8 result;
-    snprintf(buffer, 255, "CameraParameters::dump: mMap.size = %d\n", mMap.size());
+    snprintf(buffer, 255, "CameraParameters::dump: mMap.size = %zu\n", mMap.size());
     result.append(buffer);
     for (size_t i = 0; i < mMap.size(); i++) {
         String8 k, v;
@@ -981,6 +1012,47 @@ status_t CameraParameters::dump(int fd, const Vector<String16>& args) const
     }
     write(fd, result.string(), result.size());
     return NO_ERROR;
+}
+
+void CameraParameters::getSupportedPreviewFormats(Vector<int>& formats) const {
+    const char* supportedPreviewFormats =
+          get(CameraParameters::KEY_SUPPORTED_PREVIEW_FORMATS);
+
+    String8 fmtStr(supportedPreviewFormats);
+    char* prevFmts = fmtStr.lockBuffer(fmtStr.size());
+
+    char* savePtr;
+    char* fmt = strtok_r(prevFmts, ",", &savePtr);
+    while (fmt) {
+        int actual = previewFormatToEnum(fmt);
+        if (actual != -1) {
+            formats.add(actual);
+        }
+        fmt = strtok_r(NULL, ",", &savePtr);
+    }
+    fmtStr.unlockBuffer(fmtStr.size());
+}
+
+
+int CameraParameters::previewFormatToEnum(const char* format) {
+    return
+        !format ?
+            HAL_PIXEL_FORMAT_YCrCb_420_SP :
+        !strcmp(format, PIXEL_FORMAT_YUV422SP) ?
+            HAL_PIXEL_FORMAT_YCbCr_422_SP : // NV16
+        !strcmp(format, PIXEL_FORMAT_YUV420SP) ?
+            HAL_PIXEL_FORMAT_YCrCb_420_SP : // NV21
+        !strcmp(format, PIXEL_FORMAT_YUV422I) ?
+            HAL_PIXEL_FORMAT_YCbCr_422_I :  // YUY2
+        !strcmp(format, PIXEL_FORMAT_YUV420P) ?
+            HAL_PIXEL_FORMAT_YV12 :         // YV12
+        !strcmp(format, PIXEL_FORMAT_RGB565) ?
+            HAL_PIXEL_FORMAT_RGB_565 :      // RGB565
+        !strcmp(format, PIXEL_FORMAT_RGBA8888) ?
+            HAL_PIXEL_FORMAT_RGBA_8888 :    // RGB8888
+        !strcmp(format, PIXEL_FORMAT_BAYER_RGGB) ?
+            HAL_PIXEL_FORMAT_RAW_SENSOR :   // Raw sensor data
+        -1;
 }
 
 }; // namespace android

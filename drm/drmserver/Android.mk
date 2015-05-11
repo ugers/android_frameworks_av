@@ -24,6 +24,7 @@ LOCAL_SRC_FILES:= \
 LOCAL_SHARED_LIBRARIES := \
     libmedia \
     libutils \
+    liblog \
     libbinder \
     libdl
 
@@ -37,5 +38,7 @@ LOCAL_C_INCLUDES := \
 LOCAL_MODULE:= drmserver
 
 LOCAL_MODULE_TAGS := optional
+
+LOCAL_32_BIT_ONLY := true
 
 include $(BUILD_EXECUTABLE)

@@ -59,6 +59,7 @@ struct MediaSource : public virtual RefBase {
     virtual status_t read(
             MediaBuffer **buffer, const ReadOptions *options = NULL) = 0;
 
+    virtual void notifyError(status_t) {}
     // Options that modify read() behaviour. The default is to
     // a) not request a seek
     // b) not be late, i.e. lateness_us = 0
@@ -83,6 +84,10 @@ struct MediaSource : public virtual RefBase {
         void setLateBy(int64_t lateness_us);
         int64_t getLateBy() const;
 
+        void setNonBlocking();
+        void clearNonBlocking();
+        bool getNonBlocking() const;
+
     private:
         enum Options {
             kSeekTo_Option      = 1,
@@ -92,6 +97,7 @@ struct MediaSource : public virtual RefBase {
         int64_t mSeekTimeUs;
         SeekMode mSeekMode;
         int64_t mLatenessUs;
+        bool mNonBlocking;
     };
 
     // Causes this source to suspend pulling data from its upstream source
@@ -106,7 +112,7 @@ struct MediaSource : public virtual RefBase {
     // This will be called after a successful start() and before the
     // first read() call.
     // Callee assumes ownership of the buffers if no error is returned.
-    virtual status_t setBuffers(const Vector<MediaBuffer *> &buffers) {
+    virtual status_t setBuffers(const Vector<MediaBuffer *> & /* buffers */) {
         return ERROR_UNSUPPORTED;
     }
 

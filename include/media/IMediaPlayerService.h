@@ -32,7 +32,10 @@
 namespace android {
 
 struct ICrypto;
+struct IDrm;
 struct IHDCP;
+struct IMediaCodecList;
+struct IMediaHTTPService;
 class IMediaRecorder;
 class IOMX;
 class IRemoteDisplay;
@@ -52,15 +55,26 @@ class IMediaPlayerService: public IInterface
 public:
     DECLARE_META_INTERFACE(MediaPlayerService);
 
-    virtual sp<IMediaRecorder> createMediaRecorder(pid_t pid) = 0;
-    virtual sp<IMediaMetadataRetriever> createMetadataRetriever(pid_t pid) = 0;
-    virtual sp<IMediaPlayer> create(pid_t pid, const sp<IMediaPlayerClient>& client, int audioSessionId = 0) = 0;
+    virtual sp<IMediaRecorder> createMediaRecorder() = 0;
+    virtual sp<IMediaMetadataRetriever> createMetadataRetriever() = 0;
+    virtual sp<IMediaPlayer> create(const sp<IMediaPlayerClient>& client, int audioSessionId = 0) = 0;
 
-    virtual sp<IMemory>         decode(const char* url, uint32_t *pSampleRate, int* pNumChannels, audio_format_t* pFormat) = 0;
-    virtual sp<IMemory>         decode(int fd, int64_t offset, int64_t length, uint32_t *pSampleRate, int* pNumChannels, audio_format_t* pFormat) = 0;
+    virtual status_t         decode(
+            const sp<IMediaHTTPService> &httpService,
+            const char* url,
+            uint32_t *pSampleRate,
+            int* pNumChannels,
+            audio_format_t* pFormat,
+            const sp<IMemoryHeap>& heap, size_t *pSize) = 0;
+
+    virtual status_t         decode(int fd, int64_t offset, int64_t length, uint32_t *pSampleRate,
+                                    int* pNumChannels, audio_format_t* pFormat,
+                                    const sp<IMemoryHeap>& heap, size_t *pSize) = 0;
     virtual sp<IOMX>            getOMX() = 0;
     virtual sp<ICrypto>         makeCrypto() = 0;
-    virtual sp<IHDCP>           makeHDCP() = 0;
+    virtual sp<IDrm>            makeDrm() = 0;
+    virtual sp<IHDCP>           makeHDCP(bool createEncryptionModule) = 0;
+    virtual sp<IMediaCodecList> getCodecList() const = 0;
 
     // Connects to a remote display.
     // 'iface' specifies the address of the local interface on which to listen for

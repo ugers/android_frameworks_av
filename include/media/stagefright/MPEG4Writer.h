@@ -23,6 +23,7 @@
 #include <media/stagefright/MediaWriter.h>
 #include <utils/List.h>
 #include <utils/threads.h>
+#include <media/stagefright/ExtendedStats.h>
 
 namespace android {
 
@@ -35,7 +36,13 @@ public:
     MPEG4Writer(const char *filename);
     MPEG4Writer(int fd);
 
+    // Limitations
+    // 1. No more than 2 tracks can be added
+    // 2. Only video or audio source can be added
+    // 3. No more than one video and/or one audio source can be added.
     virtual status_t addSource(const sp<MediaSource> &source);
+
+    // Returns INVALID_OPERATION if there is no source or track.
     virtual status_t start(MetaData *param = NULL);
     virtual status_t stop() { return reset(); }
     virtual status_t pause();
@@ -57,8 +64,8 @@ public:
     int32_t getTimeScale() const { return mTimeScale; }
 
     status_t setGeoData(int latitudex10000, int longitudex10000);
-    void setStartTimeOffsetMs(int ms) { mStartTimeOffsetMs = ms; }
-    int32_t getStartTimeOffsetMs() const { return mStartTimeOffsetMs; }
+    virtual void setStartTimeOffsetMs(int ms) { mStartTimeOffsetMs = ms; }
+    virtual int32_t getStartTimeOffsetMs() const { return mStartTimeOffsetMs; }
 
 protected:
     virtual ~MPEG4Writer();
@@ -68,6 +75,7 @@ private:
 
     int  mFd;
     status_t mInitCheck;
+    bool mIsRealTimeRecording;
     bool mUse4ByteNalLength;
     bool mUse32BitOffset;
     bool mIsFileSizeLimitExplicitlyRequested;
@@ -89,6 +97,7 @@ private:
     int mLongitudex10000;
     bool mAreGeoTagsAvailable;
     int32_t mStartTimeOffsetMs;
+    int mHFRRatio;
 
     Mutex mLock;
 
@@ -162,6 +171,13 @@ private:
     // Only makes sense for H.264/AVC
     bool useNalLengthFour();
 
+    // Return whether the writer is used for real time recording.
+    // In real time recording mode, new samples will be allowed to buffered into
+    // chunks in higher priority thread, even though the file writer has not
+    // drained the chunks yet.
+    // By default, real time recording is on.
+    bool isRealTimeRecording() const;
+
     void lock();
     void unlock();
 
@@ -190,6 +206,9 @@ private:
 
     MPEG4Writer(const MPEG4Writer &);
     MPEG4Writer &operator=(const MPEG4Writer &);
+
+    bool mIsVideoHEVC;
+    bool mIsAudioAMR;
 };
 
 }  // namespace android

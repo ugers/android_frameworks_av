@@ -33,12 +33,15 @@ enum {
     START,
     STOP,
     FLUSH,
-    MUTE,
+    RESERVED, // was MUTE
     PAUSE,
     ATTACH_AUX_EFFECT,
     ALLOCATE_TIMED_BUFFER,
     QUEUE_TIMED_BUFFER,
     SET_MEDIA_TIME_TRANSFORM,
+    SET_PARAMETERS,
+    GET_TIMESTAMP,
+    SIGNAL,
 };
 
 class BpAudioTrack : public BpInterface<IAudioTrack>
@@ -57,6 +60,9 @@ public:
         status_t status = remote()->transact(GET_CBLK, data, &reply);
         if (status == NO_ERROR) {
             cblk = interface_cast<IMemory>(reply.readStrongBinder());
+            if (cblk != 0 && cblk->pointer() == NULL) {
+                cblk.clear();
+            }
         }
         return cblk;
     }
@@ -88,14 +94,6 @@ public:
         remote()->transact(FLUSH, data, &reply);
     }
 
-    virtual void mute(bool e)
-    {
-        Parcel data, reply;
-        data.writeInterfaceToken(IAudioTrack::getInterfaceDescriptor());
-        data.writeInt32(e);
-        remote()->transact(MUTE, data, &reply);
-    }
-
     virtual void pause()
     {
         Parcel data, reply;
@@ -120,13 +118,16 @@ public:
     virtual status_t allocateTimedBuffer(size_t size, sp<IMemory>* buffer) {
         Parcel data, reply;
         data.writeInterfaceToken(IAudioTrack::getInterfaceDescriptor());
-        data.writeInt32(size);
+        data.writeInt64(size);
         status_t status = remote()->transact(ALLOCATE_TIMED_BUFFER,
                                              data, &reply);
         if (status == NO_ERROR) {
             status = reply.readInt32();
             if (status == NO_ERROR) {
                 *buffer = interface_cast<IMemory>(reply.readStrongBinder());
+                if (*buffer != 0 && (*buffer)->pointer() == NULL) {
+                    (*buffer).clear();
+                }
             }
         }
         return status;
@@ -162,6 +163,38 @@ public:
         }
         return status;
     }
+
+    virtual status_t setParameters(const String8& keyValuePairs) {
+        Parcel data, reply;
+        data.writeInterfaceToken(IAudioTrack::getInterfaceDescriptor());
+        data.writeString8(keyValuePairs);
+        status_t status = remote()->transact(SET_PARAMETERS, data, &reply);
+        if (status == NO_ERROR) {
+            status = reply.readInt32();
+        }
+        return status;
+    }
+
+    virtual status_t getTimestamp(AudioTimestamp& timestamp) {
+        Parcel data, reply;
+        data.writeInterfaceToken(IAudioTrack::getInterfaceDescriptor());
+        status_t status = remote()->transact(GET_TIMESTAMP, data, &reply);
+        if (status == NO_ERROR) {
+            status = reply.readInt32();
+            if (status == NO_ERROR) {
+                timestamp.mPosition = reply.readInt32();
+                timestamp.mTime.tv_sec = reply.readInt32();
+                timestamp.mTime.tv_nsec = reply.readInt32();
+            }
+        }
+        return status;
+    }
+
+    virtual void signal() {
+        Parcel data, reply;
+        data.writeInterfaceToken(IAudioTrack::getInterfaceDescriptor());
+        remote()->transact(SIGNAL, data, &reply);
+    }
 };
 
 IMPLEMENT_META_INTERFACE(AudioTrack, "android.media.IAudioTrack");
@@ -192,11 +225,6 @@ status_t BnAudioTrack::onTransact(
             flush();
             return NO_ERROR;
         } break;
-        case MUTE: {
-            CHECK_INTERFACE(IAudioTrack, data, reply);
-            mute( data.readInt32() );
-            return NO_ERROR;
-        } break;
         case PAUSE: {
             CHECK_INTERFACE(IAudioTrack, data, reply);
             pause();
@@ -210,7 +238,7 @@ status_t BnAudioTrack::onTransact(
         case ALLOCATE_TIMED_BUFFER: {
             CHECK_INTERFACE(IAudioTrack, data, reply);
             sp<IMemory> buffer;
-            status_t status = allocateTimedBuffer(data.readInt32(), &buffer);
+            status_t status = allocateTimedBuffer(data.readInt64(), &buffer);
             reply->writeInt32(status);
             if (status == NO_ERROR) {
                 reply->writeStrongBinder(buffer->asBinder());
@@ -234,6 +262,29 @@ status_t BnAudioTrack::onTransact(
             xform.a_to_b_denom = data.readInt32();
             int target = data.readInt32();
             reply->writeInt32(setMediaTimeTransform(xform, target));
+            return NO_ERROR;
+        } break;
+        case SET_PARAMETERS: {
+            CHECK_INTERFACE(IAudioTrack, data, reply);
+            String8 keyValuePairs(data.readString8());
+            reply->writeInt32(setParameters(keyValuePairs));
+            return NO_ERROR;
+        } break;
+        case GET_TIMESTAMP: {
+            CHECK_INTERFACE(IAudioTrack, data, reply);
+            AudioTimestamp timestamp;
+            status_t status = getTimestamp(timestamp);
+            reply->writeInt32(status);
+            if (status == NO_ERROR) {
+                reply->writeInt32(timestamp.mPosition);
+                reply->writeInt32(timestamp.mTime.tv_sec);
+                reply->writeInt32(timestamp.mTime.tv_nsec);
+            }
+            return NO_ERROR;
+        } break;
+        case SIGNAL: {
+            CHECK_INTERFACE(IAudioTrack, data, reply);
+            signal();
             return NO_ERROR;
         } break;
         default:

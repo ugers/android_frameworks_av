@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 
+#include <inttypes.h>
+
 //#define LOG_NDEBUG 0
 #define LOG_TAG "CameraSourceTimeLapse"
 
@@ -36,15 +38,20 @@ CameraSourceTimeLapse *CameraSourceTimeLapse::CreateFromCamera(
         const sp<ICamera> &camera,
         const sp<ICameraRecordingProxy> &proxy,
         int32_t cameraId,
+        const String16& clientName,
+        uid_t clientUid,
         Size videoSize,
         int32_t videoFrameRate,
-        const sp<Surface>& surface,
-        int64_t timeBetweenFrameCaptureUs) {
+        const sp<IGraphicBufferProducer>& surface,
+        int64_t timeBetweenFrameCaptureUs,
+        bool storeMetaDataInVideoBuffers) {
 
     CameraSourceTimeLapse *source = new
             CameraSourceTimeLapse(camera, proxy, cameraId,
+                clientName, clientUid,
                 videoSize, videoFrameRate, surface,
-                timeBetweenFrameCaptureUs);
+                timeBetweenFrameCaptureUs,
+                storeMetaDataInVideoBuffers);
 
     if (source != NULL) {
         if (source->initCheck() != OK) {
@@ -59,23 +66,29 @@ CameraSourceTimeLapse::CameraSourceTimeLapse(
         const sp<ICamera>& camera,
         const sp<ICameraRecordingProxy>& proxy,
         int32_t cameraId,
+        const String16& clientName,
+        uid_t clientUid,
         Size videoSize,
         int32_t videoFrameRate,
-        const sp<Surface>& surface,
-        int64_t timeBetweenFrameCaptureUs)
-    : CameraSource(camera, proxy, cameraId, videoSize, videoFrameRate, surface, true),
+        const sp<IGraphicBufferProducer>& surface,
+        int64_t timeBetweenFrameCaptureUs,
+        bool storeMetaDataInVideoBuffers)
+      : CameraSource(camera, proxy, cameraId, clientName, clientUid,
+                videoSize, videoFrameRate, surface,
+                storeMetaDataInVideoBuffers),
       mTimeBetweenTimeLapseVideoFramesUs(1E6/videoFrameRate),
       mLastTimeLapseFrameRealTimestampUs(0),
       mSkipCurrentFrame(false) {
 
     mTimeBetweenFrameCaptureUs = timeBetweenFrameCaptureUs;
-    ALOGD("starting time lapse mode: %lld us",
+    ALOGD("starting time lapse mode: %" PRId64 " us",
         mTimeBetweenFrameCaptureUs);
 
     mVideoWidth = videoSize.width;
     mVideoHeight = videoSize.height;
 
-    if (!trySettingVideoSize(videoSize.width, videoSize.height)) {
+    if (OK == mInitCheck && !trySettingVideoSize(videoSize.width, videoSize.height)) {
+        releaseCamera();
         mInitCheck = NO_INIT;
     }
 
@@ -124,7 +137,7 @@ bool CameraSourceTimeLapse::trySettingVideoSize(
     }
 
     bool videoSizeSupported = false;
-    for (uint32_t i = 0; i < supportedSizes.size(); ++i) {
+    for (size_t i = 0; i < supportedSizes.size(); ++i) {
         int32_t pictureWidth = supportedSizes[i].width;
         int32_t pictureHeight = supportedSizes[i].height;
 
@@ -221,7 +234,7 @@ sp<IMemory> CameraSourceTimeLapse::createIMemoryCopy(
     return newMemory;
 }
 
-bool CameraSourceTimeLapse::skipCurrentFrame(int64_t timestampUs) {
+bool CameraSourceTimeLapse::skipCurrentFrame(int64_t /* timestampUs */) {
     ALOGV("skipCurrentFrame");
     if (mSkipCurrentFrame) {
         mSkipCurrentFrame = false;
@@ -255,7 +268,7 @@ bool CameraSourceTimeLapse::skipFrameAndModifyTimeStamp(int64_t *timestampUs) {
 
             // Really make sure that this video recording frame will not be dropped.
             if (*timestampUs < mStartTimeUs) {
-                ALOGI("set timestampUs to start time stamp %lld us", mStartTimeUs);
+                ALOGI("set timestampUs to start time stamp %" PRId64 " us", mStartTimeUs);
                 *timestampUs = mStartTimeUs;
             }
             return false;

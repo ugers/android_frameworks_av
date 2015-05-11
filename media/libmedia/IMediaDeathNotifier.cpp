@@ -49,10 +49,10 @@ IMediaDeathNotifier::getMediaPlayerService()
         } while (true);
 
         if (sDeathNotifier == NULL) {
-        sDeathNotifier = new DeathNotifier();
-    }
-    binder->linkToDeath(sDeathNotifier);
-    sMediaPlayerService = interface_cast<IMediaPlayerService>(binder);
+            sDeathNotifier = new DeathNotifier();
+        }
+        binder->linkToDeath(sDeathNotifier);
+        sMediaPlayerService = interface_cast<IMediaPlayerService>(binder);
     }
     ALOGE_IF(sMediaPlayerService == 0, "no media player service!?");
     return sMediaPlayerService;
@@ -75,7 +75,7 @@ IMediaDeathNotifier::removeObitRecipient(const wp<IMediaDeathNotifier>& recipien
 }
 
 void
-IMediaDeathNotifier::DeathNotifier::binderDied(const wp<IBinder>& who) {
+IMediaDeathNotifier::DeathNotifier::binderDied(const wp<IBinder>& who __unused) {
     ALOGW("media server died");
 
     // Need to do this with the lock held

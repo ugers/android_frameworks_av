@@ -20,15 +20,27 @@
 #define MEDIA_EXTRACTOR_H_
 
 #include <utils/RefBase.h>
+#include <media/stagefright/DataSource.h>
 
 namespace android {
 
-class DataSource;
 class MediaSource;
 class MetaData;
 
 class MediaExtractor : public RefBase {
 public:
+    typedef MediaExtractor *(*CreateFunc)(const sp<DataSource> &source,
+            const char *mime, const sp<AMessage> &meta);
+
+    struct Plugin {
+        DataSource::SnifferFunc sniff;
+        CreateFunc create;
+    };
+
+    static Plugin *getPlugin() {
+        return &sPlugin;
+    }
+
     static sp<MediaExtractor> Create(
             const sp<DataSource> &source, const char *mime = NULL);
 
@@ -67,13 +79,16 @@ public:
     virtual char* getDrmTrackInfo(size_t trackID, int *len) {
         return NULL;
     }
+    virtual void setUID(uid_t uid) {
+    }
 
 protected:
-    MediaExtractor() {}
+    MediaExtractor() : mIsDrm(false) {}
     virtual ~MediaExtractor() {}
 
 private:
     bool mIsDrm;
+    static Plugin sPlugin;
 
     MediaExtractor(const MediaExtractor &);
     MediaExtractor &operator=(const MediaExtractor &);

@@ -19,6 +19,7 @@
 
 #include <utils/KeyedVector.h>
 #include <utils/String8.h>
+#include "camera/CameraParametersExtra.h"
 
 namespace android {
 
@@ -131,6 +132,12 @@ public:
 
     void dump() const;
     status_t dump(int fd, const Vector<String16>& args) const;
+
+    /**
+     * Returns a Vector containing the supported preview formats
+     * as enums given in graphics.h.
+     */
+    void getSupportedPreviewFormats(Vector<int>& formats) const;
 
     // Parameter keys to communicate between camera application and driver.
     // The access (read/write, read only, or write only) is viewed from the
@@ -641,6 +648,7 @@ public:
     // stream and record stabilized videos.
     static const char KEY_VIDEO_STABILIZATION_SUPPORTED[];
 
+<<<<<<< HEAD
 #ifdef HAVE_ISO
     static const char KEY_SUPPORTED_ISO_MODES[];
     static const char KEY_ISO_MODE[];
@@ -722,6 +730,11 @@ public:
 #endif
 
     static const char KEY_AE_BRACKET_HDR[];
+=======
+    // Supported modes for special effects with light.
+    // Example values: "lowlight,hdr".
+    static const char KEY_LIGHTFX[];
+>>>>>>> 8b8d02886bd9fb8d5ad451c03e486cfad74aa74e
 
     // Value for KEY_ZOOM_SUPPORTED or KEY_SMOOTH_ZOOM_SUPPORTED.
     static const char TRUE[];
@@ -757,6 +770,7 @@ public:
     static const char WHITE_BALANCE_CLOUDY_DAYLIGHT[];
     static const char WHITE_BALANCE_TWILIGHT[];
     static const char WHITE_BALANCE_SHADE[];
+    static const char WHITE_BALANCE_MANUAL_CCT[];
 
     // Values for effect settings.
     static const char EFFECT_NONE[];
@@ -918,6 +932,7 @@ public:
     // other modes.
     static const char FOCUS_MODE_CONTINUOUS_PICTURE[];
 
+<<<<<<< HEAD
 #ifdef QCOM_HARDWARE
 #ifdef QCOM_LEGACY_CAM_PARAMS
     static const char FOCUS_MODE_CONTINUOUS_CAMERA[];
@@ -1072,6 +1087,26 @@ public:
 #endif
     void getSupportedHfrSizes(Vector<Size> &sizes) const;
 #endif
+=======
+    static const char FOCUS_MODE_MANUAL_POSITION[];
+
+    // Values for light special effects
+    // Low-light enhancement mode
+    static const char LIGHTFX_LOWLIGHT[];
+    // High-dynamic range mode
+    static const char LIGHTFX_HDR[];
+
+#ifdef CAMERA_PARAMETERS_EXTRA_H
+CAMERA_PARAMETERS_EXTRA_H
+#endif
+
+    /**
+     * Returns the the supported preview formats as an enum given in graphics.h
+     * corrsponding to the format given in the input string or -1 if no such
+     * conversion exists.
+     */
+    static int previewFormatToEnum(const char* format);
+>>>>>>> 8b8d02886bd9fb8d5ad451c03e486cfad74aa74e
 
 private:
     DefaultKeyedVector<String8,String8>    mMap;

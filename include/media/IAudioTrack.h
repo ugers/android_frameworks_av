@@ -25,6 +25,8 @@
 #include <binder/IInterface.h>
 #include <binder/IMemory.h>
 #include <utils/LinearTransform.h>
+#include <utils/String8.h>
+#include <media/AudioTimestamp.h>
 
 namespace android {
 
@@ -54,11 +56,6 @@ public:
      */
     virtual void        flush() = 0;
 
-    /* Mute or unmute this track.
-     * While muted, the callback, if set, is still called.
-     */
-    virtual void        mute(bool) = 0;
-
     /* Pause a track. If set, the callback will cease being called and
      * obtainBuffer will return an error. Buffers that are already released
      * will continue to be processed, unless/until flush() is called.
@@ -87,6 +84,15 @@ public:
        or Tungsten time. The values for target are defined in AudioTrack.h */
     virtual status_t    setMediaTimeTransform(const LinearTransform& xform,
                                               int target) = 0;
+
+    /* Send parameters to the audio hardware */
+    virtual status_t    setParameters(const String8& keyValuePairs) = 0;
+
+    /* Return NO_ERROR if timestamp is valid.  timestamp is undefined otherwise. */
+    virtual status_t    getTimestamp(AudioTimestamp& timestamp) = 0;
+
+    /* Signal the playback thread for a change in control block */
+    virtual void        signal() = 0;
 };
 
 // ----------------------------------------------------------------------------

@@ -25,14 +25,14 @@ namespace android {
 class MediaRecorderBase;
 class MediaPlayerService;
 class ICameraRecordingProxy;
-class ISurfaceTexture;
+class IGraphicBufferProducer;
 
 class MediaRecorderClient : public BnMediaRecorder
 {
 public:
     virtual     status_t   setCamera(const sp<ICamera>& camera,
                                     const sp<ICameraRecordingProxy>& proxy);
-    virtual     status_t   setPreviewSurface(const sp<Surface>& surface);
+    virtual     status_t   setPreviewSurface(const sp<IGraphicBufferProducer>& surface);
     virtual     status_t   setVideoSource(int vs);
     virtual     status_t   setAudioSource(int as);
     virtual     status_t   setOutputFormat(int of);
@@ -46,18 +46,24 @@ public:
     virtual     status_t   setParameters(const String8& params);
     virtual     status_t   setListener(
                               const sp<IMediaRecorderClient>& listener);
+    virtual     status_t   setClientName(const String16& clientName);
     virtual     status_t   prepare();
     virtual     status_t   getMaxAmplitude(int* max);
     virtual     status_t   start();
+    virtual     status_t   pause();
     virtual     status_t   stop();
     virtual     status_t   reset();
     virtual     status_t   init();
     virtual     status_t   close();
     virtual     status_t   release();
     virtual     status_t   dump(int fd, const Vector<String16>& args) const;
+<<<<<<< HEAD
     virtual     sp<ISurfaceTexture> querySurfaceMediaSource();
     virtual   status_t queueBuffer(int index, int addr_y, int addr_c, int64_t timestamp);
     virtual    sp<IMemory> getOneBsFrame(int mode);
+=======
+    virtual     sp<IGraphicBufferProducer> querySurfaceMediaSource();
+>>>>>>> 8b8d02886bd9fb8d5ad451c03e486cfad74aa74e
 
 private:
     friend class           MediaPlayerService;  // for accessing private constructor

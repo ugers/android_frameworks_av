@@ -14,6 +14,10 @@
  * limitations under the License.
  */
 
+//#define LOG_NDEBUG 0
+#define LOG_TAG "AHierarchicalStateMachine"
+#include <utils/Log.h>
+
 #include <media/stagefright/foundation/AHierarchicalStateMachine.h>
 
 #include <media/stagefright/foundation/ADebug.h>
@@ -47,7 +51,7 @@ AHierarchicalStateMachine::AHierarchicalStateMachine() {
 AHierarchicalStateMachine::~AHierarchicalStateMachine() {
 }
 
-void AHierarchicalStateMachine::onMessageReceived(const sp<AMessage> &msg) {
+void AHierarchicalStateMachine::handleMessage(const sp<AMessage> &msg) {
     sp<AState> save = mState;
 
     sp<AState> cur = mState;

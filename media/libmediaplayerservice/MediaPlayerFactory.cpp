@@ -30,6 +30,7 @@
 #include "TestPlayerStub.h"
 #include "StagefrightPlayer.h"
 #include "nuplayer/NuPlayerDriver.h"
+#include <dlfcn.h>
 
 #include "CedarPlayer.h"
 #include "CedarAPlayerWrapper.h"
@@ -231,19 +232,24 @@ status_t MediaPlayerFactory::registerFactory_l(IFactory* factory,
     return OK;
 }
 
-player_type MediaPlayerFactory::getDefaultPlayerType() {
+static player_type getDefaultPlayerType() {
     char value[PROPERTY_VALUE_MAX];
-    if (property_get("media.stagefright.use-nuplayer", value, NULL)
-            && (!strcmp("1", value) || !strcasecmp("true", value))) {
-        return NU_PLAYER;
+    // TODO: remove this EXPERIMENTAL developer settings property
+    if (property_get("persist.sys.media.use-awesome", value, NULL)
+            && !strcasecmp("true", value)) {
+        return STAGEFRIGHT_PLAYER;
     }
 
+<<<<<<< HEAD
 #if 0
     return STAGEFRIGHT_PLAYER;
 #else
     return CEDARX_PLAYER;
 #endif
 
+=======
+    return NU_PLAYER;
+>>>>>>> 8b8d02886bd9fb8d5ad451c03e486cfad74aa74e
 }
 
 status_t MediaPlayerFactory::registerFactory(IFactory* factory,
@@ -276,7 +282,7 @@ void MediaPlayerFactory::unregisterFactory(player_type type) {
     }                                                   \
                                                         \
     if (0.0 == bestScore) {                             \
-        bestScore = getDefaultPlayerType();             \
+        ret = getDefaultPlayerType();                   \
     }                                                   \
                                                         \
     return ret;
@@ -362,21 +368,24 @@ sp<MediaPlayerBase> MediaPlayerFactory::createPlayer(
 class StagefrightPlayerFactory :
     public MediaPlayerFactory::IFactory {
   public:
-    virtual float scoreFactory(const sp<IMediaPlayer>& client,
+    virtual float scoreFactory(const sp<IMediaPlayer>& /*client*/,
                                int fd,
                                int64_t offset,
-                               int64_t length,
-                               float curScore) {
-        char buf[20];
-        lseek(fd, offset, SEEK_SET);
-        read(fd, buf, sizeof(buf));
-        lseek(fd, offset, SEEK_SET);
+                               int64_t /*length*/,
+                               float /*curScore*/) {
+        if (getDefaultPlayerType()
+                == STAGEFRIGHT_PLAYER) {
+            char buf[20];
+            lseek(fd, offset, SEEK_SET);
+            read(fd, buf, sizeof(buf));
+            lseek(fd, offset, SEEK_SET);
 
-        long ident = *((long*)buf);
+            uint32_t ident = *((uint32_t*)buf);
 
-        // Ogg vorbis?
-        if (ident == 0x5367674f) // 'OggS'
-            return 1.0;
+            // Ogg vorbis?
+            if (ident == 0x5367674f) // 'OggS'
+                return 1.0;
+        }
 
         return 0.0;
     }
@@ -389,7 +398,7 @@ class StagefrightPlayerFactory :
 
 class NuPlayerFactory : public MediaPlayerFactory::IFactory {
   public:
-    virtual float scoreFactory(const sp<IMediaPlayer>& client,
+    virtual float scoreFactory(const sp<IMediaPlayer>& /*client*/,
                                const char* url,
                                float curScore) {
         static const float kOurScore = 0.8;
@@ -398,7 +407,8 @@ class NuPlayerFactory : public MediaPlayerFactory::IFactory {
             return 0.0;
 
         if (!strncasecmp("http://", url, 7)
-                || !strncasecmp("https://", url, 8)) {
+                || !strncasecmp("https://", url, 8)
+                || !strncasecmp("file://", url, 7)) {
             size_t len = strlen(url);
             if (len >= 5 && !strcasecmp(".m3u8", &url[len - 5])) {
                 return kOurScore;
@@ -407,18 +417,27 @@ class NuPlayerFactory : public MediaPlayerFactory::IFactory {
             if (strstr(url,"m3u8")) {
                 return kOurScore;
             }
+
+            if ((len >= 4 && !strcasecmp(".sdp", &url[len - 4])) || strstr(url, ".sdp?")) {
+                return kOurScore;
+            }
         }
 
         if (!strncasecmp("rtsp://", url, 7)) {
             return kOurScore;
         }
 
+        if (!strncasecmp("http://", url, 7)
+                || !strncasecmp("https://", url, 8)) {
+            return kOurScore;
+        }
+
         return 0.0;
     }
 
-    virtual float scoreFactory(const sp<IMediaPlayer>& client,
-                               const sp<IStreamSource> &source,
-                               float curScore) {
+    virtual float scoreFactory(const sp<IMediaPlayer>& /*client*/,
+                               const sp<IStreamSource>& /*source*/,
+                               float /*curScore*/) {
         return 1.0;
     }
 
@@ -430,7 +449,7 @@ class NuPlayerFactory : public MediaPlayerFactory::IFactory {
 
 class SonivoxPlayerFactory : public MediaPlayerFactory::IFactory {
   public:
-    virtual float scoreFactory(const sp<IMediaPlayer>& client,
+    virtual float scoreFactory(const sp<IMediaPlayer>& /*client*/,
                                const char* url,
                                float curScore) {
         static const float kOurScore = 0.4;
@@ -461,7 +480,7 @@ class SonivoxPlayerFactory : public MediaPlayerFactory::IFactory {
         return 0.0;
     }
 
-    virtual float scoreFactory(const sp<IMediaPlayer>& client,
+    virtual float scoreFactory(const sp<IMediaPlayer>& /*client*/,
                                int fd,
                                int64_t offset,
                                int64_t length,
@@ -499,9 +518,9 @@ class SonivoxPlayerFactory : public MediaPlayerFactory::IFactory {
 
 class TestPlayerFactory : public MediaPlayerFactory::IFactory {
   public:
-    virtual float scoreFactory(const sp<IMediaPlayer>& client,
+    virtual float scoreFactory(const sp<IMediaPlayer>& /*client*/,
                                const char* url,
-                               float curScore) {
+                               float /*curScore*/) {
         if (TestPlayerStub::canBeUsed(url)) {
             return 1.0;
         }
@@ -563,6 +582,32 @@ void MediaPlayerFactory::registerBuiltinFactories() {
     registerFactory_l(new SonivoxPlayerFactory(), SONIVOX_PLAYER);
     registerFactory_l(new TestPlayerFactory(), TEST_PLAYER);
 
+    const char* FACTORY_LIB           = "libdashplayer.so";
+    const char* FACTORY_CREATE_FN     = "CreateDASHFactory";
+
+    MediaPlayerFactory::IFactory* pFactory  = NULL;
+    void* pFactoryLib = NULL;
+    typedef MediaPlayerFactory::IFactory* (*CreateDASHDriverFn)();
+    ALOGE("calling dlopen on FACTORY_LIB");
+    pFactoryLib = ::dlopen(FACTORY_LIB, RTLD_LAZY);
+    if (pFactoryLib == NULL) {
+      ALOGE("Failed to open FACTORY_LIB Error : %s ",::dlerror());
+    } else {
+      CreateDASHDriverFn pCreateFnPtr;
+      ALOGE("calling dlsym on pFactoryLib for FACTORY_CREATE_FN ");
+      pCreateFnPtr = (CreateDASHDriverFn) dlsym(pFactoryLib, FACTORY_CREATE_FN);
+      if (pCreateFnPtr == NULL) {
+          ALOGE("Could not locate pCreateFnPtr");
+      } else {
+        pFactory = pCreateFnPtr();
+        if(pFactory == NULL) {
+          ALOGE("Failed to invoke CreateDASHDriverFn...");
+        } else {
+          ALOGE("registering DASH Player factory...");
+          registerFactory_l(pFactory,DASH_PLAYER);
+        }
+      }
+    }
     sInitComplete = true;
 }
 

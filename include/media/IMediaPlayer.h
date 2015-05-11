@@ -33,7 +33,8 @@ namespace android {
 class Parcel;
 class Surface;
 class IStreamSource;
-class ISurfaceTexture;
+class IGraphicBufferProducer;
+struct IMediaHTTPService;
 
 class IMediaPlayer: public IInterface
 {
@@ -42,12 +43,15 @@ public:
 
     virtual void            disconnect() = 0;
 
-    virtual status_t        setDataSource(const char *url,
-                                    const KeyedVector<String8, String8>* headers) = 0;
+    virtual status_t        setDataSource(
+            const sp<IMediaHTTPService> &httpService,
+            const char *url,
+            const KeyedVector<String8, String8>* headers) = 0;
+
     virtual status_t        setDataSource(int fd, int64_t offset, int64_t length) = 0;
     virtual status_t        setDataSource(const sp<IStreamSource>& source) = 0;
     virtual status_t        setVideoSurfaceTexture(
-                                    const sp<ISurfaceTexture>& surfaceTexture) = 0;
+                                    const sp<IGraphicBufferProducer>& bufferProducer) = 0;
     virtual status_t        prepareAsync() = 0;
     virtual status_t        start() = 0;
     virtual status_t        stop() = 0;
@@ -97,6 +101,7 @@ public:
     virtual status_t        getMetadata(bool update_only,
                                         bool apply_filter,
                                         Parcel *metadata) = 0;
+<<<<<<< HEAD
     virtual status_t        setDataSource(const sp<IStreamSource>& source, int type) = 0;
     /* add by Gary. start {{----------------------------------- */
     /* 2011-9-15 10:25:10 */
@@ -154,6 +159,18 @@ public:
     /* add two general interfaces for expansibility */
     virtual status_t        generalInterface(int cmd, int int1, int int2, int int3, void *p) = 0;
     /* add by Gary. end   -----------------------------------}} */
+=======
+
+    // Suspend the video player
+    // In other words, just release the audio decoder and the video decoder
+    // @return OK if the video player was suspended successfully
+    virtual status_t        suspend() = 0;
+
+    // Resume the video player
+    // Init the audio decoder and the video decoder
+    // @return OK if the video player was resumed successfully
+    virtual status_t        resume() = 0;
+>>>>>>> 8b8d02886bd9fb8d5ad451c03e486cfad74aa74e
 };
 
 // ----------------------------------------------------------------------------

@@ -19,8 +19,8 @@
 namespace android {
 
 FastTrack::FastTrack() :
-    mBufferProvider(NULL), mVolumeProvider(NULL), mSampleRate(0),
-    mChannelMask(AUDIO_CHANNEL_OUT_STEREO), mGeneration(0)
+    mBufferProvider(NULL), mVolumeProvider(NULL),
+    mChannelMask(AUDIO_CHANNEL_OUT_STEREO), mFormat(AUDIO_FORMAT_INVALID), mGeneration(0)
 {
 }
 
@@ -28,10 +28,10 @@ FastTrack::~FastTrack()
 {
 }
 
-FastMixerState::FastMixerState() :
+FastMixerState::FastMixerState() : FastThreadState(),
+    // mFastTracks
     mFastTracksGen(0), mTrackMask(0), mOutputSink(NULL), mOutputSinkGen(0),
-    mFrameCount(0), mCommand(INITIAL), mColdFutexAddr(NULL), mColdGen(0),
-    mDumpState(NULL), mTeeSink(NULL)
+    mFrameCount(0), mTeeSink(NULL)
 {
 }
 

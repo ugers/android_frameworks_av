@@ -34,14 +34,16 @@ public:
     virtual status_t setUID(uid_t uid);
 
     virtual status_t setDataSource(
-            const char *url, const KeyedVector<String8, String8> *headers);
+            const sp<IMediaHTTPService> &httpService,
+            const char *url,
+            const KeyedVector<String8, String8> *headers);
 
     virtual status_t setDataSource(int fd, int64_t offset, int64_t length);
 
     virtual status_t setDataSource(const sp<IStreamSource> &source);
 
     virtual status_t setVideoSurfaceTexture(
-            const sp<ISurfaceTexture> &surfaceTexture);
+            const sp<IGraphicBufferProducer> &bufferProducer);
     virtual status_t prepare();
     virtual status_t prepareAsync();
     virtual status_t start();
@@ -63,6 +65,9 @@ public:
             const media::Metadata::Filter& ids, Parcel *records);
 
     virtual status_t dump(int fd, const Vector<String16> &args) const;
+
+    virtual status_t suspend();
+    virtual status_t resume();
 
 private:
     AwesomePlayer *mPlayer;

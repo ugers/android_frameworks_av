@@ -19,11 +19,13 @@
 #define ARRAY_SIZE(array) (sizeof array / sizeof array[0])
 //#define LOG_NDEBUG 0
 
-#include <cutils/log.h>
 #include <assert.h>
+#include <inttypes.h>
+#include <new>
 #include <stdlib.h>
 #include <string.h>
-#include <new>
+
+#include <cutils/log.h>
 #include "EffectBundle.h"
 
 
@@ -82,7 +84,7 @@ const effect_descriptor_t gBassBoostDescriptor = {
         {0x0634f220, 0xddd4, 0x11db, 0xa0fc, { 0x00, 0x02, 0xa5, 0xd5, 0xc5, 0x1b }},
         {0x8631f300, 0x72e2, 0x11df, 0xb57e, {0x00, 0x02, 0xa5, 0xd5, 0xc5, 0x1b}}, // uuid
         EFFECT_CONTROL_API_VERSION,
-        (EFFECT_FLAG_TYPE_INSERT | EFFECT_FLAG_INSERT_LAST | EFFECT_FLAG_DEVICE_IND
+        (EFFECT_FLAG_TYPE_INSERT | EFFECT_FLAG_INSERT_FIRST | EFFECT_FLAG_DEVICE_IND
         | EFFECT_FLAG_VOLUME_CTRL),
         BASS_BOOST_CUP_LOAD_ARM9E,
         BUNDLE_MEM_USAGE,
@@ -108,7 +110,7 @@ const effect_descriptor_t gEqualizerDescriptor = {
         {0x0bed4300, 0xddd6, 0x11db, 0x8f34, {0x00, 0x02, 0xa5, 0xd5, 0xc5, 0x1b}}, // type
         {0xce772f20, 0x847d, 0x11df, 0xbb17, {0x00, 0x02, 0xa5, 0xd5, 0xc5, 0x1b}}, // uuid Eq NXP
         EFFECT_CONTROL_API_VERSION,
-        (EFFECT_FLAG_TYPE_INSERT | EFFECT_FLAG_INSERT_LAST | EFFECT_FLAG_VOLUME_CTRL),
+        (EFFECT_FLAG_TYPE_INSERT | EFFECT_FLAG_INSERT_FIRST | EFFECT_FLAG_VOLUME_CTRL),
         EQUALIZER_CUP_LOAD_ARM9E,
         BUNDLE_MEM_USAGE,
         "Equalizer",
@@ -138,66 +140,30 @@ void Effect_getConfig          (EffectContext *pContext, effect_config_t *pConfi
 int  BassBoost_setParameter    (EffectContext *pContext, void *pParam, void *pValue);
 int  BassBoost_getParameter    (EffectContext *pContext,
                                void           *pParam,
-                               size_t         *pValueSize,
+                               uint32_t       *pValueSize,
                                void           *pValue);
 int  Virtualizer_setParameter  (EffectContext *pContext, void *pParam, void *pValue);
 int  Virtualizer_getParameter  (EffectContext *pContext,
                                void           *pParam,
-                               size_t         *pValueSize,
+                               uint32_t       *pValueSize,
                                void           *pValue);
 int  Equalizer_setParameter    (EffectContext *pContext, void *pParam, void *pValue);
 int  Equalizer_getParameter    (EffectContext *pContext,
                                 void          *pParam,
-                                size_t        *pValueSize,
+                                uint32_t      *pValueSize,
                                 void          *pValue);
 int  Volume_setParameter       (EffectContext *pContext, void *pParam, void *pValue);
 int  Volume_getParameter       (EffectContext *pContext,
                                 void          *pParam,
-                                size_t        *pValueSize,
+                                uint32_t      *pValueSize,
                                 void          *pValue);
 int Effect_setEnabled(EffectContext *pContext, bool enabled);
 
 /* Effect Library Interface Implementation */
-extern "C" int EffectQueryNumberEffects(uint32_t *pNumEffects){
-    ALOGV("\n\tEffectQueryNumberEffects start");
-    *pNumEffects = 4;
-    ALOGV("\tEffectQueryNumberEffects creating %d effects", *pNumEffects);
-    ALOGV("\tEffectQueryNumberEffects end\n");
-    return 0;
-}     /* end EffectQueryNumberEffects */
-
-extern "C" int EffectQueryEffect(uint32_t index, effect_descriptor_t *pDescriptor){
-    ALOGV("\n\tEffectQueryEffect start");
-    ALOGV("\tEffectQueryEffect processing index %d", index);
-
-    if (pDescriptor == NULL){
-        ALOGV("\tLVM_ERROR : EffectQueryEffect was passed NULL pointer");
-        return -EINVAL;
-    }
-    if (index > 3){
-        ALOGV("\tLVM_ERROR : EffectQueryEffect index out of range %d", index);
-        return -ENOENT;
-    }
-    if(index == LVM_BASS_BOOST){
-        ALOGV("\tEffectQueryEffect processing LVM_BASS_BOOST");
-        *pDescriptor = gBassBoostDescriptor;
-    }else if(index == LVM_VIRTUALIZER){
-        ALOGV("\tEffectQueryEffect processing LVM_VIRTUALIZER");
-        *pDescriptor = gVirtualizerDescriptor;
-    } else if(index == LVM_EQUALIZER){
-        ALOGV("\tEffectQueryEffect processing LVM_EQUALIZER");
-        *pDescriptor = gEqualizerDescriptor;
-    } else if(index == LVM_VOLUME){
-        ALOGV("\tEffectQueryEffect processing LVM_VOLUME");
-        *pDescriptor = gVolumeDescriptor;
-    }
-    ALOGV("\tEffectQueryEffect end\n");
-    return 0;
-}     /* end EffectQueryEffect */
 
 extern "C" int EffectCreate(const effect_uuid_t *uuid,
                             int32_t             sessionId,
-                            int32_t             ioId,
+                            int32_t             ioId __unused,
                             effect_handle_t  *pHandle){
     int ret = 0;
     int sessionNo;
@@ -257,9 +223,12 @@ extern "C" int EffectCreate(const effect_uuid_t *uuid,
         pContext->pBundledContext->bBassTempDisabled        = LVM_FALSE;
         pContext->pBundledContext->bVirtualizerEnabled      = LVM_FALSE;
         pContext->pBundledContext->bVirtualizerTempDisabled = LVM_FALSE;
-        pContext->pBundledContext->NumberEffectsEnabled     = 0;
+        pContext->pBundledContext->nOutputDevice            = AUDIO_DEVICE_NONE;
+        pContext->pBundledContext->nVirtualizerForcedDevice = AUDIO_DEVICE_NONE;
+        pContext->pBundledContext->EffectsBitMap            = 0;
         pContext->pBundledContext->NumberEffectsCalled      = 0;
         pContext->pBundledContext->firstVolume              = LVM_TRUE;
+        pContext->pBundledContext->volume                   = 0;
 
         #ifdef LVM_PCM
         char fileName[256];
@@ -396,28 +365,28 @@ extern "C" int EffectRelease(effect_handle_t handle){
         ALOGV("\tEffectRelease LVM_BASS_BOOST Clearing global intstantiated flag");
         pSessionContext->bBassInstantiated = LVM_FALSE;
         if(pContext->pBundledContext->SamplesToExitCountBb > 0){
-            pContext->pBundledContext->NumberEffectsEnabled--;
+            pContext->pBundledContext->EffectsBitMap &= ~(1 << LVM_BASS_BOOST);
         }
         pContext->pBundledContext->SamplesToExitCountBb = 0;
     } else if(pContext->EffectType == LVM_VIRTUALIZER) {
         ALOGV("\tEffectRelease LVM_VIRTUALIZER Clearing global intstantiated flag");
         pSessionContext->bVirtualizerInstantiated = LVM_FALSE;
         if(pContext->pBundledContext->SamplesToExitCountVirt > 0){
-            pContext->pBundledContext->NumberEffectsEnabled--;
+            pContext->pBundledContext->EffectsBitMap &= ~(1 << LVM_VIRTUALIZER);
         }
         pContext->pBundledContext->SamplesToExitCountVirt = 0;
     } else if(pContext->EffectType == LVM_EQUALIZER) {
         ALOGV("\tEffectRelease LVM_EQUALIZER Clearing global intstantiated flag");
         pSessionContext->bEqualizerInstantiated =LVM_FALSE;
         if(pContext->pBundledContext->SamplesToExitCountEq > 0){
-            pContext->pBundledContext->NumberEffectsEnabled--;
+            pContext->pBundledContext->EffectsBitMap &= ~(1 << LVM_EQUALIZER);
         }
         pContext->pBundledContext->SamplesToExitCountEq = 0;
     } else if(pContext->EffectType == LVM_VOLUME) {
         ALOGV("\tEffectRelease LVM_VOLUME Clearing global intstantiated flag");
         pSessionContext->bVolumeInstantiated = LVM_FALSE;
         if (pContext->pBundledContext->bVolumeEnabled == LVM_TRUE){
-            pContext->pBundledContext->NumberEffectsEnabled--;
+            pContext->pBundledContext->EffectsBitMap &= ~(1 << LVM_VOLUME);
         }
     } else {
         ALOGV("\tLVM_ERROR : EffectRelease : Unsupported effect\n\n\n\n\n\n\n");
@@ -595,11 +564,12 @@ int LvmBundle_init(EffectContext *pContext){
             MemTab.Region[i].pBaseAddress = malloc(MemTab.Region[i].Size);
 
             if (MemTab.Region[i].pBaseAddress == LVM_NULL){
-                ALOGV("\tLVM_ERROR :LvmBundle_init CreateInstance Failed to allocate %ld bytes "
-                        "for region %u\n", MemTab.Region[i].Size, i );
+                ALOGV("\tLVM_ERROR :LvmBundle_init CreateInstance Failed to allocate %" PRIu32
+                        " bytes for region %u\n", MemTab.Region[i].Size, i );
                 bMallocFailure = LVM_TRUE;
             }else{
-                ALOGV("\tLvmBundle_init CreateInstance allocated %ld bytes for region %u at %p\n",
+                ALOGV("\tLvmBundle_init CreateInstance allocated %" PRIu32
+                        " bytes for region %u at %p\n",
                         MemTab.Region[i].Size, i, MemTab.Region[i].pBaseAddress);
             }
         }
@@ -611,11 +581,11 @@ int LvmBundle_init(EffectContext *pContext){
     if(bMallocFailure == LVM_TRUE){
         for (int i=0; i<LVM_NR_MEMORY_REGIONS; i++){
             if (MemTab.Region[i].pBaseAddress == LVM_NULL){
-                ALOGV("\tLVM_ERROR :LvmBundle_init CreateInstance Failed to allocate %ld bytes "
-                        "for region %u Not freeing\n", MemTab.Region[i].Size, i );
+                ALOGV("\tLVM_ERROR :LvmBundle_init CreateInstance Failed to allocate %" PRIu32
+                        " bytes for region %u Not freeing\n", MemTab.Region[i].Size, i );
             }else{
-                ALOGV("\tLVM_ERROR :LvmBundle_init CreateInstance Failed: but allocated %ld bytes "
-                     "for region %u at %p- free\n",
+                ALOGV("\tLVM_ERROR :LvmBundle_init CreateInstance Failed: but allocated %" PRIu32
+                     " bytes for region %u at %p- free\n",
                      MemTab.Region[i].Size, i, MemTab.Region[i].pBaseAddress);
                 free(MemTab.Region[i].pBaseAddress);
             }
@@ -924,16 +894,16 @@ void LvmEffect_free(EffectContext *pContext){
     for (int i=0; i<LVM_NR_MEMORY_REGIONS; i++){
         if (MemTab.Region[i].Size != 0){
             if (MemTab.Region[i].pBaseAddress != NULL){
-                ALOGV("\tLvmEffect_free - START freeing %ld bytes for region %u at %p\n",
+                ALOGV("\tLvmEffect_free - START freeing %" PRIu32 " bytes for region %u at %p\n",
                         MemTab.Region[i].Size, i, MemTab.Region[i].pBaseAddress);
 
                 free(MemTab.Region[i].pBaseAddress);
 
-                ALOGV("\tLvmEffect_free - END   freeing %ld bytes for region %u at %p\n",
+                ALOGV("\tLvmEffect_free - END   freeing %" PRIu32 " bytes for region %u at %p\n",
                         MemTab.Region[i].Size, i, MemTab.Region[i].pBaseAddress);
             }else{
-                ALOGV("\tLVM_ERROR : LvmEffect_free - trying to free with NULL pointer %ld bytes "
-                        "for region %u at %p ERROR\n",
+                ALOGV("\tLVM_ERROR : LvmEffect_free - trying to free with NULL pointer %" PRIu32
+                        " bytes for region %u at %p ERROR\n",
                         MemTab.Region[i].Size, i, MemTab.Region[i].pBaseAddress);
             }
         }
@@ -1198,6 +1168,177 @@ void VirtualizerSetStrength(EffectContext *pContext, uint32_t strength){
     //ALOGV("\tVirtualizerSetStrength Succesfully called LVM_SetControlParameters\n\n");
 }    /* end setStrength */
 
+//----------------------------------------------------------------------------
+// VirtualizerIsDeviceSupported()
+//----------------------------------------------------------------------------
+// Purpose:
+// Check if an audio device type is supported by this implementation
+//
+// Inputs:
+//  deviceType   the type of device that affects the processing (e.g. for binaural vs transaural)
+// Output:
+//  -EINVAL      if the configuration is not supported or it is unknown
+//  0            if the configuration is supported
+//----------------------------------------------------------------------------
+int VirtualizerIsDeviceSupported(audio_devices_t deviceType) {
+    switch (deviceType) {
+    case AUDIO_DEVICE_OUT_WIRED_HEADSET:
+    case AUDIO_DEVICE_OUT_WIRED_HEADPHONE:
+    case AUDIO_DEVICE_OUT_BLUETOOTH_A2DP_HEADPHONES:
+        return 0;
+    default :
+        return -EINVAL;
+    }
+}
+
+//----------------------------------------------------------------------------
+// VirtualizerIsConfigurationSupported()
+//----------------------------------------------------------------------------
+// Purpose:
+// Check if a channel mask + audio device type is supported by this implementation
+//
+// Inputs:
+//  channelMask  the channel mask of the input to virtualize
+//  deviceType   the type of device that affects the processing (e.g. for binaural vs transaural)
+// Output:
+//  -EINVAL      if the configuration is not supported or it is unknown
+//  0            if the configuration is supported
+//----------------------------------------------------------------------------
+int VirtualizerIsConfigurationSupported(audio_channel_mask_t channelMask,
+        audio_devices_t deviceType) {
+    uint32_t channelCount = audio_channel_count_from_out_mask(channelMask);
+    if ((channelCount == 0) || (channelCount > 2)) {
+        return -EINVAL;
+    }
+
+    return VirtualizerIsDeviceSupported(deviceType);
+}
+
+//----------------------------------------------------------------------------
+// VirtualizerForceVirtualizationMode()
+//----------------------------------------------------------------------------
+// Purpose:
+// Force the virtualization mode to that of the given audio device
+//
+// Inputs:
+//  pContext     effect engine context
+//  forcedDevice the type of device whose virtualization mode we'll always use
+// Output:
+//  -EINVAL      if the device is not supported or is unknown
+//  0            if the device is supported and the virtualization mode forced
+//
+//----------------------------------------------------------------------------
+int VirtualizerForceVirtualizationMode(EffectContext *pContext, audio_devices_t forcedDevice) {
+    ALOGV("VirtualizerForceVirtualizationMode: forcedDev=0x%x enabled=%d tmpDisabled=%d",
+            forcedDevice, pContext->pBundledContext->bVirtualizerEnabled,
+            pContext->pBundledContext->bVirtualizerTempDisabled);
+    int status = 0;
+    bool useVirtualizer = false;
+
+    if (VirtualizerIsDeviceSupported(forcedDevice) != 0) {
+        // forced device is not supported, make it behave as a reset of forced mode
+        forcedDevice = AUDIO_DEVICE_NONE;
+        // but return an error
+        status = -EINVAL;
+    }
+
+    if (forcedDevice == AUDIO_DEVICE_NONE) {
+        // disabling forced virtualization mode:
+        // verify whether the virtualization should be enabled or disabled
+        if (VirtualizerIsDeviceSupported(pContext->pBundledContext->nOutputDevice) == 0) {
+            useVirtualizer = (pContext->pBundledContext->bVirtualizerEnabled == LVM_TRUE);
+        }
+        pContext->pBundledContext->nVirtualizerForcedDevice = AUDIO_DEVICE_NONE;
+    } else {
+        // forcing virtualization mode: here we already know the device is supported
+        pContext->pBundledContext->nVirtualizerForcedDevice = AUDIO_DEVICE_OUT_WIRED_HEADPHONE;
+        // only enable for a supported mode, when the effect is enabled
+        useVirtualizer = (pContext->pBundledContext->bVirtualizerEnabled == LVM_TRUE);
+    }
+
+    if (useVirtualizer) {
+        if (pContext->pBundledContext->bVirtualizerTempDisabled == LVM_TRUE) {
+            ALOGV("\tVirtualizerForceVirtualizationMode re-enable LVM_VIRTUALIZER");
+            android::LvmEffect_enable(pContext);
+            pContext->pBundledContext->bVirtualizerTempDisabled = LVM_FALSE;
+        } else {
+            ALOGV("\tVirtualizerForceVirtualizationMode leaving LVM_VIRTUALIZER enabled");
+        }
+    } else {
+        if (pContext->pBundledContext->bVirtualizerTempDisabled == LVM_FALSE) {
+            ALOGV("\tVirtualizerForceVirtualizationMode disable LVM_VIRTUALIZER");
+            android::LvmEffect_disable(pContext);
+            pContext->pBundledContext->bVirtualizerTempDisabled = LVM_TRUE;
+        } else {
+            ALOGV("\tVirtualizerForceVirtualizationMode leaving LVM_VIRTUALIZER disabled");
+        }
+    }
+
+    ALOGV("\tafter VirtualizerForceVirtualizationMode: enabled=%d tmpDisabled=%d",
+            pContext->pBundledContext->bVirtualizerEnabled,
+            pContext->pBundledContext->bVirtualizerTempDisabled);
+
+    return status;
+}
+//----------------------------------------------------------------------------
+// VirtualizerGetSpeakerAngles()
+//----------------------------------------------------------------------------
+// Purpose:
+// Get the virtual speaker angles for a channel mask + audio device type
+// configuration which is guaranteed to be supported by this implementation
+//
+// Inputs:
+//  channelMask:   the channel mask of the input to virtualize
+//  deviceType     the type of device that affects the processing (e.g. for binaural vs transaural)
+// Input/Output:
+//  pSpeakerAngles the array of integer where each speaker angle is written as a triplet in the
+//                 following format:
+//                    int32_t a bit mask with a single value selected for each speaker, following
+//                            the convention of the audio_channel_mask_t type
+//                    int32_t a value in degrees expressing the speaker azimuth, where 0 is in front
+//                            of the user, 180 behind, -90 to the left, 90 to the right of the user
+//                    int32_t a value in degrees expressing the speaker elevation, where 0 is the
+//                            horizontal plane, +90 is directly above the user, -90 below
+//
+//----------------------------------------------------------------------------
+void VirtualizerGetSpeakerAngles(audio_channel_mask_t channelMask __unused,
+        audio_devices_t deviceType __unused, int32_t *pSpeakerAngles) {
+    // the channel count is guaranteed to be 1 or 2
+    // the device is guaranteed to be of type headphone
+    // this virtualizer is always 2in with speakers at -90 and 90deg of azimuth, 0deg of elevation
+    *pSpeakerAngles++ = (int32_t) AUDIO_CHANNEL_OUT_FRONT_LEFT;
+    *pSpeakerAngles++ = -90; // azimuth
+    *pSpeakerAngles++ = 0;   // elevation
+    *pSpeakerAngles++ = (int32_t) AUDIO_CHANNEL_OUT_FRONT_RIGHT;
+    *pSpeakerAngles++ = 90;  // azimuth
+    *pSpeakerAngles   = 0;   // elevation
+}
+
+//----------------------------------------------------------------------------
+// VirtualizerGetVirtualizationMode()
+//----------------------------------------------------------------------------
+// Purpose:
+// Retrieve the current device whose processing mode is used by this effect
+//
+// Output:
+//   AUDIO_DEVICE_NONE if the effect is not virtualizing
+//   or the device type if the effect is virtualizing
+//----------------------------------------------------------------------------
+audio_devices_t VirtualizerGetVirtualizationMode(EffectContext *pContext) {
+    audio_devices_t virtDevice = AUDIO_DEVICE_NONE;
+    if ((pContext->pBundledContext->bVirtualizerEnabled == LVM_TRUE)
+            && (pContext->pBundledContext->bVirtualizerTempDisabled == LVM_FALSE)) {
+        if (pContext->pBundledContext->nVirtualizerForcedDevice != AUDIO_DEVICE_NONE) {
+            // virtualization mode is forced, return that device
+            virtDevice = pContext->pBundledContext->nVirtualizerForcedDevice;
+        } else {
+            // no forced mode, return the current device
+            virtDevice = pContext->pBundledContext->nOutputDevice;
+        }
+    }
+    ALOGV("VirtualizerGetVirtualizationMode() returning 0x%x", virtDevice);
+    return virtDevice;
+}
 
 //----------------------------------------------------------------------------
 // EqualizerLimitBandLevels()
@@ -1392,7 +1533,7 @@ int32_t EqualizerGetCentreFrequency(EffectContext *pContext, int32_t band){
 //  pLow:       lower band range
 //  pLow:       upper band range
 //----------------------------------------------------------------------------
-int32_t EqualizerGetBandFreqRange(EffectContext *pContext, int32_t band, uint32_t *pLow,
+int32_t EqualizerGetBandFreqRange(EffectContext *pContext __unused, int32_t band, uint32_t *pLow,
                                   uint32_t *pHi){
     *pLow = bandFreqRange[band][0];
     *pHi  = bandFreqRange[band][1];
@@ -1416,7 +1557,7 @@ int32_t EqualizerGetBandFreqRange(EffectContext *pContext, int32_t band, uint32_
 //  pLow:       lower band range
 //  pLow:       upper band range
 //----------------------------------------------------------------------------
-int32_t EqualizerGetBand(EffectContext *pContext, uint32_t targetFreq){
+int32_t EqualizerGetBand(EffectContext *pContext __unused, uint32_t targetFreq){
     int band = 0;
 
     if(targetFreq < bandFreqRange[0][0]){
@@ -1793,7 +1934,7 @@ int32_t VolumeEnableStereoPosition(EffectContext *pContext, uint32_t enabled){
 
 int BassBoost_getParameter(EffectContext     *pContext,
                            void              *pParam,
-                           size_t            *pValueSize,
+                           uint32_t          *pValueSize,
                            void              *pValue){
     int status = 0;
     int32_t *pParamTemp = (int32_t *)pParam;
@@ -1911,12 +2052,11 @@ int BassBoost_setParameter (EffectContext *pContext, void *pParam, void *pValue)
 
 int Virtualizer_getParameter(EffectContext        *pContext,
                              void                 *pParam,
-                             size_t               *pValueSize,
+                             uint32_t             *pValueSize,
                              void                 *pValue){
     int status = 0;
     int32_t *pParamTemp = (int32_t *)pParam;
     int32_t param = *pParamTemp++;
-    int32_t param2;
     char *name;
 
     //ALOGV("\tVirtualizer_getParameter start");
@@ -1936,7 +2076,17 @@ int Virtualizer_getParameter(EffectContext        *pContext,
             }
             *pValueSize = sizeof(int16_t);
             break;
-
+        case VIRTUALIZER_PARAM_VIRTUAL_SPEAKER_ANGLES:
+            // return value size can only be interpreted as relative to input value,
+            // deferring validity check to below
+            break;
+        case VIRTUALIZER_PARAM_VIRTUALIZATION_MODE:
+            if (*pValueSize != sizeof(uint32_t)){
+                ALOGV("\tLVM_ERROR : Virtualizer_getParameter() invalid pValueSize %d",*pValueSize);
+                return -EINVAL;
+            }
+            *pValueSize = sizeof(uint32_t);
+            break;
         default:
             ALOGV("\tLVM_ERROR : Virtualizer_getParameter() invalid param %d", param);
             return -EINVAL;
@@ -1957,13 +2107,36 @@ int Virtualizer_getParameter(EffectContext        *pContext,
             //        *(int16_t *)pValue);
             break;
 
+        case VIRTUALIZER_PARAM_VIRTUAL_SPEAKER_ANGLES: {
+            const audio_channel_mask_t channelMask = (audio_channel_mask_t) *pParamTemp++;
+            const audio_devices_t deviceType = (audio_devices_t) *pParamTemp;
+            uint32_t nbChannels = audio_channel_count_from_out_mask(channelMask);
+            if (*pValueSize < 3 * nbChannels * sizeof(int32_t)){
+                ALOGV("\tLVM_ERROR : Virtualizer_getParameter() invalid pValueSize %d",*pValueSize);
+                return -EINVAL;
+            }
+            // verify the configuration is supported
+            status = VirtualizerIsConfigurationSupported(channelMask, deviceType);
+            if (status == 0) {
+                ALOGV("VIRTUALIZER_PARAM_VIRTUAL_SPEAKER_ANGLES supports mask=0x%x device=0x%x",
+                        channelMask, deviceType);
+                // configuration is supported, get the angles
+                VirtualizerGetSpeakerAngles(channelMask, deviceType, (int32_t *)pValue);
+            }
+            }
+            break;
+
+        case VIRTUALIZER_PARAM_VIRTUALIZATION_MODE:
+            *(uint32_t *)pValue  = (uint32_t) VirtualizerGetVirtualizationMode(pContext);
+            break;
+
         default:
             ALOGV("\tLVM_ERROR : Virtualizer_getParameter() invalid param %d", param);
             status = -EINVAL;
             break;
     }
 
-    //ALOGV("\tVirtualizer_getParameter end");
+    ALOGV("\tVirtualizer_getParameter end returning status=%d", status);
     return status;
 } /* end Virtualizer_getParameter */
 
@@ -1998,6 +2171,15 @@ int Virtualizer_setParameter (EffectContext *pContext, void *pParam, void *pValu
             VirtualizerSetStrength(pContext, (int32_t)strength);
             //ALOGV("\tVirtualizer_setParameter() Called pVirtualizer->setStrength");
            break;
+
+        case VIRTUALIZER_PARAM_FORCE_VIRTUALIZATION_MODE: {
+            const audio_devices_t deviceType = *(audio_devices_t *) pValue;
+            status = VirtualizerForceVirtualizationMode(pContext, deviceType);
+            //ALOGV("VIRTUALIZER_PARAM_FORCE_VIRTUALIZATION_MODE device=0x%x result=%d",
+            //        deviceType, status);
+            }
+            break;
+
         default:
             ALOGV("\tLVM_ERROR : Virtualizer_setParameter() invalid param %d", param);
             break;
@@ -2029,7 +2211,7 @@ int Virtualizer_setParameter (EffectContext *pContext, void *pParam, void *pValu
 //----------------------------------------------------------------------------
 int Equalizer_getParameter(EffectContext     *pContext,
                            void              *pParam,
-                           size_t            *pValueSize,
+                           uint32_t          *pValueSize,
                            void              *pValue){
     int status = 0;
     int bMute = 0;
@@ -2287,7 +2469,7 @@ int Equalizer_setParameter (EffectContext *pContext, void *pParam, void *pValue)
 
 int Volume_getParameter(EffectContext     *pContext,
                         void              *pParam,
-                        size_t            *pValueSize,
+                        uint32_t          *pValueSize,
                         void              *pValue){
     int status = 0;
     int bMute = 0;
@@ -2506,7 +2688,7 @@ int Effect_setEnabled(EffectContext *pContext, bool enabled)
                      return -EINVAL;
                 }
                 if(pContext->pBundledContext->SamplesToExitCountBb <= 0){
-                    pContext->pBundledContext->NumberEffectsEnabled++;
+                    pContext->pBundledContext->EffectsBitMap |= (1 << LVM_BASS_BOOST);
                 }
                 pContext->pBundledContext->SamplesToExitCountBb =
                      (LVM_INT32)(pContext->pBundledContext->SamplesPerSecond*0.1);
@@ -2519,7 +2701,7 @@ int Effect_setEnabled(EffectContext *pContext, bool enabled)
                     return -EINVAL;
                 }
                 if(pContext->pBundledContext->SamplesToExitCountEq <= 0){
-                    pContext->pBundledContext->NumberEffectsEnabled++;
+                    pContext->pBundledContext->EffectsBitMap |= (1 << LVM_EQUALIZER);
                 }
                 pContext->pBundledContext->SamplesToExitCountEq =
                      (LVM_INT32)(pContext->pBundledContext->SamplesPerSecond*0.1);
@@ -2531,7 +2713,7 @@ int Effect_setEnabled(EffectContext *pContext, bool enabled)
                     return -EINVAL;
                 }
                 if(pContext->pBundledContext->SamplesToExitCountVirt <= 0){
-                    pContext->pBundledContext->NumberEffectsEnabled++;
+                    pContext->pBundledContext->EffectsBitMap |= (1 << LVM_VIRTUALIZER);
                 }
                 pContext->pBundledContext->SamplesToExitCountVirt =
                      (LVM_INT32)(pContext->pBundledContext->SamplesPerSecond*0.1);
@@ -2543,7 +2725,7 @@ int Effect_setEnabled(EffectContext *pContext, bool enabled)
                     ALOGV("\tEffect_setEnabled() LVM_VOLUME is already enabled");
                     return -EINVAL;
                 }
-                pContext->pBundledContext->NumberEffectsEnabled++;
+                pContext->pBundledContext->EffectsBitMap |= (1 << LVM_VOLUME);
                 pContext->pBundledContext->bVolumeEnabled = LVM_TRUE;
                 break;
             default:
@@ -2560,12 +2742,18 @@ int Effect_setEnabled(EffectContext *pContext, bool enabled)
                     ALOGV("\tEffect_setEnabled() LVM_BASS_BOOST is already disabled");
                     return -EINVAL;
                 }
+                if(pContext->pBundledContext->SamplesToExitCountBb <= 0) {
+                    pContext->pBundledContext->EffectsBitMap &= ~(1 << LVM_BASS_BOOST);
+                }
                 pContext->pBundledContext->bBassEnabled = LVM_FALSE;
                 break;
             case LVM_EQUALIZER:
                 if (pContext->pBundledContext->bEqualizerEnabled == LVM_FALSE) {
                     ALOGV("\tEffect_setEnabled() LVM_EQUALIZER is already disabled");
                     return -EINVAL;
+                }
+                if(pContext->pBundledContext->SamplesToExitCountEq <= 0) {
+                    pContext->pBundledContext->EffectsBitMap &= ~(1 << LVM_EQUALIZER);
                 }
                 pContext->pBundledContext->bEqualizerEnabled = LVM_FALSE;
                 break;
@@ -2574,6 +2762,9 @@ int Effect_setEnabled(EffectContext *pContext, bool enabled)
                     ALOGV("\tEffect_setEnabled() LVM_VIRTUALIZER is already disabled");
                     return -EINVAL;
                 }
+                if(pContext->pBundledContext->SamplesToExitCountVirt <= 0) {
+                    pContext->pBundledContext->EffectsBitMap &= ~(1 << LVM_VIRTUALIZER);
+                }
                 pContext->pBundledContext->bVirtualizerEnabled = LVM_FALSE;
                 break;
             case LVM_VOLUME:
@@ -2581,6 +2772,7 @@ int Effect_setEnabled(EffectContext *pContext, bool enabled)
                     ALOGV("\tEffect_setEnabled() LVM_VOLUME is already disabled");
                     return -EINVAL;
                 }
+                pContext->pBundledContext->EffectsBitMap &= ~(1 << LVM_VOLUME);
                 pContext->pBundledContext->bVolumeEnabled = LVM_FALSE;
                 break;
             default:
@@ -2630,7 +2822,7 @@ int Effect_process(effect_handle_t     self,
     LVM_INT16   *out = (LVM_INT16 *)outBuffer->raw;
 
 //ALOGV("\tEffect_process Start : Enabled = %d     Called = %d (%8d %8d %8d)",
-//pContext->pBundledContext->NumberEffectsEnabled,pContext->pBundledContext->NumberEffectsCalled,
+//popcount(pContext->pBundledContext->EffectsBitMap), pContext->pBundledContext->NumberEffectsCalled,
 //    pContext->pBundledContext->SamplesToExitCountBb,
 //    pContext->pBundledContext->SamplesToExitCountVirt,
 //    pContext->pBundledContext->SamplesToExitCountEq);
@@ -2664,7 +2856,7 @@ int Effect_process(effect_handle_t     self,
         }
         if(pContext->pBundledContext->SamplesToExitCountBb <= 0) {
             status = -ENODATA;
-            pContext->pBundledContext->NumberEffectsEnabled--;
+            pContext->pBundledContext->EffectsBitMap &= ~(1 << LVM_BASS_BOOST);
             ALOGV("\tEffect_process() this is the last frame for LVM_BASS_BOOST");
         }
     }
@@ -2672,7 +2864,7 @@ int Effect_process(effect_handle_t     self,
         (pContext->EffectType == LVM_VOLUME)){
         //ALOGV("\tEffect_process() LVM_VOLUME Effect is not enabled");
         status = -ENODATA;
-        pContext->pBundledContext->NumberEffectsEnabled--;
+        pContext->pBundledContext->EffectsBitMap &= ~(1 << LVM_VOLUME);
     }
     if ((pContext->pBundledContext->bEqualizerEnabled == LVM_FALSE)&&
         (pContext->EffectType == LVM_EQUALIZER)){
@@ -2684,7 +2876,7 @@ int Effect_process(effect_handle_t     self,
         }
         if(pContext->pBundledContext->SamplesToExitCountEq <= 0) {
             status = -ENODATA;
-            pContext->pBundledContext->NumberEffectsEnabled--;
+            pContext->pBundledContext->EffectsBitMap &= ~(1 << LVM_EQUALIZER);
             ALOGV("\tEffect_process() this is the last frame for LVM_EQUALIZER");
         }
     }
@@ -2698,7 +2890,7 @@ int Effect_process(effect_handle_t     self,
         }
         if(pContext->pBundledContext->SamplesToExitCountVirt <= 0) {
             status = -ENODATA;
-            pContext->pBundledContext->NumberEffectsEnabled--;
+            pContext->pBundledContext->EffectsBitMap &= ~(1 << LVM_VIRTUALIZER);
             ALOGV("\tEffect_process() this is the last frame for LVM_VIRTUALIZER");
         }
     }
@@ -2708,9 +2900,9 @@ int Effect_process(effect_handle_t     self,
     }
 
     if(pContext->pBundledContext->NumberEffectsCalled ==
-       pContext->pBundledContext->NumberEffectsEnabled){
+       popcount(pContext->pBundledContext->EffectsBitMap)){
         //ALOGV("\tEffect_process     Calling process with %d effects enabled, %d called: Effect %d",
-        //pContext->pBundledContext->NumberEffectsEnabled,
+        //popcount(pContext->pBundledContext->EffectsBitMap),
         //pContext->pBundledContext->NumberEffectsCalled, pContext->EffectType);
 
         if(status == -ENODATA){
@@ -2729,7 +2921,7 @@ int Effect_process(effect_handle_t     self,
         }
     } else {
         //ALOGV("\tEffect_process Not Calling process with %d effects enabled, %d called: Effect %d",
-        //pContext->pBundledContext->NumberEffectsEnabled,
+        //popcount(pContext->pBundledContext->EffectsBitMap),
         //pContext->pBundledContext->NumberEffectsCalled, pContext->EffectType);
         // 2 is for stereo input
         if (pContext->config.outputCfg.accessMode == EFFECT_BUFFER_ACCESS_ACCUMULATE) {
@@ -2781,9 +2973,9 @@ int Effect_command(effect_handle_t  self,
     // called the number of effect called could be greater
     // pContext->pBundledContext->NumberEffectsCalled = 0;
 
-    //ALOGV("\tEffect_command NumberEffectsCalled = %d, NumberEffectsEnabled = %d",
-    //        pContext->pBundledContext->NumberEffectsCalled,
-    //        pContext->pBundledContext->NumberEffectsEnabled);
+    //ALOGV("\tEffect_command: Enabled = %d     Called = %d",
+    //        popcount(pContext->pBundledContext->EffectsBitMap),
+    //        pContext->pBundledContext->NumberEffectsCalled);
 
     switch (cmdCode){
         case EFFECT_CMD_INIT:
@@ -2848,9 +3040,9 @@ int Effect_command(effect_handle_t  self,
 
             if(pContext->EffectType == LVM_BASS_BOOST){
                 if (pCmdData == NULL ||
-                        cmdSize < (int)(sizeof(effect_param_t) + sizeof(int32_t)) ||
+                        cmdSize < (sizeof(effect_param_t) + sizeof(int32_t)) ||
                         pReplyData == NULL ||
-                        *replySize < (int) (sizeof(effect_param_t) + sizeof(int32_t))){
+                        *replySize < (sizeof(effect_param_t) + sizeof(int32_t))){
                     ALOGV("\tLVM_ERROR : BassBoost_command cmdCode Case: "
                             "EFFECT_CMD_GET_PARAM: ERROR");
                     return -EINVAL;
@@ -2865,7 +3057,7 @@ int Effect_command(effect_handle_t  self,
 
                 p->status = android::BassBoost_getParameter(pContext,
                                                             p->data,
-                                                            (size_t  *)&p->vsize,
+                                                            &p->vsize,
                                                             p->data + voffset);
 
                 *replySize = sizeof(effect_param_t) + voffset + p->vsize;
@@ -2879,9 +3071,9 @@ int Effect_command(effect_handle_t  self,
 
             if(pContext->EffectType == LVM_VIRTUALIZER){
                 if (pCmdData == NULL ||
-                        cmdSize < (int)(sizeof(effect_param_t) + sizeof(int32_t)) ||
+                        cmdSize < (sizeof(effect_param_t) + sizeof(int32_t)) ||
                         pReplyData == NULL ||
-                        *replySize < (int) (sizeof(effect_param_t) + sizeof(int32_t))){
+                        *replySize < (sizeof(effect_param_t) + sizeof(int32_t))){
                     ALOGV("\tLVM_ERROR : Virtualizer_command cmdCode Case: "
                             "EFFECT_CMD_GET_PARAM: ERROR");
                     return -EINVAL;
@@ -2895,10 +3087,9 @@ int Effect_command(effect_handle_t  self,
                 int voffset = ((p->psize - 1) / sizeof(int32_t) + 1) * sizeof(int32_t);
 
                 p->status = android::Virtualizer_getParameter(pContext,
-                                                             (void *)p->data,
-                                                             (size_t  *)&p->vsize,
+                                                              (void *)p->data,
+                                                              &p->vsize,
                                                               p->data + voffset);
-
                 *replySize = sizeof(effect_param_t) + voffset + p->vsize;
 
                 //ALOGV("\tVirtualizer_command EFFECT_CMD_GET_PARAM "
@@ -2911,7 +3102,7 @@ int Effect_command(effect_handle_t  self,
                 //ALOGV("\tEqualizer_command cmdCode Case: "
                 //        "EFFECT_CMD_GET_PARAM start");
                 if (pCmdData == NULL ||
-                    cmdSize < (int)(sizeof(effect_param_t) + sizeof(int32_t)) ||
+                    cmdSize < (sizeof(effect_param_t) + sizeof(int32_t)) ||
                     pReplyData == NULL ||
                     *replySize < (int) (sizeof(effect_param_t) + sizeof(int32_t))) {
                     ALOGV("\tLVM_ERROR : Equalizer_command cmdCode Case: "
@@ -2943,7 +3134,7 @@ int Effect_command(effect_handle_t  self,
             if(pContext->EffectType == LVM_VOLUME){
                 //ALOGV("\tVolume_command cmdCode Case: EFFECT_CMD_GET_PARAM start");
                 if (pCmdData == NULL ||
-                        cmdSize < (int)(sizeof(effect_param_t) + sizeof(int32_t)) ||
+                        cmdSize < (sizeof(effect_param_t) + sizeof(int32_t)) ||
                         pReplyData == NULL ||
                         *replySize < (int) (sizeof(effect_param_t) + sizeof(int32_t))){
                     ALOGV("\tLVM_ERROR : Volume_command cmdCode Case: "
@@ -2960,7 +3151,7 @@ int Effect_command(effect_handle_t  self,
 
                 p->status = android::Volume_getParameter(pContext,
                                                          (void *)p->data,
-                                                         (size_t  *)&p->vsize,
+                                                         &p->vsize,
                                                          p->data + voffset);
 
                 *replySize = sizeof(effect_param_t) + voffset + p->vsize;
@@ -2982,7 +3173,7 @@ int Effect_command(effect_handle_t  self,
                 //       *(int16_t *)((char *)pCmdData + sizeof(effect_param_t) + sizeof(int32_t)));
 
                 if (pCmdData   == NULL||
-                    cmdSize    != (int)(sizeof(effect_param_t) + sizeof(int32_t) +sizeof(int16_t))||
+                    cmdSize    != (sizeof(effect_param_t) + sizeof(int32_t) +sizeof(int16_t))||
                     pReplyData == NULL||
                     *replySize != sizeof(int32_t)){
                     ALOGV("\tLVM_ERROR : BassBoost_command cmdCode Case: "
@@ -3009,14 +3200,17 @@ int Effect_command(effect_handle_t  self,
                                                                     p->data + p->psize);
             }
             if(pContext->EffectType == LVM_VIRTUALIZER){
+              // Warning this log will fail to properly read an int32_t value, assumes int16_t
               //ALOGV("\tVirtualizer_command EFFECT_CMD_SET_PARAM param %d, *replySize %d, value %d",
               //        *(int32_t *)((char *)pCmdData + sizeof(effect_param_t)),
               //        *replySize,
               //        *(int16_t *)((char *)pCmdData + sizeof(effect_param_t) + sizeof(int32_t)));
 
-                if (pCmdData   == NULL||
-                    cmdSize    != (int)(sizeof(effect_param_t) + sizeof(int32_t) +sizeof(int16_t))||
-                    pReplyData == NULL||
+                if (pCmdData   == NULL ||
+                    // legal parameters are int16_t or int32_t
+                    cmdSize    > (sizeof(effect_param_t) + sizeof(int32_t) +sizeof(int32_t)) ||
+                    cmdSize    < (sizeof(effect_param_t) + sizeof(int32_t) +sizeof(int16_t)) ||
+                    pReplyData == NULL ||
                     *replySize != sizeof(int32_t)){
                     ALOGV("\tLVM_ERROR : Virtualizer_command cmdCode Case: "
                             "EFFECT_CMD_SET_PARAM: ERROR");
@@ -3049,7 +3243,7 @@ int Effect_command(effect_handle_t  self,
                //        *replySize,
                //        *(int16_t *)((char *)pCmdData + sizeof(effect_param_t) + sizeof(int32_t)));
 
-                if (pCmdData == NULL || cmdSize < (int)(sizeof(effect_param_t) + sizeof(int32_t)) ||
+                if (pCmdData == NULL || cmdSize < (sizeof(effect_param_t) + sizeof(int32_t)) ||
                     pReplyData == NULL || *replySize != sizeof(int32_t)) {
                     ALOGV("\tLVM_ERROR : Equalizer_command cmdCode Case: "
                             "EFFECT_CMD_SET_PARAM: ERROR");
@@ -3069,7 +3263,7 @@ int Effect_command(effect_handle_t  self,
                 //        *(int16_t *)((char *)pCmdData + sizeof(effect_param_t) +sizeof(int32_t)));
 
                 if (    pCmdData   == NULL||
-                        cmdSize    < (int)(sizeof(effect_param_t) + sizeof(int32_t))||
+                        cmdSize    < (sizeof(effect_param_t) + sizeof(int32_t))||
                         pReplyData == NULL||
                         *replySize != sizeof(int32_t)){
                     ALOGV("\tLVM_ERROR : Volume_command cmdCode Case: "
@@ -3108,6 +3302,7 @@ int Effect_command(effect_handle_t  self,
         {
             ALOGV("\tEffect_command cmdCode Case: EFFECT_CMD_SET_DEVICE start");
             uint32_t device = *(uint32_t *)pCmdData;
+            pContext->pBundledContext->nOutputDevice = (audio_devices_t) device;
 
             if (pContext->EffectType == LVM_BASS_BOOST) {
                 if((device == AUDIO_DEVICE_OUT_SPEAKER) ||
@@ -3115,7 +3310,7 @@ int Effect_command(effect_handle_t  self,
                         (device == AUDIO_DEVICE_OUT_BLUETOOTH_A2DP_SPEAKER)){
                     ALOGV("\tEFFECT_CMD_SET_DEVICE device is invalid for LVM_BASS_BOOST %d",
                           *(int32_t *)pCmdData);
-                    ALOGV("\tEFFECT_CMD_SET_DEVICE temporary disable LVM_BAS_BOOST");
+                    ALOGV("\tEFFECT_CMD_SET_DEVICE temporary disable LVM_BASS_BOOST");
 
                     // If a device doesnt support bassboost the effect must be temporarily disabled
                     // the effect must still report its original state as this can only be changed
@@ -3143,37 +3338,38 @@ int Effect_command(effect_handle_t  self,
                 }
             }
             if (pContext->EffectType == LVM_VIRTUALIZER) {
-                if((device == AUDIO_DEVICE_OUT_SPEAKER)||
-                        (device == AUDIO_DEVICE_OUT_BLUETOOTH_SCO_CARKIT)||
-                        (device == AUDIO_DEVICE_OUT_BLUETOOTH_A2DP_SPEAKER)){
-                    ALOGV("\tEFFECT_CMD_SET_DEVICE device is invalid for LVM_VIRTUALIZER %d",
-                          *(int32_t *)pCmdData);
-                    ALOGV("\tEFFECT_CMD_SET_DEVICE temporary disable LVM_VIRTUALIZER");
+                if (pContext->pBundledContext->nVirtualizerForcedDevice == AUDIO_DEVICE_NONE) {
+                    // default case unless configuration is forced
+                    if (android::VirtualizerIsDeviceSupported(device) != 0) {
+                        ALOGV("\tEFFECT_CMD_SET_DEVICE device is invalid for LVM_VIRTUALIZER %d",
+                                *(int32_t *)pCmdData);
+                        ALOGV("\tEFFECT_CMD_SET_DEVICE temporary disable LVM_VIRTUALIZER");
 
-                    //If a device doesnt support virtualizer the effect must be temporarily disabled
-                    // the effect must still report its original state as this can only be changed
-                    // by the ENABLE/DISABLE command
+                        //If a device doesnt support virtualizer the effect must be temporarily
+                        // disabled the effect must still report its original state as this can
+                        // only be changed by the ENABLE/DISABLE command
 
-                    if (pContext->pBundledContext->bVirtualizerEnabled == LVM_TRUE) {
-                        ALOGV("\tEFFECT_CMD_SET_DEVICE disable LVM_VIRTUALIZER %d",
-                              *(int32_t *)pCmdData);
-                        android::LvmEffect_disable(pContext);
+                        if (pContext->pBundledContext->bVirtualizerEnabled == LVM_TRUE) {
+                            ALOGV("\tEFFECT_CMD_SET_DEVICE disable LVM_VIRTUALIZER %d",
+                                    *(int32_t *)pCmdData);
+                            android::LvmEffect_disable(pContext);
+                        }
+                        pContext->pBundledContext->bVirtualizerTempDisabled = LVM_TRUE;
+                    } else {
+                        ALOGV("\tEFFECT_CMD_SET_DEVICE device is valid for LVM_VIRTUALIZER %d",
+                                *(int32_t *)pCmdData);
+
+                        // If a device supports virtualizer and the effect has been temporarily
+                        // disabled previously then re-enable it
+
+                        if(pContext->pBundledContext->bVirtualizerEnabled == LVM_TRUE){
+                            ALOGV("\tEFFECT_CMD_SET_DEVICE re-enable LVM_VIRTUALIZER %d",
+                                    *(int32_t *)pCmdData);
+                            android::LvmEffect_enable(pContext);
+                        }
+                        pContext->pBundledContext->bVirtualizerTempDisabled = LVM_FALSE;
                     }
-                    pContext->pBundledContext->bVirtualizerTempDisabled = LVM_TRUE;
-                } else {
-                    ALOGV("\tEFFECT_CMD_SET_DEVICE device is valid for LVM_VIRTUALIZER %d",
-                          *(int32_t *)pCmdData);
-
-                    // If a device supports virtualizer and the effect has been temporarily disabled
-                    // previously then re-enable it
-
-                    if(pContext->pBundledContext->bVirtualizerEnabled == LVM_TRUE){
-                        ALOGV("\tEFFECT_CMD_SET_DEVICE re-enable LVM_VIRTUALIZER %d",
-                              *(int32_t *)pCmdData);
-                        android::LvmEffect_enable(pContext);
-                    }
-                    pContext->pBundledContext->bVirtualizerTempDisabled = LVM_FALSE;
-                }
+                } // else virtualization mode is forced to a certain device, nothing to do
             }
             ALOGV("\tEffect_command cmdCode Case: EFFECT_CMD_SET_DEVICE end");
             break;
@@ -3299,16 +3495,16 @@ const struct effect_interface_s gLvmEffectInterface = {
     NULL,
 };    /* end gLvmEffectInterface */
 
+// This is the only symbol that needs to be exported
+__attribute__ ((visibility ("default")))
 audio_effect_library_t AUDIO_EFFECT_LIBRARY_INFO_SYM = {
-    tag : AUDIO_EFFECT_LIBRARY_TAG,
-    version : EFFECT_LIBRARY_API_VERSION,
-    name : "Effect Bundle Library",
-    implementor : "NXP Software Ltd.",
-    query_num_effects : android::EffectQueryNumberEffects,
-    query_effect : android::EffectQueryEffect,
-    create_effect : android::EffectCreate,
-    release_effect : android::EffectRelease,
-    get_descriptor : android::EffectGetDescriptor,
+    .tag = AUDIO_EFFECT_LIBRARY_TAG,
+    .version = EFFECT_LIBRARY_API_VERSION,
+    .name = "Effect Bundle Library",
+    .implementor = "NXP Software Ltd.",
+    .create_effect = android::EffectCreate,
+    .release_effect = android::EffectRelease,
+    .get_descriptor = android::EffectGetDescriptor,
 };
 
 }

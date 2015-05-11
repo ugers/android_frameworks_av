@@ -17,6 +17,7 @@
 #include <binder/IInterface.h>
 #include <media/hardware/HDCPAPI.h>
 #include <media/stagefright/foundation/ABase.h>
+#include <ui/GraphicBuffer.h>
 
 namespace android {
 
@@ -45,17 +46,58 @@ struct IHDCP : public IInterface {
     // Request to shutdown the active HDCP session.
     virtual status_t shutdownAsync() = 0;
 
-    // Encrypt a data according to the HDCP spec. The data is to be
-    // encrypted in-place, only size bytes of data should be read/write,
-    // even if the size is not a multiple of 128 bit (16 bytes).
+    // Returns the capability bitmask of this HDCP session.
+    // Possible return values (please refer to HDCAPAPI.h):
+    //   HDCP_CAPS_ENCRYPT: mandatory, meaning the HDCP module can encrypt
+    //   from an input byte-array buffer to an output byte-array buffer
+    //   HDCP_CAPS_ENCRYPT_NATIVE: the HDCP module supports encryption from
+    //   a native buffer to an output byte-array buffer. The format of the
+    //   input native buffer is specific to vendor's encoder implementation.
+    //   It is the same format as that used by the encoder when
+    //   "storeMetaDataInBuffers" extension is enabled on its output port.
+    virtual uint32_t getCaps() = 0;
+
+    // ENCRYPTION only:
+    // Encrypt data according to the HDCP spec. "size" bytes of data are
+    // available at "inData" (virtual address), "size" may not be a multiple
+    // of 128 bits (16 bytes). An equal number of encrypted bytes should be
+    // written to the buffer at "outData" (virtual address).
     // This operation is to be synchronous, i.e. this call does not return
     // until outData contains size bytes of encrypted data.
     // streamCTR will be assigned by the caller (to 0 for the first PES stream,
     // 1 for the second and so on)
-    // inputCTR will be maintained by the callee for each PES stream.
+    // inputCTR _will_be_maintained_by_the_callee_ for each PES stream.
     virtual status_t encrypt(
             const void *inData, size_t size, uint32_t streamCTR,
             uint64_t *outInputCTR, void *outData) = 0;
+
+    // Encrypt data according to the HDCP spec. "size" bytes of data starting
+    // at location "offset" are available in "buffer" (buffer handle). "size"
+    // may not be a multiple of 128 bits (16 bytes). An equal number of
+    // encrypted bytes should be written to the buffer at "outData" (virtual
+    // address). This operation is to be synchronous, i.e. this call does not
+    // return until outData contains size bytes of encrypted data.
+    // streamCTR will be assigned by the caller (to 0 for the first PES stream,
+    // 1 for the second and so on)
+    // inputCTR _will_be_maintained_by_the_callee_ for each PES stream.
+    virtual status_t encryptNative(
+            const sp<GraphicBuffer> &graphicBuffer,
+            size_t offset, size_t size, uint32_t streamCTR,
+            uint64_t *outInputCTR, void *outData) = 0;
+
+    // DECRYPTION only:
+    // Decrypt data according to the HDCP spec.
+    // "size" bytes of encrypted data are available at "inData"
+    // (virtual address), "size" may not be a multiple of 128 bits (16 bytes).
+    // An equal number of decrypted bytes should be written to the buffer
+    // at "outData" (virtual address).
+    // This operation is to be synchronous, i.e. this call does not return
+    // until outData contains size bytes of decrypted data.
+    // Both streamCTR and inputCTR will be provided by the caller.
+    virtual status_t decrypt(
+            const void *inData, size_t size,
+            uint32_t streamCTR, uint64_t inputCTR,
+            void *outData) = 0;
 
 private:
     DISALLOW_EVIL_CONSTRUCTORS(IHDCP);

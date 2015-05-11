@@ -27,6 +27,7 @@ namespace android {
 
 class IOMXObserver;
 struct OMXMaster;
+struct GraphicBufferSource;
 
 struct OMXNodeInstance {
     OMXNodeInstance(
@@ -57,6 +58,14 @@ struct OMXNodeInstance {
 
     status_t storeMetaDataInBuffers(OMX_U32 portIndex, OMX_BOOL enable);
 
+    status_t prepareForAdaptivePlayback(
+            OMX_U32 portIndex, OMX_BOOL enable,
+            OMX_U32 maxFrameWidth, OMX_U32 maxFrameHeight);
+
+    status_t configureVideoTunnelMode(
+            OMX_U32 portIndex, OMX_BOOL tunneled,
+            OMX_U32 audioHwSync, native_handle_t **sidebandHandle);
+
     status_t useBuffer(
             OMX_U32 portIndex, const sp<IMemory> &params,
             OMX::buffer_id *buffer);
@@ -64,6 +73,15 @@ struct OMXNodeInstance {
     status_t useGraphicBuffer(
             OMX_U32 portIndex, const sp<GraphicBuffer> &graphicBuffer,
             OMX::buffer_id *buffer);
+
+    status_t updateGraphicBufferInMeta(
+            OMX_U32 portIndex, const sp<GraphicBuffer> &graphicBuffer,
+            OMX::buffer_id buffer);
+
+    status_t createInputSurface(
+            OMX_U32 portIndex, sp<IGraphicBufferProducer> *bufferProducer);
+
+    status_t signalEndOfInputStream();
 
     status_t allocateBuffer(
             OMX_U32 portIndex, size_t size, OMX::buffer_id *buffer,
@@ -82,12 +100,24 @@ struct OMXNodeInstance {
             OMX_U32 rangeOffset, OMX_U32 rangeLength,
             OMX_U32 flags, OMX_TICKS timestamp);
 
+    status_t emptyDirectBuffer(
+            OMX_BUFFERHEADERTYPE *header,
+            OMX_U32 rangeOffset, OMX_U32 rangeLength,
+            OMX_U32 flags, OMX_TICKS timestamp);
+
     status_t getExtensionIndex(
             const char *parameterName, OMX_INDEXTYPE *index);
+
+    status_t setInternalOption(
+            OMX_U32 portIndex,
+            IOMX::InternalOptionType type,
+            const void *data,
+            size_t size);
 
     void onMessage(const omx_message &msg);
     void onObserverDied(OMXMaster *master);
     void onGetHandleFailed();
+    void onEvent(OMX_EVENTTYPE event, OMX_U32 arg1, OMX_U32 arg2);
 
     static OMX_CALLBACKTYPE kCallbacks;
 
@@ -100,17 +130,37 @@ private:
     sp<IOMXObserver> mObserver;
     bool mDying;
 
+    // Lock only covers mGraphicBufferSource.  We can't always use mLock
+    // because of rare instances where we'd end up locking it recursively.
+    Mutex mGraphicBufferSourceLock;
+    // Access this through getGraphicBufferSource().
+    sp<GraphicBufferSource> mGraphicBufferSource;
+
+
     struct ActiveBuffer {
         OMX_U32 mPortIndex;
         OMX::buffer_id mID;
     };
     Vector<ActiveBuffer> mActiveBuffers;
+#ifdef __LP64__
+    Mutex mBufferIDLock;
+    uint32_t mBufferIDCount;
+    KeyedVector<OMX::buffer_id, OMX_BUFFERHEADERTYPE *> mBufferIDToBufferHeader;
+    KeyedVector<OMX_BUFFERHEADERTYPE *, OMX::buffer_id> mBufferHeaderToBufferID;
+#endif
 
     ~OMXNodeInstance();
 
     void addActiveBuffer(OMX_U32 portIndex, OMX::buffer_id id);
     void removeActiveBuffer(OMX_U32 portIndex, OMX::buffer_id id);
     void freeActiveBuffers();
+
+    // For buffer id management
+    OMX::buffer_id makeBufferID(OMX_BUFFERHEADERTYPE *bufferHeader);
+    OMX_BUFFERHEADERTYPE *findBufferHeader(OMX::buffer_id buffer);
+    OMX::buffer_id findBufferID(OMX_BUFFERHEADERTYPE *bufferHeader);
+    void invalidateBufferID(OMX::buffer_id buffer);
+
     status_t useGraphicBuffer2_l(
             OMX_U32 portIndex, const sp<GraphicBuffer> &graphicBuffer,
             OMX::buffer_id *buffer);
@@ -131,6 +181,13 @@ private:
             OMX_IN OMX_HANDLETYPE hComponent,
             OMX_IN OMX_PTR pAppData,
             OMX_IN OMX_BUFFERHEADERTYPE *pBuffer);
+
+    status_t storeMetaDataInBuffers_l(
+            OMX_U32 portIndex, OMX_BOOL enable,
+            OMX_BOOL useGraphicBuffer, OMX_BOOL *usingGraphicBufferInMeta);
+
+    sp<GraphicBufferSource> getGraphicBufferSource();
+    void setGraphicBufferSource(const sp<GraphicBufferSource>& bufferSource);
 
     OMXNodeInstance(const OMXNodeInstance &);
     OMXNodeInstance &operator=(const OMXNodeInstance &);

@@ -153,18 +153,6 @@ status_t BpDrmManagerService::setDrmServiceListener(
     return reply.readInt32();
 }
 
-status_t BpDrmManagerService::installDrmEngine(int uniqueId, const String8& drmEngineFile) {
-    ALOGV("Install DRM Engine");
-    Parcel data, reply;
-
-    data.writeInterfaceToken(IDrmManagerService::getInterfaceDescriptor());
-    data.writeInt32(uniqueId);
-    data.writeString8(drmEngineFile);
-
-    remote()->transact(INSTALL_DRM_ENGINE, data, &reply);
-    return reply.readInt32();
-}
-
 DrmConstraints* BpDrmManagerService::getConstraints(
             int uniqueId, const String8* path, const int action) {
     ALOGV("Get Constraints");
@@ -190,8 +178,9 @@ DrmConstraints* BpDrmManagerService::getConstraints(
             if (0 < bufferSize) {
                 data = new char[bufferSize];
                 reply.read(data, bufferSize);
+                drmConstraints->put(&key, data);
+                delete[] data;
             }
-            drmConstraints->put(&key, data);
         }
     }
     return drmConstraints;
@@ -219,8 +208,9 @@ DrmMetadata* BpDrmManagerService::getMetadata(int uniqueId, const String8* path)
             if (0 < bufferSize) {
                 data = new char[bufferSize];
                 reply.read(data, bufferSize);
+                drmMetadata->put(&key, data);
+                delete[] data;
             }
-            drmMetadata->put(&key, data);
         }
     }
     return drmMetadata;
@@ -853,19 +843,6 @@ status_t BnDrmManagerService::onTransact(
         return DRM_NO_ERROR;
     }
 
-    case INSTALL_DRM_ENGINE:
-    {
-        ALOGV("BnDrmManagerService::onTransact :INSTALL_DRM_ENGINE");
-        CHECK_INTERFACE(IDrmManagerService, data, reply);
-
-        const int uniqueId = data.readInt32();
-        const String8 engineFile = data.readString8();
-        status_t status = installDrmEngine(uniqueId, engineFile);
-
-        reply->writeInt32(status);
-        return DRM_NO_ERROR;
-    }
-
     case GET_CONSTRAINTS_FROM_CONTENT:
     {
         ALOGV("BnDrmManagerService::onTransact :GET_CONSTRAINTS_FROM_CONTENT");
@@ -889,9 +866,11 @@ status_t BnDrmManagerService::onTransact(
                 int bufferSize = 0;
                 if (NULL != value) {
                     bufferSize = strlen(value);
+                    reply->writeInt32(bufferSize + 1);
+                    reply->write(value, bufferSize + 1);
+                } else {
+                    reply->writeInt32(0);
                 }
-                reply->writeInt32(bufferSize + 1);
-                reply->write(value, bufferSize + 1);
             }
         }
         delete drmConstraints; drmConstraints = NULL;

@@ -23,31 +23,33 @@
 
 namespace android {
 
-struct ATSParser;
 struct LiveSession;
 
 struct NuPlayer::HTTPLiveSource : public NuPlayer::Source {
     HTTPLiveSource(
+            const sp<AMessage> &notify,
+            const sp<IMediaHTTPService> &httpService,
             const char *url,
-            const KeyedVector<String8, String8> *headers,
-            bool uidValid = false,
-            uid_t uid = 0);
+            const KeyedVector<String8, String8> *headers);
 
+    virtual void prepareAsync();
     virtual void start();
 
-    virtual status_t feedMoreTSData();
-
     virtual status_t dequeueAccessUnit(bool audio, sp<ABuffer> *accessUnit);
+    virtual sp<AMessage> getFormat(bool audio);
+    virtual sp<MetaData> getFormatMeta(bool audio);
 
+    virtual status_t feedMoreTSData();
     virtual status_t getDuration(int64_t *durationUs);
+    virtual size_t getTrackCount() const;
+    virtual sp<AMessage> getTrackInfo(size_t trackIndex) const;
+    virtual status_t selectTrack(size_t trackIndex, bool select);
     virtual status_t seekTo(int64_t seekTimeUs);
-
-    virtual uint32_t flags() const;
 
 protected:
     virtual ~HTTPLiveSource();
 
-    virtual sp<MetaData> getFormatMeta(bool audio);
+    virtual void onMessageReceived(const sp<AMessage> &msg);
 
 private:
     enum Flags {
@@ -55,16 +57,22 @@ private:
         kFlagIncognito = 1,
     };
 
+    enum {
+        kWhatSessionNotify,
+        kWhatFetchSubtitleData,
+    };
+
+    sp<IMediaHTTPService> mHTTPService;
     AString mURL;
     KeyedVector<String8, String8> mExtraHeaders;
-    bool mUIDValid;
-    uid_t mUID;
     uint32_t mFlags;
     status_t mFinalResult;
     off64_t mOffset;
     sp<ALooper> mLiveLooper;
     sp<LiveSession> mLiveSession;
-    sp<ATSParser> mTSParser;
+    int32_t mFetchSubtitleDataGeneration;
+
+    void onSessionNotify(const sp<AMessage> &msg);
 
     DISALLOW_EVIL_CONSTRUCTORS(HTTPLiveSource);
 };

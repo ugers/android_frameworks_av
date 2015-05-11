@@ -84,8 +84,8 @@ MY_OMXDL_ASM_SRC := \
 	./omxdl/arm_neon/vc/m4p10/src_gcc/omxVCM4P10_DequantTransformResidualFromPairAndAdd_s.S \
 	./omxdl/arm_neon/vc/m4p10/src_gcc/omxVCM4P10_TransformDequantChromaDCFromPair_s.S \
 
-
-ifeq ($(ARCH_ARM_HAVE_NEON),true)
+ifeq ($(TARGET_ARCH),arm)
+  ifeq ($(ARCH_ARM_HAVE_NEON),true)
     LOCAL_ARM_NEON   := true
 #    LOCAL_CFLAGS     := -std=c99 -D._NEON -D._OMXDL
     LOCAL_CFLAGS     := -DH264DEC_NEON -DH264DEC_OMXDL
@@ -94,10 +94,11 @@ ifeq ($(ARCH_ARM_HAVE_NEON),true)
     LOCAL_C_INCLUDES += $(LOCAL_PATH)/./omxdl/arm_neon/api \
                         $(LOCAL_PATH)/./omxdl/arm_neon/vc/api \
                         $(LOCAL_PATH)/./omxdl/arm_neon/vc/m4p10/api
+  endif
 endif
 
 LOCAL_SHARED_LIBRARIES := \
-	libstagefright libstagefright_omx libstagefright_foundation libutils \
+	libstagefright libstagefright_omx libstagefright_foundation libutils liblog \
 
 LOCAL_MODULE := libstagefright_soft_h264dec
 
@@ -119,9 +120,8 @@ LOCAL_C_INCLUDES := $(LOCAL_PATH)/inc
 
 LOCAL_SHARED_LIBRARIES := libstagefright_soft_h264dec
 
-LOCAL_MODULE_TAGS := debug
+LOCAL_MODULE_TAGS := optional
 
 LOCAL_MODULE := decoder
 
 include $(BUILD_EXECUTABLE)
-

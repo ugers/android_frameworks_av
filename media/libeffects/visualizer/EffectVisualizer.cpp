@@ -16,12 +16,14 @@
 
 #define LOG_TAG "EffectVisualizer"
 //#define LOG_NDEBUG 0
-#include <cutils/log.h>
+#include <log/log.h>
 #include <assert.h>
+#include <inttypes.h>
 #include <stdlib.h>
 #include <string.h>
 #include <new>
 #include <time.h>
+#include <math.h>
 #include <audio_effects/effect_visualizer.h>
 
 
@@ -54,6 +56,18 @@ enum visualizer_state_e {
 
 #define CAPTURE_BUF_SIZE 65536 // "64k should be enough for everyone"
 
+#define DISCARD_MEASUREMENTS_TIME_MS 2000 // discard measurements older than this number of ms
+
+// maximum number of buffers for which we keep track of the measurements
+#define MEASUREMENT_WINDOW_MAX_SIZE_IN_BUFFERS 25 // note: buffer index is stored in uint8_t
+
+
+struct BufferStats {
+    bool mIsValid;
+    uint16_t mPeakU16; // the positive peak of the absolute value of the samples in a buffer
+    float mRmsSquared; // the average square of the samples in a buffer
+};
+
 struct VisualizerContext {
     const struct effect_interface_s *mItfe;
     effect_config_t mConfig;
@@ -61,15 +75,38 @@ struct VisualizerContext {
     uint32_t mCaptureSize;
     uint32_t mScalingMode;
     uint8_t mState;
-    uint8_t mLastCaptureIdx;
+    uint32_t mLastCaptureIdx;
     uint32_t mLatency;
     struct timespec mBufferUpdateTime;
     uint8_t mCaptureBuf[CAPTURE_BUF_SIZE];
+    // for measurements
+    uint8_t mChannelCount; // to avoid recomputing it every time a buffer is processed
+    uint32_t mMeasurementMode;
+    uint8_t mMeasurementWindowSizeInBuffers;
+    uint8_t mMeasurementBufferIdx;
+    BufferStats mPastMeasurements[MEASUREMENT_WINDOW_MAX_SIZE_IN_BUFFERS];
 };
 
 //
 //--- Local functions
 //
+uint32_t Visualizer_getDeltaTimeMsFromUpdatedTime(VisualizerContext* pContext) {
+    uint32_t deltaMs = 0;
+    if (pContext->mBufferUpdateTime.tv_sec != 0) {
+        struct timespec ts;
+        if (clock_gettime(CLOCK_MONOTONIC, &ts) == 0) {
+            time_t secs = ts.tv_sec - pContext->mBufferUpdateTime.tv_sec;
+            long nsec = ts.tv_nsec - pContext->mBufferUpdateTime.tv_nsec;
+            if (nsec < 0) {
+                --secs;
+                nsec += 1000000000;
+            }
+            deltaMs = secs * 1000 + nsec / 1000000;
+        }
+    }
+    return deltaMs;
+}
+
 
 void Visualizer_reset(VisualizerContext *pContext)
 {
@@ -165,8 +202,21 @@ int Visualizer_init(VisualizerContext *pContext)
     pContext->mConfig.outputCfg.bufferProvider.cookie = NULL;
     pContext->mConfig.outputCfg.mask = EFFECT_CONFIG_ALL;
 
+    // visualization initialization
     pContext->mCaptureSize = VISUALIZER_CAPTURE_SIZE_MAX;
     pContext->mScalingMode = VISUALIZER_SCALING_MODE_NORMALIZED;
+
+    // measurement initialization
+    pContext->mChannelCount =
+            audio_channel_count_from_out_mask(pContext->mConfig.inputCfg.channels);
+    pContext->mMeasurementMode = MEASUREMENT_MODE_NONE;
+    pContext->mMeasurementWindowSizeInBuffers = MEASUREMENT_WINDOW_MAX_SIZE_IN_BUFFERS;
+    pContext->mMeasurementBufferIdx = 0;
+    for (uint32_t i=0 ; i<pContext->mMeasurementWindowSizeInBuffers ; i++) {
+        pContext->mPastMeasurements[i].mIsValid = false;
+        pContext->mPastMeasurements[i].mPeakU16 = 0;
+        pContext->mPastMeasurements[i].mRmsSquared = 0;
+    }
 
     Visualizer_setConfig(pContext, &pContext->mConfig);
 
@@ -177,26 +227,9 @@ int Visualizer_init(VisualizerContext *pContext)
 //--- Effect Library Interface Implementation
 //
 
-int VisualizerLib_QueryNumberEffects(uint32_t *pNumEffects) {
-    *pNumEffects = 1;
-    return 0;
-}
-
-int VisualizerLib_QueryEffect(uint32_t index,
-                              effect_descriptor_t *pDescriptor) {
-    if (pDescriptor == NULL) {
-        return -EINVAL;
-    }
-    if (index > 0) {
-        return -EINVAL;
-    }
-    *pDescriptor = gVisualizerDescriptor;
-    return 0;
-}
-
 int VisualizerLib_Create(const effect_uuid_t *uuid,
-                         int32_t sessionId,
-                         int32_t ioId,
+                         int32_t /*sessionId*/,
+                         int32_t /*ioId*/,
                          effect_handle_t *pHandle) {
     int ret;
     int i;
@@ -287,6 +320,30 @@ int Visualizer_process(
         return -EINVAL;
     }
 
+    // perform measurements if needed
+    if (pContext->mMeasurementMode & MEASUREMENT_MODE_PEAK_RMS) {
+        // find the peak and RMS squared for the new buffer
+        uint32_t inIdx;
+        int16_t maxSample = 0;
+        float rmsSqAcc = 0;
+        for (inIdx = 0 ; inIdx < inBuffer->frameCount * pContext->mChannelCount ; inIdx++) {
+            if (inBuffer->s16[inIdx] > maxSample) {
+                maxSample = inBuffer->s16[inIdx];
+            } else if (-inBuffer->s16[inIdx] > maxSample) {
+                maxSample = -inBuffer->s16[inIdx];
+            }
+            rmsSqAcc += (inBuffer->s16[inIdx] * inBuffer->s16[inIdx]);
+        }
+        // store the measurement
+        pContext->mPastMeasurements[pContext->mMeasurementBufferIdx].mPeakU16 = (uint16_t)maxSample;
+        pContext->mPastMeasurements[pContext->mMeasurementBufferIdx].mRmsSquared =
+                rmsSqAcc / (inBuffer->frameCount * pContext->mChannelCount);
+        pContext->mPastMeasurements[pContext->mMeasurementBufferIdx].mIsValid = true;
+        if (++pContext->mMeasurementBufferIdx >= pContext->mMeasurementWindowSizeInBuffers) {
+            pContext->mMeasurementBufferIdx = 0;
+        }
+    }
+
     // all code below assumes stereo 16 bit PCM output and input
     int32_t shift;
 
@@ -363,7 +420,7 @@ int Visualizer_command(effect_handle_t self, uint32_t cmdCode, uint32_t cmdSize,
         return -EINVAL;
     }
 
-//    ALOGV("Visualizer_command command %d cmdSize %d",cmdCode, cmdSize);
+//    ALOGV("Visualizer_command command %" PRIu32 " cmdSize %" PRIu32, cmdCode, cmdSize);
 
     switch (cmdCode) {
     case EFFECT_CMD_INIT:
@@ -429,14 +486,20 @@ int Visualizer_command(effect_handle_t self, uint32_t cmdCode, uint32_t cmdSize,
         }
         switch (*(uint32_t *)p->data) {
         case VISUALIZER_PARAM_CAPTURE_SIZE:
-            ALOGV("get mCaptureSize = %d", pContext->mCaptureSize);
+            ALOGV("get mCaptureSize = %" PRIu32, pContext->mCaptureSize);
             *((uint32_t *)p->data + 1) = pContext->mCaptureSize;
             p->vsize = sizeof(uint32_t);
             *replySize += sizeof(uint32_t);
             break;
         case VISUALIZER_PARAM_SCALING_MODE:
-            ALOGV("get mScalingMode = %d", pContext->mScalingMode);
+            ALOGV("get mScalingMode = %" PRIu32, pContext->mScalingMode);
             *((uint32_t *)p->data + 1) = pContext->mScalingMode;
+            p->vsize = sizeof(uint32_t);
+            *replySize += sizeof(uint32_t);
+            break;
+        case VISUALIZER_PARAM_MEASUREMENT_MODE:
+            ALOGV("get mMeasurementMode = %" PRIu32, pContext->mMeasurementMode);
+            *((uint32_t *)p->data + 1) = pContext->mMeasurementMode;
             p->vsize = sizeof(uint32_t);
             *replySize += sizeof(uint32_t);
             break;
@@ -459,15 +522,19 @@ int Visualizer_command(effect_handle_t self, uint32_t cmdCode, uint32_t cmdSize,
         switch (*(uint32_t *)p->data) {
         case VISUALIZER_PARAM_CAPTURE_SIZE:
             pContext->mCaptureSize = *((uint32_t *)p->data + 1);
-            ALOGV("set mCaptureSize = %d", pContext->mCaptureSize);
+            ALOGV("set mCaptureSize = %" PRIu32, pContext->mCaptureSize);
             break;
         case VISUALIZER_PARAM_SCALING_MODE:
             pContext->mScalingMode = *((uint32_t *)p->data + 1);
-            ALOGV("set mScalingMode = %d", pContext->mScalingMode);
+            ALOGV("set mScalingMode = %" PRIu32, pContext->mScalingMode);
             break;
         case VISUALIZER_PARAM_LATENCY:
             pContext->mLatency = *((uint32_t *)p->data + 1);
-            ALOGV("set mLatency = %d", pContext->mLatency);
+            ALOGV("set mLatency = %" PRIu32, pContext->mLatency);
+            break;
+        case VISUALIZER_PARAM_MEASUREMENT_MODE:
+            pContext->mMeasurementMode = *((uint32_t *)p->data + 1);
+            ALOGV("set mMeasurementMode = %" PRIu32, pContext->mMeasurementMode);
             break;
         default:
             *(int32_t *)pReplyData = -EINVAL;
@@ -479,71 +546,108 @@ int Visualizer_command(effect_handle_t self, uint32_t cmdCode, uint32_t cmdSize,
         break;
 
 
-    case VISUALIZER_CMD_CAPTURE:
-        if (pReplyData == NULL || *replySize != pContext->mCaptureSize) {
-            ALOGV("VISUALIZER_CMD_CAPTURE() error *replySize %d pContext->mCaptureSize %d",
-                    *replySize, pContext->mCaptureSize);
+    case VISUALIZER_CMD_CAPTURE: {
+        uint32_t captureSize = pContext->mCaptureSize;
+        if (pReplyData == NULL || *replySize != captureSize) {
+            ALOGV("VISUALIZER_CMD_CAPTURE() error *replySize %" PRIu32 " captureSize %" PRIu32,
+                    *replySize, captureSize);
             return -EINVAL;
         }
         if (pContext->mState == VISUALIZER_STATE_ACTIVE) {
-            int32_t latencyMs = pContext->mLatency;
-            uint32_t deltaMs = 0;
-            if (pContext->mBufferUpdateTime.tv_sec != 0) {
-                struct timespec ts;
-                if (clock_gettime(CLOCK_MONOTONIC, &ts) == 0) {
-                    time_t secs = ts.tv_sec - pContext->mBufferUpdateTime.tv_sec;
-                    long nsec = ts.tv_nsec - pContext->mBufferUpdateTime.tv_nsec;
-                    if (nsec < 0) {
-                        --secs;
-                        nsec += 1000000000;
-                    }
-                    deltaMs = secs * 1000 + nsec / 1000000;
-                    latencyMs -= deltaMs;
-                    if (latencyMs < 0) {
-                        latencyMs = 0;
-                    }
-                }
-            }
-            uint32_t deltaSmpl = pContext->mConfig.inputCfg.samplingRate * latencyMs / 1000;
-
-            int32_t capturePoint = pContext->mCaptureIdx - pContext->mCaptureSize - deltaSmpl;
-            int32_t captureSize = pContext->mCaptureSize;
-            if (capturePoint < 0) {
-                int32_t size = -capturePoint;
-                if (size > captureSize) {
-                    size = captureSize;
-                }
-                memcpy(pReplyData,
-                       pContext->mCaptureBuf + CAPTURE_BUF_SIZE + capturePoint,
-                       size);
-                pReplyData += size;
-                captureSize -= size;
-                capturePoint = 0;
-            }
-            memcpy(pReplyData,
-                   pContext->mCaptureBuf + capturePoint,
-                   captureSize);
-
+            const uint32_t deltaMs = Visualizer_getDeltaTimeMsFromUpdatedTime(pContext);
 
             // if audio framework has stopped playing audio although the effect is still
             // active we must clear the capture buffer to return silence
             if ((pContext->mLastCaptureIdx == pContext->mCaptureIdx) &&
-                    (pContext->mBufferUpdateTime.tv_sec != 0)) {
-                if (deltaMs > MAX_STALL_TIME_MS) {
+                    (pContext->mBufferUpdateTime.tv_sec != 0) &&
+                    (deltaMs > MAX_STALL_TIME_MS)) {
                     ALOGV("capture going to idle");
                     pContext->mBufferUpdateTime.tv_sec = 0;
-                    memset(pReplyData, 0x80, pContext->mCaptureSize);
+                    memset(pReplyData, 0x80, captureSize);
+            } else {
+                int32_t latencyMs = pContext->mLatency;
+                latencyMs -= deltaMs;
+                if (latencyMs < 0) {
+                    latencyMs = 0;
                 }
+                const uint32_t deltaSmpl =
+                    pContext->mConfig.inputCfg.samplingRate * latencyMs / 1000;
+                int32_t capturePoint = pContext->mCaptureIdx - captureSize - deltaSmpl;
+
+                if (capturePoint < 0) {
+                    uint32_t size = -capturePoint;
+                    if (size > captureSize) {
+                        size = captureSize;
+                    }
+                    memcpy(pReplyData,
+                           pContext->mCaptureBuf + CAPTURE_BUF_SIZE + capturePoint,
+                           size);
+                    pReplyData = (char *)pReplyData + size;
+                    captureSize -= size;
+                    capturePoint = 0;
+                }
+                memcpy(pReplyData,
+                       pContext->mCaptureBuf + capturePoint,
+                       captureSize);
             }
+
             pContext->mLastCaptureIdx = pContext->mCaptureIdx;
         } else {
-            memset(pReplyData, 0x80, pContext->mCaptureSize);
+            memset(pReplyData, 0x80, captureSize);
         }
 
+        } break;
+
+    case VISUALIZER_CMD_MEASURE: {
+        uint16_t peakU16 = 0;
+        float sumRmsSquared = 0.0f;
+        uint8_t nbValidMeasurements = 0;
+        // reset measurements if last measurement was too long ago (which implies stored
+        // measurements aren't relevant anymore and shouldn't bias the new one)
+        const int32_t delayMs = Visualizer_getDeltaTimeMsFromUpdatedTime(pContext);
+        if (delayMs > DISCARD_MEASUREMENTS_TIME_MS) {
+            ALOGV("Discarding measurements, last measurement is %" PRId32 "ms old", delayMs);
+            for (uint32_t i=0 ; i<pContext->mMeasurementWindowSizeInBuffers ; i++) {
+                pContext->mPastMeasurements[i].mIsValid = false;
+                pContext->mPastMeasurements[i].mPeakU16 = 0;
+                pContext->mPastMeasurements[i].mRmsSquared = 0;
+            }
+            pContext->mMeasurementBufferIdx = 0;
+        } else {
+            // only use actual measurements, otherwise the first RMS measure happening before
+            // MEASUREMENT_WINDOW_MAX_SIZE_IN_BUFFERS have been played will always be artificially
+            // low
+            for (uint32_t i=0 ; i < pContext->mMeasurementWindowSizeInBuffers ; i++) {
+                if (pContext->mPastMeasurements[i].mIsValid) {
+                    if (pContext->mPastMeasurements[i].mPeakU16 > peakU16) {
+                        peakU16 = pContext->mPastMeasurements[i].mPeakU16;
+                    }
+                    sumRmsSquared += pContext->mPastMeasurements[i].mRmsSquared;
+                    nbValidMeasurements++;
+                }
+            }
+        }
+        float rms = nbValidMeasurements == 0 ? 0.0f : sqrtf(sumRmsSquared / nbValidMeasurements);
+        int32_t* pIntReplyData = (int32_t*)pReplyData;
+        // convert from I16 sample values to mB and write results
+        if (rms < 0.000016f) {
+            pIntReplyData[MEASUREMENT_IDX_RMS] = -9600; //-96dB
+        } else {
+            pIntReplyData[MEASUREMENT_IDX_RMS] = (int32_t) (2000 * log10(rms / 32767.0f));
+        }
+        if (peakU16 == 0) {
+            pIntReplyData[MEASUREMENT_IDX_PEAK] = -9600; //-96dB
+        } else {
+            pIntReplyData[MEASUREMENT_IDX_PEAK] = (int32_t) (2000 * log10(peakU16 / 32767.0f));
+        }
+        ALOGV("VISUALIZER_CMD_MEASURE peak=%" PRIu16 " (%" PRId32 "mB), rms=%.1f (%" PRId32 "mB)",
+                peakU16, pIntReplyData[MEASUREMENT_IDX_PEAK],
+                rms, pIntReplyData[MEASUREMENT_IDX_RMS]);
+        }
         break;
 
     default:
-        ALOGW("Visualizer_command invalid command %d",cmdCode);
+        ALOGW("Visualizer_command invalid command %" PRIu32, cmdCode);
         return -EINVAL;
     }
 
@@ -574,17 +678,16 @@ const struct effect_interface_s gVisualizerInterface = {
         NULL,
 };
 
-
+// This is the only symbol that needs to be exported
+__attribute__ ((visibility ("default")))
 audio_effect_library_t AUDIO_EFFECT_LIBRARY_INFO_SYM = {
-    tag : AUDIO_EFFECT_LIBRARY_TAG,
-    version : EFFECT_LIBRARY_API_VERSION,
-    name : "Visualizer Library",
-    implementor : "The Android Open Source Project",
-    query_num_effects : VisualizerLib_QueryNumberEffects,
-    query_effect : VisualizerLib_QueryEffect,
-    create_effect : VisualizerLib_Create,
-    release_effect : VisualizerLib_Release,
-    get_descriptor : VisualizerLib_GetDescriptor,
+    .tag = AUDIO_EFFECT_LIBRARY_TAG,
+    .version = EFFECT_LIBRARY_API_VERSION,
+    .name = "Visualizer Library",
+    .implementor = "The Android Open Source Project",
+    .create_effect = VisualizerLib_Create,
+    .release_effect = VisualizerLib_Release,
+    .get_descriptor = VisualizerLib_GetDescriptor,
 };
 
 }; // extern "C"

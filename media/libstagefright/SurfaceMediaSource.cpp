@@ -16,12 +16,14 @@
 //#define LOG_NDEBUG 0
 #define LOG_TAG "SurfaceMediaSource"
 
+#include <inttypes.h>
+
 #include <media/stagefright/foundation/ADebug.h>
 #include <media/stagefright/SurfaceMediaSource.h>
 #include <media/stagefright/MediaDefs.h>
 #include <media/stagefright/MetaData.h>
 #include <OMX_IVCommon.h>
-#include <MetadataBufferType.h>
+#include <media/hardware/MetadataBufferType.h>
 
 #include <ui/GraphicBuffer.h>
 #include <gui/ISurfaceComposer.h>
@@ -32,6 +34,9 @@
 #include <utils/String8.h>
 
 #include <private/gui/ComposerService.h>
+#ifdef QCOM_BSP
+#include <gralloc_priv.h>
+#endif
 
 namespace android {
 
@@ -54,11 +59,14 @@ SurfaceMediaSource::SurfaceMediaSource(uint32_t bufferWidth, uint32_t bufferHeig
         ALOGE("Invalid dimensions %dx%d", bufferWidth, bufferHeight);
     }
 
-    mBufferQueue = new BufferQueue(true);
-    mBufferQueue->setDefaultBufferSize(bufferWidth, bufferHeight);
-    mBufferQueue->setSynchronousMode(true);
-    mBufferQueue->setConsumerUsageBits(GRALLOC_USAGE_HW_VIDEO_ENCODER |
-            GRALLOC_USAGE_HW_TEXTURE);
+    BufferQueue::createBufferQueue(&mProducer, &mConsumer);
+    mConsumer->setDefaultBufferSize(bufferWidth, bufferHeight);
+    mConsumer->setConsumerUsageBits(GRALLOC_USAGE_HW_VIDEO_ENCODER
+            | GRALLOC_USAGE_HW_TEXTURE
+#ifdef QCOM_BSP
+            | GRALLOC_USAGE_PRIVATE_WFD
+#endif
+            );
 
     sp<ISurfaceComposer> composer(ComposerService::getComposerService());
 
@@ -66,12 +74,10 @@ SurfaceMediaSource::SurfaceMediaSource(uint32_t bufferWidth, uint32_t bufferHeig
     // reference once the ctor ends, as that would cause the refcount of 'this'
     // dropping to 0 at the end of the ctor.  Since all we need is a wp<...>
     // that's what we create.
-    wp<BufferQueue::ConsumerListener> listener;
-    sp<BufferQueue::ConsumerListener> proxy;
-    listener = static_cast<BufferQueue::ConsumerListener*>(this);
-    proxy = new BufferQueue::ProxyConsumerListener(listener);
+    wp<ConsumerListener> listener = static_cast<ConsumerListener*>(this);
+    sp<BufferQueue::ProxyConsumerListener> proxy = new BufferQueue::ProxyConsumerListener(listener);
 
-    status_t err = mBufferQueue->consumerConnect(proxy);
+    status_t err = mConsumer->consumerConnect(proxy, false);
     if (err != NO_ERROR) {
         ALOGE("SurfaceMediaSource: error connecting to BufferQueue: %s (%d)",
                 strerror(-err), err);
@@ -102,13 +108,16 @@ void SurfaceMediaSource::dump(String8& result) const
     dump(result, "", buffer, 1024);
 }
 
-void SurfaceMediaSource::dump(String8& result, const char* prefix,
-        char* buffer, size_t SIZE) const
+void SurfaceMediaSource::dump(
+        String8& result,
+        const char* /* prefix */,
+        char* buffer,
+        size_t /* SIZE */) const
 {
     Mutex::Autolock lock(mMutex);
 
     result.append(buffer);
-    mBufferQueue->dump(result);
+    mConsumer->dump(result, "");
 }
 
 status_t SurfaceMediaSource::setFrameRate(int32_t fps)
@@ -166,7 +175,7 @@ status_t SurfaceMediaSource::start(MetaData *params)
     CHECK_GT(mMaxAcquiredBufferCount, 1);
 
     status_t err =
-        mBufferQueue->setMaxAcquiredBufferCount(mMaxAcquiredBufferCount);
+        mConsumer->setMaxAcquiredBufferCount(mMaxAcquiredBufferCount);
 
     if (err != OK) {
         return err;
@@ -179,7 +188,7 @@ status_t SurfaceMediaSource::start(MetaData *params)
 }
 
 status_t SurfaceMediaSource::setMaxAcquiredBufferCount(size_t count) {
-    ALOGV("setMaxAcquiredBufferCount(%d)", count);
+    ALOGV("setMaxAcquiredBufferCount(%zu)", count);
     Mutex::Autolock lock(mMutex);
 
     CHECK_GT(count, 1);
@@ -205,8 +214,11 @@ status_t SurfaceMediaSource::stop()
         return OK;
     }
 
+    mStarted = false;
+    mFrameAvailableCondition.signal();
+
     while (mNumPendingBuffers > 0) {
-        ALOGI("Still waiting for %d buffers to be returned.",
+        ALOGI("Still waiting for %zu buffers to be returned.",
                 mNumPendingBuffers);
 
 #if DEBUG_PENDING_BUFFERS
@@ -218,11 +230,9 @@ status_t SurfaceMediaSource::stop()
         mMediaBuffersAvailableCondition.wait(mMutex);
     }
 
-    mStarted = false;
-    mFrameAvailableCondition.signal();
     mMediaBuffersAvailableCondition.signal();
 
-    return mBufferQueue->consumerDisconnect();
+    return mConsumer->consumerDisconnect();
 }
 
 sp<MetaData> SurfaceMediaSource::getFormat()
@@ -268,13 +278,12 @@ static void passMetadataBuffer(MediaBuffer **buffer,
     memcpy(data, &type, 4);
     memcpy(data + 4, &bufferHandle, sizeof(buffer_handle_t));
 
-    ALOGV("handle = %p, , offset = %d, length = %d",
+    ALOGV("handle = %p, , offset = %zu, length = %zu",
             bufferHandle, (*buffer)->range_length(), (*buffer)->range_offset());
 }
 
-status_t SurfaceMediaSource::read( MediaBuffer **buffer,
-                                    const ReadOptions *options)
-{
+status_t SurfaceMediaSource::read(
+        MediaBuffer **buffer, const ReadOptions * /* options */) {
     ALOGV("read");
     Mutex::Autolock lock(mMutex);
 
@@ -293,16 +302,21 @@ status_t SurfaceMediaSource::read( MediaBuffer **buffer,
     // wait here till the frames come in from the client side
     while (mStarted) {
 
-        status_t err = mBufferQueue->acquireBuffer(&item);
+        status_t err = mConsumer->acquireBuffer(&item, 0);
         if (err == BufferQueue::NO_BUFFER_AVAILABLE) {
             // wait for a buffer to be queued
             mFrameAvailableCondition.wait(mMutex);
         } else if (err == OK) {
+            err = item.mFence->waitForever("SurfaceMediaSource::read");
+            if (err) {
+                ALOGW("read: failed to wait for buffer fence: %d", err);
+            }
 
             // First time seeing the buffer?  Added it to the SMS slot
             if (item.mGraphicBuffer != NULL) {
-                mBufferSlot[item.mBuf] = item.mGraphicBuffer;
+                mSlots[item.mBuf].mGraphicBuffer = item.mGraphicBuffer;
             }
+            mSlots[item.mBuf].mFrameNumber = item.mFrameNumber;
 
             // check for the timing of this buffer
             if (mNumFramesReceived == 0 && !mUseAbsoluteTimestamps) {
@@ -311,7 +325,8 @@ status_t SurfaceMediaSource::read( MediaBuffer **buffer,
                 if (mStartTimeNs > 0) {
                     if (item.mTimestamp < mStartTimeNs) {
                         // This frame predates start of record, discard
-                        mBufferQueue->releaseBuffer(item.mBuf, EGL_NO_DISPLAY,
+                        mConsumer->releaseBuffer(
+                                item.mBuf, item.mFrameNumber, EGL_NO_DISPLAY,
                                 EGL_NO_SYNC_KHR, Fence::NO_FENCE);
                         continue;
                     }
@@ -341,22 +356,23 @@ status_t SurfaceMediaSource::read( MediaBuffer **buffer,
 
     // First time seeing the buffer?  Added it to the SMS slot
     if (item.mGraphicBuffer != NULL) {
-        mBufferSlot[mCurrentSlot] = item.mGraphicBuffer;
+        mSlots[item.mBuf].mGraphicBuffer = item.mGraphicBuffer;
     }
+    mSlots[item.mBuf].mFrameNumber = item.mFrameNumber;
 
-    mCurrentBuffers.push_back(mBufferSlot[mCurrentSlot]);
+    mCurrentBuffers.push_back(mSlots[mCurrentSlot].mGraphicBuffer);
     int64_t prevTimeStamp = mCurrentTimestamp;
     mCurrentTimestamp = item.mTimestamp;
 
     mNumFramesEncoded++;
     // Pass the data to the MediaBuffer. Pass in only the metadata
 
-    passMetadataBuffer(buffer, mBufferSlot[mCurrentSlot]->handle);
+    passMetadataBuffer(buffer, mSlots[mCurrentSlot].mGraphicBuffer->handle);
 
     (*buffer)->setObserver(this);
     (*buffer)->add_ref();
     (*buffer)->meta_data()->setInt64(kKeyTime, mCurrentTimestamp / 1000);
-    ALOGV("Frames encoded = %d, timestamp = %lld, time diff = %lld",
+    ALOGV("Frames encoded = %d, timestamp = %" PRId64 ", time diff = %" PRId64,
             mNumFramesEncoded, mCurrentTimestamp / 1000,
             mCurrentTimestamp / 1000 - prevTimeStamp / 1000);
 
@@ -401,15 +417,16 @@ void SurfaceMediaSource::signalBufferReturned(MediaBuffer *buffer) {
     }
 
     for (int id = 0; id < BufferQueue::NUM_BUFFER_SLOTS; id++) {
-        if (mBufferSlot[id] == NULL) {
+        if (mSlots[id].mGraphicBuffer == NULL) {
             continue;
         }
 
-        if (bufferHandle == mBufferSlot[id]->handle) {
+        if (bufferHandle == mSlots[id].mGraphicBuffer->handle) {
             ALOGV("Slot %d returned, matches handle = %p", id,
-                    mBufferSlot[id]->handle);
+                    mSlots[id].mGraphicBuffer->handle);
 
-            mBufferQueue->releaseBuffer(id, EGL_NO_DISPLAY, EGL_NO_SYNC_KHR,
+            mConsumer->releaseBuffer(id, mSlots[id].mFrameNumber,
+                                        EGL_NO_DISPLAY, EGL_NO_SYNC_KHR,
                     Fence::NO_FENCE);
 
             buffer->setObserver(0);
@@ -465,8 +482,12 @@ void SurfaceMediaSource::onBuffersReleased() {
     mFrameAvailableCondition.signal();
 
     for (int i = 0; i < BufferQueue::NUM_BUFFER_SLOTS; i++) {
-       mBufferSlot[i] = 0;
+       mSlots[i].mGraphicBuffer = 0;
     }
+}
+
+void SurfaceMediaSource::onSidebandStreamChanged() {
+    ALOG_ASSERT(false, "SurfaceMediaSource can't consume sideband streams");
 }
 
 } // end of namespace android

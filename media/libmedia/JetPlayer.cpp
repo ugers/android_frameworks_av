@@ -18,8 +18,6 @@
 #define LOG_TAG "JetPlayer-C"
 
 #include <utils/Log.h>
-#include <utils/threads.h>
-
 #include <media/JetPlayer.h>
 
 
@@ -39,7 +37,6 @@ JetPlayer::JetPlayer(void *javaJetPlayer, int maxTracks, int trackBufferSize) :
         mMaxTracks(maxTracks),
         mEasData(NULL),
         mEasJetFileLoc(NULL),
-        mAudioTrack(NULL),
         mTrackBufferSize(trackBufferSize)
 {
     ALOGV("JetPlayer constructor");
@@ -93,7 +90,7 @@ int JetPlayer::init()
             pLibConfig->sampleRate,
             AUDIO_FORMAT_PCM_16_BIT,
             audio_channel_out_mask_from_count(pLibConfig->numChannels),
-            mTrackBufferSize,
+            (size_t) mTrackBufferSize,
             AUDIO_OUTPUT_FLAG_NONE);
 
     // create render and playback thread
@@ -140,11 +137,10 @@ int JetPlayer::release()
         free(mEasJetFileLoc);
         mEasJetFileLoc = NULL;
     }
-    if (mAudioTrack) {
+    if (mAudioTrack != 0) {
         mAudioTrack->stop();
         mAudioTrack->flush();
-        delete mAudioTrack;
-        mAudioTrack = NULL;
+        mAudioTrack.clear();
     }
     if (mAudioBuffer) {
         delete mAudioBuffer;

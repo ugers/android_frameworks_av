@@ -16,6 +16,11 @@
 
 //#define LOG_NDEBUG 0
 #define LOG_TAG "OMXClient"
+
+#ifdef __LP64__
+#define OMX_ANDROID_COMPILE_AS_32BIT_ON_64BIT_PLATFORMS
+#endif
+
 #include <utils/Log.h>
 
 #include <binder/IServiceManager.h>
@@ -32,7 +37,7 @@ struct MuxOMX : public IOMX {
     MuxOMX(const sp<IOMX> &remoteOMX);
     virtual ~MuxOMX();
 
-    virtual IBinder *onAsBinder() { return NULL; }
+    virtual IBinder *onAsBinder() { return mRemoteOMX->asBinder().get(); }
 
     virtual bool livesLocally(node_id node, pid_t pid);
 
@@ -69,6 +74,14 @@ struct MuxOMX : public IOMX {
     virtual status_t storeMetaDataInBuffers(
             node_id node, OMX_U32 port_index, OMX_BOOL enable);
 
+    virtual status_t prepareForAdaptivePlayback(
+            node_id node, OMX_U32 port_index, OMX_BOOL enable,
+            OMX_U32 maxFrameWidth, OMX_U32 maxFrameHeight);
+
+    virtual status_t configureVideoTunnelMode(
+            node_id node, OMX_U32 portIndex, OMX_BOOL tunneled,
+            OMX_U32 audioHwSync, native_handle_t **sidebandHandle);
+
     virtual status_t enableGraphicBuffers(
             node_id node, OMX_U32 port_index, OMX_BOOL enable);
 
@@ -82,6 +95,16 @@ struct MuxOMX : public IOMX {
     virtual status_t useGraphicBuffer(
             node_id node, OMX_U32 port_index,
             const sp<GraphicBuffer> &graphicBuffer, buffer_id *buffer);
+
+    virtual status_t updateGraphicBufferInMeta(
+            node_id node, OMX_U32 port_index,
+            const sp<GraphicBuffer> &graphicBuffer, buffer_id buffer);
+
+    virtual status_t createInputSurface(
+            node_id node, OMX_U32 port_index,
+            sp<IGraphicBufferProducer> *bufferProducer);
+
+    virtual status_t signalEndOfInputStream(node_id node);
 
     virtual status_t allocateBuffer(
             node_id node, OMX_U32 port_index, size_t size,
@@ -107,6 +130,13 @@ struct MuxOMX : public IOMX {
             const char *parameter_name,
             OMX_INDEXTYPE *index);
 
+    virtual status_t setInternalOption(
+            node_id node,
+            OMX_U32 port_index,
+            InternalOptionType type,
+            const void *data,
+            size_t size);
+
 private:
     mutable Mutex mLock;
 
@@ -120,7 +150,7 @@ private:
     const sp<IOMX> &getOMX(node_id node) const;
     const sp<IOMX> &getOMX_l(node_id node) const;
 
-    static bool IsSoftwareComponent(const char *name);
+    static bool CanLiveLocally(const char *name);
 
     DISALLOW_EVIL_CONSTRUCTORS(MuxOMX);
 };
@@ -143,8 +173,15 @@ bool MuxOMX::isLocalNode_l(node_id node) const {
 }
 
 // static
-bool MuxOMX::IsSoftwareComponent(const char *name) {
-    return !strncasecmp(name, "OMX.google.", 11);
+
+bool MuxOMX::CanLiveLocally(const char *name) {
+#ifdef __LP64__
+    (void)name; // disable unused parameter warning
+    // 64 bit processes always run OMX remote on MediaServer
+    return false;
+#else
+    return !strncasecmp(name, "OMX.google.", 11) || !strncasecmp(name, "OMX.ffmpeg.", 11);
+#endif
 }
 
 const sp<IOMX> &MuxOMX::getOMX(node_id node) const {
@@ -176,7 +213,7 @@ status_t MuxOMX::allocateNode(
 
     sp<IOMX> omx;
 
-    if (IsSoftwareComponent(name)) {
+    if (CanLiveLocally(name)) {
         if (mLocalOMX == NULL) {
             mLocalOMX = new OMX;
         }
@@ -251,6 +288,20 @@ status_t MuxOMX::storeMetaDataInBuffers(
     return getOMX(node)->storeMetaDataInBuffers(node, port_index, enable);
 }
 
+status_t MuxOMX::prepareForAdaptivePlayback(
+        node_id node, OMX_U32 port_index, OMX_BOOL enable,
+        OMX_U32 maxFrameWidth, OMX_U32 maxFrameHeight) {
+    return getOMX(node)->prepareForAdaptivePlayback(
+            node, port_index, enable, maxFrameWidth, maxFrameHeight);
+}
+
+status_t MuxOMX::configureVideoTunnelMode(
+        node_id node, OMX_U32 portIndex, OMX_BOOL enable,
+        OMX_U32 audioHwSync, native_handle_t **sidebandHandle) {
+    return getOMX(node)->configureVideoTunnelMode(
+            node, portIndex, enable, audioHwSync, sidebandHandle);
+}
+
 status_t MuxOMX::enableGraphicBuffers(
         node_id node, OMX_U32 port_index, OMX_BOOL enable) {
     return getOMX(node)->enableGraphicBuffers(node, port_index, enable);
@@ -272,6 +323,25 @@ status_t MuxOMX::useGraphicBuffer(
         const sp<GraphicBuffer> &graphicBuffer, buffer_id *buffer) {
     return getOMX(node)->useGraphicBuffer(
             node, port_index, graphicBuffer, buffer);
+}
+
+status_t MuxOMX::updateGraphicBufferInMeta(
+        node_id node, OMX_U32 port_index,
+        const sp<GraphicBuffer> &graphicBuffer, buffer_id buffer) {
+    return getOMX(node)->updateGraphicBufferInMeta(
+            node, port_index, graphicBuffer, buffer);
+}
+
+status_t MuxOMX::createInputSurface(
+        node_id node, OMX_U32 port_index,
+        sp<IGraphicBufferProducer> *bufferProducer) {
+    status_t err = getOMX(node)->createInputSurface(
+            node, port_index, bufferProducer);
+    return err;
+}
+
+status_t MuxOMX::signalEndOfInputStream(node_id node) {
+    return getOMX(node)->signalEndOfInputStream(node);
 }
 
 status_t MuxOMX::allocateBuffer(
@@ -313,6 +383,15 @@ status_t MuxOMX::getExtensionIndex(
     return getOMX(node)->getExtensionIndex(node, parameter_name, index);
 }
 
+status_t MuxOMX::setInternalOption(
+        node_id node,
+        OMX_U32 port_index,
+        InternalOptionType type,
+        const void *data,
+        size_t size) {
+    return getOMX(node)->setInternalOption(node, port_index, type, data, size);
+}
+
 OMXClient::OMXClient() {
 }
 
@@ -326,7 +405,7 @@ status_t OMXClient::connect() {
     mOMX = service->getOMX();
     CHECK(mOMX.get() != NULL);
 
-    if (!mOMX->livesLocally(NULL /* node */, getpid())) {
+    if (!mOMX->livesLocally(0 /* node */, getpid())) {
         ALOGI("Using client-side OMX mux.");
         mOMX = new MuxOMX(mOMX);
     }

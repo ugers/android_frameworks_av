@@ -1,7 +1,10 @@
 /*
  * Copyright (c) 2013, The Linux Foundation. All rights reserved.
  * Not a Contribution.
+<<<<<<< HEAD
  *
+=======
+>>>>>>> 8b8d02886bd9fb8d5ad451c03e486cfad74aa74e
  * Copyright (C) 2007 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -30,6 +33,7 @@
 
 #include <media/mediaplayer.h>
 #include <media/AudioSystem.h>
+#include <media/AudioTimestamp.h>
 #include <media/Metadata.h>
 
 #include "mediaplayerinfo.h"
@@ -50,7 +54,7 @@ namespace android {
 
 class Parcel;
 class Surface;
-class ISurfaceTexture;
+class IGraphicBufferProducer;
 
 template<typename T> class SortedVector;
 
@@ -63,9 +67,13 @@ enum player_type {
     // The shared library with the test player is passed passed as an
     // argument to the 'test:' url in the setDataSource call.
     TEST_PLAYER = 5,
+<<<<<<< HEAD
 
     CEDARX_PLAYER = 8,
     CEDARA_PLAYER = 9,
+=======
+    DASH_PLAYER = 6,
+>>>>>>> 8b8d02886bd9fb8d5ad451c03e486cfad74aa74e
 };
 
 enum player_states {
@@ -99,9 +107,22 @@ public:
     // AudioSink: abstraction layer for audio output
     class AudioSink : public RefBase {
     public:
+        enum cb_event_t {
+            CB_EVENT_FILL_BUFFER,   // Request to write more data to buffer.
+            CB_EVENT_STREAM_END,    // Sent after all the buffers queued in AF and HW are played
+                                    // back (after stop is called)
+            CB_EVENT_TEAR_DOWN,      // The AudioTrack was invalidated due to use case change:
+                                    // Need to re-evaluate offloading options
+#ifdef QCOM_DIRECTTRACK
+            CB_EVENT_UNDERRUN,
+            CB_EVENT_HW_FAIL
+#endif
+        };
+
         // Callback returns the number of bytes actually written to the buffer.
         typedef size_t (*AudioCallback)(
-                AudioSink *audioSink, void *buffer, size_t size, void *cookie);
+                AudioSink *audioSink, void *buffer, size_t size, void *cookie,
+                        cb_event_t event);
 
         virtual             ~AudioSink() {}
         virtual bool        ready() const = 0; // audio output is open and ready
@@ -111,13 +132,20 @@ public:
         virtual ssize_t     channelCount() const = 0;
         virtual ssize_t     frameSize() const = 0;
         virtual uint32_t    latency() const = 0;
+<<<<<<< HEAD
 #ifdef QCOM_HARDWARE
+=======
+#ifdef QCOM_DIRECTTRACK
+>>>>>>> 8b8d02886bd9fb8d5ad451c03e486cfad74aa74e
         virtual audio_stream_type_t    streamType() const {return AUDIO_STREAM_DEFAULT;}
 #endif
         virtual float       msecsPerFrame() const = 0;
         virtual status_t    getPosition(uint32_t *position) const = 0;
+        virtual status_t    getTimestamp(AudioTimestamp &ts) const = 0;
         virtual status_t    getFramesWritten(uint32_t *frameswritten) const = 0;
         virtual int         getSessionId() const = 0;
+        virtual audio_stream_type_t getAudioStreamType() const = 0;
+        virtual uint32_t    getSampleRate() const = 0;
 
         // If no callback is specified, use the "write" API below to submit
         // audio data.
@@ -127,9 +155,10 @@ public:
                 int bufferCount=DEFAULT_AUDIOSINK_BUFFERCOUNT,
                 AudioCallback cb = NULL,
                 void *cookie = NULL,
-                audio_output_flags_t flags = AUDIO_OUTPUT_FLAG_NONE) = 0;
+                audio_output_flags_t flags = AUDIO_OUTPUT_FLAG_NONE,
+                const audio_offload_info_t *offloadInfo = NULL) = 0;
 
-        virtual void        start() = 0;
+        virtual status_t    start() = 0;
         virtual ssize_t     write(const void* buffer, size_t size) = 0;
         virtual void        stop() = 0;
         virtual void        flush() = 0;
@@ -138,7 +167,14 @@ public:
 
         virtual status_t    setPlaybackRatePermille(int32_t rate) { return INVALID_OPERATION; }
         virtual bool        needsTrailingPadding() { return true; }
+<<<<<<< HEAD
 #ifdef QCOM_HARDWARE
+=======
+        virtual status_t    setParameters(const String8& keyValuePairs) { return NO_ERROR; };
+        virtual String8     getParameters(const String8& keys) { return String8::empty(); };
+
+#ifdef QCOM_DIRECTTRACK
+>>>>>>> 8b8d02886bd9fb8d5ad451c03e486cfad74aa74e
         virtual ssize_t     sampleRate() const {return 0;};
         virtual status_t    getTimeStamp(uint64_t *tstamp) {return 0;};
 #endif
@@ -154,6 +190,7 @@ public:
     }
 
     virtual status_t    setDataSource(
+            const sp<IMediaHTTPService> &httpService,
             const char *url,
             const KeyedVector<String8, String8> *headers = NULL) = 0;
 
@@ -163,9 +200,9 @@ public:
         return INVALID_OPERATION;
     }
 
-    // pass the buffered ISurfaceTexture to the media player service
+    // pass the buffered IGraphicBufferProducer to the media player service
     virtual status_t    setVideoSurfaceTexture(
-                                const sp<ISurfaceTexture>& surfaceTexture) = 0;
+                                const sp<IGraphicBufferProducer>& bufferProducer) = 0;
 
     virtual status_t    prepare() = 0;
     virtual status_t    prepareAsync() = 0;
@@ -230,6 +267,7 @@ public:
         return INVALID_OPERATION;
     }
 
+<<<<<<< HEAD
     /* add by Gary. start {{----------------------------------- */
     virtual status_t    setScreen(int screen){
         return OK;
@@ -469,6 +507,15 @@ public:
         return OK;
     }
     /* add by Gary. end   -----------------------------------}} */
+=======
+    virtual status_t suspend() {
+        return INVALID_OPERATION;
+    }
+
+    virtual status_t resume() {
+        return INVALID_OPERATION;
+    }
+>>>>>>> 8b8d02886bd9fb8d5ad451c03e486cfad74aa74e
 
 private:
     friend class MediaPlayerService;

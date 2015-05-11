@@ -1,8 +1,14 @@
 /*
+<<<<<<< HEAD
  * Copyright (C) 2009 The Android Open Source Project
  * Copyright (c) 2009-2013, The Linux Foundation. All rights reserved.
  * Not a Contribution, Apache license notifications and license are retained
  * for attribution purposes only.
+=======
+ * Copyright (c) 2009-2012, The Linux Foundation. All rights reserved.
+ * Not a Contribution.
+ * Copyright (C) 2009 The Android Open Source Project
+>>>>>>> 8b8d02886bd9fb8d5ad451c03e486cfad74aa74e
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,18 +28,25 @@
 #define LPA_PLAYER_H_
 
 #include "AudioPlayer.h"
+<<<<<<< HEAD
 #include <media/IAudioFlinger.h>
+=======
+>>>>>>> 8b8d02886bd9fb8d5ad451c03e486cfad74aa74e
 #include <utils/threads.h>
 #include <utils/List.h>
 #include <utils/Vector.h>
 #include <fcntl.h>
 #include <pthread.h>
+<<<<<<< HEAD
 #include <binder/IServiceManager.h>
 #include <linux/unistd.h>
 #include <include/TimedEventQueue.h>
 #include <binder/BinderService.h>
 #include <binder/MemoryDealer.h>
 #include <powermanager/IPowerManager.h>
+=======
+#include <include/TimedEventQueue.h>
+>>>>>>> 8b8d02886bd9fb8d5ad451c03e486cfad74aa74e
 
 // Pause timeout = 3sec
 #define LPA_PAUSE_TIMEOUT_USEC 3000000
@@ -67,7 +80,11 @@ public:
     virtual status_t start(bool sourceAlreadyStarted = false);
 
     virtual void pause(bool playPendingSamples = false);
+<<<<<<< HEAD
     virtual void resume();
+=======
+    virtual status_t resume();
+>>>>>>> 8b8d02886bd9fb8d5ad451c03e486cfad74aa74e
 
     // Returns the timestamp of the last buffer played (in us).
     virtual int64_t getMediaTimeUs();
@@ -81,8 +98,12 @@ public:
     virtual bool isSeeking();
     virtual bool reachedEOS(status_t *finalStatus);
 
+<<<<<<< HEAD
     static int objectsAlive;
     static bool mLpaInProgress;
+=======
+    static int mObjectsAlive;
+>>>>>>> 8b8d02886bd9fb8d5ad451c03e486cfad74aa74e
 private:
     int64_t mPositionTimeMediaUs;
     int64_t mPositionTimeRealUs;
@@ -90,9 +111,13 @@ private:
     bool mIsAudioRouted;
     bool mStarted;
     bool mPaused;
+<<<<<<< HEAD
     bool mA2DPEnabled;
     int32_t mChannelMask;
     int32_t numChannels;
+=======
+    int32_t mChannelMask;
+>>>>>>> 8b8d02886bd9fb8d5ad451c03e486cfad74aa74e
     int32_t mNumOutputChannels;
     int32_t mNumInputChannels;
     int32_t mSampleRate;
@@ -102,6 +127,7 @@ private:
     int64_t mTimePlayed;
     int64_t mNumFramesPlayed;
     int64_t mNumFramesPlayedSysTimeUs;
+<<<<<<< HEAD
     int64_t mNumA2DPBytesPlayed;
 
     void clearPowerManager();
@@ -212,12 +238,42 @@ private:
     sp<AudioFlingerLPAdecodeClient> AudioFlingerClient;
     friend class AudioFlingerLPAdecodeClient;
     Mutex AudioFlingerLock;
+=======
+
+    pthread_t mDecoderThread;
+
+    //Kill Thread boolean
+    bool mKillDecoderThread;
+
+    //Thread alive boolean
+    bool mDecoderThreadAlive;
+
+    //Declare the condition Variables and Mutex
+
+    Mutex mDecoderMutex;
+
+    Condition mDecoderCv;
+
+    // make sure Decoder thread has exited
+    void requestAndWaitForDecoderThreadExit_l();
+
+    static void *decoderThreadWrapper(void *me);
+    void decoderThreadEntry();
+
+    void createThreads();
+
+    void onPauseTimeOut();
+
+>>>>>>> 8b8d02886bd9fb8d5ad451c03e486cfad74aa74e
     sp<MediaSource> mSource;
 
     MediaBuffer *mInputBuffer;
 
     Mutex mLock;
+<<<<<<< HEAD
     Mutex mResumeLock;
+=======
+>>>>>>> 8b8d02886bd9fb8d5ad451c03e486cfad74aa74e
 
     bool mSeeking;
     bool mReachedEOS;
@@ -241,6 +297,7 @@ private:
 
     static size_t AudioSinkCallback(
         MediaPlayerBase::AudioSink *audioSink,
+<<<<<<< HEAD
         void *data, size_t size, void *me);
 
     enum A2DPState {
@@ -251,6 +308,12 @@ private:
     };
 
     int64_t getTimeStamp(A2DPState state);
+=======
+        void *data, size_t size, void *me,
+        MediaPlayerBase::AudioSink::cb_event_t event);
+
+    int64_t getTimeStamp();
+>>>>>>> 8b8d02886bd9fb8d5ad451c03e486cfad74aa74e
 
     size_t fillBuffer(void *data, size_t size);
 
@@ -263,6 +326,11 @@ private:
         MediaPlayerBase::AudioSink *audioSink,
         void *buffer, size_t size, void *cookie);
     size_t AudioCallback(void *cookie, void *data, size_t size);
+<<<<<<< HEAD
+=======
+    int64_t getMediaTimeUs_l();
+    bool seekTooClose(int64_t);
+>>>>>>> 8b8d02886bd9fb8d5ad451c03e486cfad74aa74e
 
     void convertMonoToStereo(int16_t *data, size_t size);
 

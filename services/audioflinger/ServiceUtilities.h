@@ -18,10 +18,13 @@
 
 namespace android {
 
-extern const pid_t getpid_cached;
+extern pid_t getpid_cached;
 
 bool recordingAllowed();
+bool captureAudioOutputAllowed();
+bool captureHotwordAllowed();
 bool settingsAllowed();
+bool modifyAudioRoutingAllowed();
 bool dumpAllowed();
 
 }

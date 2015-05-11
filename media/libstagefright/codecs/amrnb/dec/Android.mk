@@ -45,7 +45,9 @@ LOCAL_C_INCLUDES := \
         $(LOCAL_PATH)/../common/include
 
 LOCAL_CFLAGS := \
-        -DOSCL_UNUSED_ARG= -DOSCL_IMPORT_REF=
+        -D"OSCL_UNUSED_ARG(x)=(void)(x)" -DOSCL_IMPORT_REF=
+
+LOCAL_CFLAGS += -Werror
 
 LOCAL_MODULE := libstagefright_amrnbdec
 
@@ -68,11 +70,13 @@ LOCAL_C_INCLUDES := \
 
 LOCAL_CFLAGS := -DOSCL_IMPORT_REF=
 
+LOCAL_CFLAGS += -Werror
+
 LOCAL_STATIC_LIBRARIES := \
         libstagefright_amrnbdec libstagefright_amrwbdec
 
 LOCAL_SHARED_LIBRARIES := \
-        libstagefright_omx libstagefright_foundation libutils \
+        libstagefright_omx libstagefright_foundation libutils liblog \
         libstagefright_amrnb_common
 
 LOCAL_MODULE := libstagefright_soft_amrdec

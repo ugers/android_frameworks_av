@@ -24,6 +24,7 @@
 #include <media/stagefright/MediaSource.h>
 #include <media/stagefright/MediaBuffer.h>
 #include <utils/List.h>
+#include <utils/String8.h>
 
 #include <system/audio.h>
 
@@ -44,6 +45,7 @@ struct AudioSource : public MediaSource, public MediaBufferObserver {
     virtual status_t start(MetaData *params = NULL);
     virtual status_t stop() { return reset(); }
     virtual sp<MetaData> getFormat();
+    status_t pause();
 
     // Returns the maximum amplitude since last call.
     int16_t getMaxAmplitude();
@@ -52,6 +54,7 @@ struct AudioSource : public MediaSource, public MediaBufferObserver {
             MediaBuffer **buffer, const ReadOptions *options = NULL);
 
     status_t dataCallback(const AudioRecord::Buffer& buffer);
+    virtual void onEvent(int event, void* info);
     virtual void signalBufferReturned(MediaBuffer *buffer);
 
 protected:
@@ -59,7 +62,9 @@ protected:
 
 private:
     enum {
-        kMaxBufferSize = 2048,
+        //This max buffer size is derived from aggregation of audio
+        //buffers for max duration 80 msec with 48K sampling rate.
+        kMaxBufferSize = 30720,
 
         // After the initial mute, we raise the volume linearly
         // over kAutoRampDurationUs.
@@ -67,16 +72,22 @@ private:
 
         // This is the initial mute duration to suppress
         // the video recording signal tone
-        kAutoRampStartUs = 0,
+        kAutoRampStartUs = 500000,
     };
 
     Mutex mLock;
     Condition mFrameAvailableCondition;
     Condition mFrameEncodingCompletionCondition;
 
-    AudioRecord *mRecord;
+    AudioRecord::Buffer mTempBuf;
+    uint32_t mPrevPosition;
+    uint32_t mAllocBytes;
+    int32_t mAudioSessionId;
+    AudioRecord::transfer_type mTransferMode;
+    sp<AudioRecord> mRecord;
     status_t mInitCheck;
     bool mStarted;
+    bool mRecPaused;
     int32_t mSampleRate;
 
     bool mTrackMaxAmplitude;
@@ -86,9 +97,9 @@ private:
     int64_t mInitialReadTimeUs;
     int64_t mNumFramesReceived;
     int64_t mNumClientOwnedBuffers;
+    int64_t mAutoRampStartUs;
 
     List<MediaBuffer * > mBuffersReceived;
-
     void trackMaxAmplitude(int16_t *data, int nSamples);
 
     // This is used to raise the volume from mute to the
@@ -105,18 +116,28 @@ private:
     AudioSource(const AudioSource &);
     AudioSource &operator=(const AudioSource &);
 
+<<<<<<< HEAD
 #ifdef QCOM_HARDWARE
     //additions for tunnel source
 public:
     AudioSource(
         audio_source_t inputSource, const sp<MetaData>& meta );
+=======
+    //additions for compress capture source
+public:
+    AudioSource(
+        audio_source_t inputSource, const sp<MetaData>& meta);
+>>>>>>> 8b8d02886bd9fb8d5ad451c03e486cfad74aa74e
 
 private:
     audio_format_t mFormat;
     String8 mMime;
     int32_t mMaxBufferSize;
+<<<<<<< HEAD
     int64_t bufferDurationUs( ssize_t n );
 #endif
+=======
+>>>>>>> 8b8d02886bd9fb8d5ad451c03e486cfad74aa74e
 };
 
 }  // namespace android

@@ -21,7 +21,10 @@
 #include <binder/Parcel.h>
 #include <binder/IMemory.h>
 #include <media/ICrypto.h>
+#include <media/IDrm.h>
 #include <media/IHDCP.h>
+#include <media/IMediaCodecList.h>
+#include <media/IMediaHTTPService.h>
 #include <media/IMediaPlayerService.h>
 #include <media/IMediaRecorder.h>
 #include <media/IOMX.h>
@@ -42,10 +45,12 @@ enum {
     CREATE_METADATA_RETRIEVER,
     GET_OMX,
     MAKE_CRYPTO,
+    MAKE_DRM,
     MAKE_HDCP,
     ADD_BATTERY_DATA,
     PULL_BATTERY_DATA,
     LISTEN_FOR_REMOTE_DISPLAY,
+<<<<<<< HEAD
     /* add by Gary. start {{----------------------------------- */
     SET_SCREEN,
     GET_SCREEN,
@@ -79,6 +84,9 @@ enum {
     /* add two general interfaces for expansibility */
     GENERAL_GLOBAL_INTERFACE,
     /* add by Gary. end   -----------------------------------}} */
+=======
+    GET_CODEC_LIST,
+>>>>>>> 8b8d02886bd9fb8d5ad451c03e486cfad74aa74e
 };
 
 class BpMediaPlayerService: public BpInterface<IMediaPlayerService>
@@ -89,20 +97,18 @@ public:
     {
     }
 
-    virtual sp<IMediaMetadataRetriever> createMetadataRetriever(pid_t pid)
+    virtual sp<IMediaMetadataRetriever> createMetadataRetriever()
     {
         Parcel data, reply;
         data.writeInterfaceToken(IMediaPlayerService::getInterfaceDescriptor());
-        data.writeInt32(pid);
         remote()->transact(CREATE_METADATA_RETRIEVER, data, &reply);
         return interface_cast<IMediaMetadataRetriever>(reply.readStrongBinder());
     }
 
     virtual sp<IMediaPlayer> create(
-            pid_t pid, const sp<IMediaPlayerClient>& client, int audioSessionId) {
+            const sp<IMediaPlayerClient>& client, int audioSessionId) {
         Parcel data, reply;
         data.writeInterfaceToken(IMediaPlayerService::getInterfaceDescriptor());
-        data.writeInt32(pid);
         data.writeStrongBinder(client->asBinder());
         data.writeInt32(audioSessionId);
 
@@ -110,39 +116,65 @@ public:
         return interface_cast<IMediaPlayer>(reply.readStrongBinder());
     }
 
-    virtual sp<IMediaRecorder> createMediaRecorder(pid_t pid)
+    virtual sp<IMediaRecorder> createMediaRecorder()
     {
         Parcel data, reply;
         data.writeInterfaceToken(IMediaPlayerService::getInterfaceDescriptor());
-        data.writeInt32(pid);
         remote()->transact(CREATE_MEDIA_RECORDER, data, &reply);
         return interface_cast<IMediaRecorder>(reply.readStrongBinder());
     }
 
-    virtual sp<IMemory> decode(const char* url, uint32_t *pSampleRate, int* pNumChannels, audio_format_t* pFormat)
+    virtual status_t decode(
+            const sp<IMediaHTTPService> &httpService,
+            const char* url,
+            uint32_t *pSampleRate,
+            int* pNumChannels,
+            audio_format_t* pFormat,
+            const sp<IMemoryHeap>& heap,
+            size_t *pSize)
     {
         Parcel data, reply;
         data.writeInterfaceToken(IMediaPlayerService::getInterfaceDescriptor());
+        data.writeInt32(httpService != NULL);
+        if (httpService != NULL) {
+            data.writeStrongBinder(httpService->asBinder());
+        }
         data.writeCString(url);
-        remote()->transact(DECODE_URL, data, &reply);
-        *pSampleRate = uint32_t(reply.readInt32());
-        *pNumChannels = reply.readInt32();
-        *pFormat = (audio_format_t) reply.readInt32();
-        return interface_cast<IMemory>(reply.readStrongBinder());
+        data.writeStrongBinder(heap->asBinder());
+        status_t status = remote()->transact(DECODE_URL, data, &reply);
+        if (status == NO_ERROR) {
+            status = (status_t)reply.readInt32();
+            if (status == NO_ERROR) {
+                *pSampleRate = uint32_t(reply.readInt32());
+                *pNumChannels = reply.readInt32();
+                *pFormat = (audio_format_t)reply.readInt32();
+                *pSize = (size_t)reply.readInt32();
+            }
+        }
+        return status;
     }
 
-    virtual sp<IMemory> decode(int fd, int64_t offset, int64_t length, uint32_t *pSampleRate, int* pNumChannels, audio_format_t* pFormat)
+    virtual status_t decode(int fd, int64_t offset, int64_t length, uint32_t *pSampleRate,
+                               int* pNumChannels, audio_format_t* pFormat,
+                               const sp<IMemoryHeap>& heap, size_t *pSize)
     {
         Parcel data, reply;
         data.writeInterfaceToken(IMediaPlayerService::getInterfaceDescriptor());
         data.writeFileDescriptor(fd);
         data.writeInt64(offset);
         data.writeInt64(length);
-        remote()->transact(DECODE_FD, data, &reply);
-        *pSampleRate = uint32_t(reply.readInt32());
-        *pNumChannels = reply.readInt32();
-        *pFormat = (audio_format_t) reply.readInt32();
-        return interface_cast<IMemory>(reply.readStrongBinder());
+        data.writeStrongBinder(heap->asBinder());
+        status_t status = remote()->transact(DECODE_FD, data, &reply);
+        if (status == NO_ERROR) {
+            status = (status_t)reply.readInt32();
+            if (status == NO_ERROR) {
+                *pSampleRate = uint32_t(reply.readInt32());
+                *pNumChannels = reply.readInt32();
+                *pFormat = (audio_format_t)reply.readInt32();
+                *pSize = (size_t)reply.readInt32();
+            }
+        }
+        return status;
     }
 
     virtual sp<IOMX> getOMX() {
@@ -159,9 +191,17 @@ public:
         return interface_cast<ICrypto>(reply.readStrongBinder());
     }
 
-    virtual sp<IHDCP> makeHDCP() {
+    virtual sp<IDrm> makeDrm() {
         Parcel data, reply;
         data.writeInterfaceToken(IMediaPlayerService::getInterfaceDescriptor());
+        remote()->transact(MAKE_DRM, data, &reply);
+        return interface_cast<IDrm>(reply.readStrongBinder());
+    }
+
+    virtual sp<IHDCP> makeHDCP(bool createEncryptionModule) {
+        Parcel data, reply;
+        data.writeInterfaceToken(IMediaPlayerService::getInterfaceDescriptor());
+        data.writeInt32(createEncryptionModule);
         remote()->transact(MAKE_HDCP, data, &reply);
         return interface_cast<IHDCP>(reply.readStrongBinder());
     }
@@ -190,6 +230,7 @@ public:
         return interface_cast<IRemoteDisplay>(reply.readStrongBinder());
     }
 
+<<<<<<< HEAD
     /* add by Gary. start {{----------------------------------- */
     status_t setScreen(int screen)
     {
@@ -368,6 +409,14 @@ public:
         return ret;
     }
     /* add by Gary. end   -----------------------------------}} */ 
+=======
+    virtual sp<IMediaCodecList> getCodecList() const {
+        Parcel data, reply;
+        data.writeInterfaceToken(IMediaPlayerService::getInterfaceDescriptor());
+        remote()->transact(GET_CODEC_LIST, data, &reply);
+        return interface_cast<IMediaCodecList>(reply.readStrongBinder());
+    }
+>>>>>>> 8b8d02886bd9fb8d5ad451c03e486cfad74aa74e
 };
 
 IMPLEMENT_META_INTERFACE(MediaPlayerService, "android.media.IMediaPlayerService");
@@ -380,25 +429,41 @@ status_t BnMediaPlayerService::onTransact(
     switch (code) {
         case CREATE: {
             CHECK_INTERFACE(IMediaPlayerService, data, reply);
-            pid_t pid = data.readInt32();
             sp<IMediaPlayerClient> client =
                 interface_cast<IMediaPlayerClient>(data.readStrongBinder());
             int audioSessionId = data.readInt32();
-            sp<IMediaPlayer> player = create(pid, client, audioSessionId);
+            sp<IMediaPlayer> player = create(client, audioSessionId);
             reply->writeStrongBinder(player->asBinder());
             return NO_ERROR;
         } break;
         case DECODE_URL: {
             CHECK_INTERFACE(IMediaPlayerService, data, reply);
+            sp<IMediaHTTPService> httpService;
+            if (data.readInt32()) {
+                httpService =
+                    interface_cast<IMediaHTTPService>(data.readStrongBinder());
+            }
             const char* url = data.readCString();
+            sp<IMemoryHeap> heap = interface_cast<IMemoryHeap>(data.readStrongBinder());
             uint32_t sampleRate;
             int numChannels;
             audio_format_t format;
-            sp<IMemory> player = decode(url, &sampleRate, &numChannels, &format);
-            reply->writeInt32(sampleRate);
-            reply->writeInt32(numChannels);
-            reply->writeInt32((int32_t) format);
-            reply->writeStrongBinder(player->asBinder());
+            size_t size;
+            status_t status =
+                decode(httpService,
+                       url,
+                       &sampleRate,
+                       &numChannels,
+                       &format,
+                       heap,
+                       &size);
+            reply->writeInt32(status);
+            if (status == NO_ERROR) {
+                reply->writeInt32(sampleRate);
+                reply->writeInt32(numChannels);
+                reply->writeInt32((int32_t)format);
+                reply->writeInt32((int32_t)size);
+            }
             return NO_ERROR;
         } break;
         case DECODE_FD: {
@@ -406,27 +471,31 @@ status_t BnMediaPlayerService::onTransact(
             int fd = dup(data.readFileDescriptor());
             int64_t offset = data.readInt64();
             int64_t length = data.readInt64();
+            sp<IMemoryHeap> heap = interface_cast<IMemoryHeap>(data.readStrongBinder());
             uint32_t sampleRate;
             int numChannels;
             audio_format_t format;
-            sp<IMemory> player = decode(fd, offset, length, &sampleRate, &numChannels, &format);
-            reply->writeInt32(sampleRate);
-            reply->writeInt32(numChannels);
-            reply->writeInt32((int32_t) format);
-            reply->writeStrongBinder(player->asBinder());
+            size_t size;
+            status_t status = decode(fd, offset, length, &sampleRate, &numChannels, &format,
+                                     heap, &size);
+            reply->writeInt32(status);
+            if (status == NO_ERROR) {
+                reply->writeInt32(sampleRate);
+                reply->writeInt32(numChannels);
+                reply->writeInt32((int32_t)format);
+                reply->writeInt32((int32_t)size);
+            }
             return NO_ERROR;
         } break;
         case CREATE_MEDIA_RECORDER: {
             CHECK_INTERFACE(IMediaPlayerService, data, reply);
-            pid_t pid = data.readInt32();
-            sp<IMediaRecorder> recorder = createMediaRecorder(pid);
+            sp<IMediaRecorder> recorder = createMediaRecorder();
             reply->writeStrongBinder(recorder->asBinder());
             return NO_ERROR;
         } break;
         case CREATE_METADATA_RETRIEVER: {
             CHECK_INTERFACE(IMediaPlayerService, data, reply);
-            pid_t pid = data.readInt32();
-            sp<IMediaMetadataRetriever> retriever = createMetadataRetriever(pid);
+            sp<IMediaMetadataRetriever> retriever = createMetadataRetriever();
             reply->writeStrongBinder(retriever->asBinder());
             return NO_ERROR;
         } break;
@@ -442,9 +511,16 @@ status_t BnMediaPlayerService::onTransact(
             reply->writeStrongBinder(crypto->asBinder());
             return NO_ERROR;
         } break;
+        case MAKE_DRM: {
+            CHECK_INTERFACE(IMediaPlayerService, data, reply);
+            sp<IDrm> drm = makeDrm();
+            reply->writeStrongBinder(drm->asBinder());
+            return NO_ERROR;
+        } break;
         case MAKE_HDCP: {
             CHECK_INTERFACE(IMediaPlayerService, data, reply);
-            sp<IHDCP> hdcp = makeHDCP();
+            bool createEncryptionModule = data.readInt32();
+            sp<IHDCP> hdcp = makeHDCP(createEncryptionModule);
             reply->writeStrongBinder(hdcp->asBinder());
             return NO_ERROR;
         } break;
@@ -468,6 +544,7 @@ status_t BnMediaPlayerService::onTransact(
             reply->writeStrongBinder(display->asBinder());
             return NO_ERROR;
         } break;
+<<<<<<< HEAD
         /* add by Gary. start {{----------------------------------- */
         case SET_SCREEN: {
             CHECK_INTERFACE(IMediaPlayer, data, reply);
@@ -606,6 +683,14 @@ status_t BnMediaPlayerService::onTransact(
             return NO_ERROR;
         } break;
         /* add by Gary. end   -----------------------------------}} */
+=======
+        case GET_CODEC_LIST: {
+            CHECK_INTERFACE(IMediaPlayerService, data, reply);
+            sp<IMediaCodecList> mcl = getCodecList();
+            reply->writeStrongBinder(mcl->asBinder());
+            return NO_ERROR;
+        } break;
+>>>>>>> 8b8d02886bd9fb8d5ad451c03e486cfad74aa74e
         default:
             return BBinder::onTransact(code, data, reply, flags);
     }

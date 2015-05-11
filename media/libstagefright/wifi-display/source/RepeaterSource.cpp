@@ -27,6 +27,25 @@ RepeaterSource::~RepeaterSource() {
     CHECK(!mStarted);
 }
 
+double RepeaterSource::getFrameRate() const {
+    return mRateHz;
+}
+
+void RepeaterSource::setFrameRate(double rateHz) {
+    Mutex::Autolock autoLock(mLock);
+
+    if (rateHz == mRateHz) {
+        return;
+    }
+
+    if (mStartTimeUs >= 0ll) {
+        int64_t nextTimeUs = mStartTimeUs + (mFrameCount * 1000000ll) / mRateHz;
+        mStartTimeUs = nextTimeUs;
+        mFrameCount = 0;
+    }
+    mRateHz = rateHz;
+}
+
 status_t RepeaterSource::start(MetaData *params) {
     CHECK(!mStarted);
 
@@ -60,6 +79,8 @@ status_t RepeaterSource::stop() {
 
     ALOGV("stopping");
 
+    status_t err = mSource->stop();
+
     if (mLooper != NULL) {
         mLooper->stop();
         mLooper.clear();
@@ -73,7 +94,6 @@ status_t RepeaterSource::stop() {
         mBuffer = NULL;
     }
 
-    status_t err = mSource->stop();
 
     ALOGV("stopped");
 

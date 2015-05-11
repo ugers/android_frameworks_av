@@ -25,13 +25,15 @@ LOCAL_MODULE := libstagefright_m4vh263enc
 
 LOCAL_CFLAGS := \
     -DBX_RC \
-    -DOSCL_IMPORT_REF= -DOSCL_UNUSED_ARG= -DOSCL_EXPORT_REF=
+    -DOSCL_IMPORT_REF= -D"OSCL_UNUSED_ARG(x)=(void)(x)" -DOSCL_EXPORT_REF=
 
 LOCAL_C_INCLUDES := \
     $(LOCAL_PATH)/src \
     $(LOCAL_PATH)/include \
     $(TOP)/frameworks/av/media/libstagefright/include \
     $(TOP)/frameworks/native/include/media/openmax
+
+LOCAL_CFLAGS += -Werror
 
 include $(BUILD_STATIC_LIBRARY)
 
@@ -53,7 +55,7 @@ LOCAL_C_INCLUDES := \
 
 LOCAL_CFLAGS := \
     -DBX_RC \
-    -DOSCL_IMPORT_REF= -DOSCL_UNUSED_ARG= -DOSCL_EXPORT_REF=
+    -DOSCL_IMPORT_REF= -D"OSCL_UNUSED_ARG(x)=(void)(x)" -DOSCL_EXPORT_REF=
 
 
 LOCAL_STATIC_LIBRARIES := \
@@ -65,10 +67,13 @@ LOCAL_SHARED_LIBRARIES := \
         libstagefright_foundation \
         libstagefright_omx \
         libutils \
+        liblog \
         libui
 
 
 LOCAL_MODULE := libstagefright_soft_mpeg4enc
 LOCAL_MODULE_TAGS := optional
+
+LOCAL_CFLAGS += -Werror
 
 include $(BUILD_SHARED_LIBRARY)

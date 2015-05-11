@@ -19,11 +19,13 @@
 #define ARRAY_SIZE(array) (sizeof array / sizeof array[0])
 //#define LOG_NDEBUG 0
 
-#include <cutils/log.h>
 #include <assert.h>
+#include <inttypes.h>
+#include <new>
 #include <stdlib.h>
 #include <string.h>
-#include <new>
+
+#include <cutils/log.h>
 #include "EffectReverb.h"
 // from Reverb/lib
 #include "LVREV.h"
@@ -181,35 +183,11 @@ void Reverb_getConfig       (ReverbContext *pContext, effect_config_t *pConfig);
 int  Reverb_setParameter    (ReverbContext *pContext, void *pParam, void *pValue);
 int  Reverb_getParameter    (ReverbContext *pContext,
                              void          *pParam,
-                             size_t        *pValueSize,
+                             uint32_t      *pValueSize,
                              void          *pValue);
 int Reverb_LoadPreset       (ReverbContext   *pContext);
 
 /* Effect Library Interface Implementation */
-extern "C" int EffectQueryNumberEffects(uint32_t *pNumEffects){
-    ALOGV("\n\tEffectQueryNumberEffects start");
-    *pNumEffects = sizeof(gDescriptors) / sizeof(const effect_descriptor_t *);
-    ALOGV("\tEffectQueryNumberEffects creating %d effects", *pNumEffects);
-    ALOGV("\tEffectQueryNumberEffects end\n");
-    return 0;
-}     /* end EffectQueryNumberEffects */
-
-extern "C" int EffectQueryEffect(uint32_t index,
-                                 effect_descriptor_t *pDescriptor){
-    ALOGV("\n\tEffectQueryEffect start");
-    ALOGV("\tEffectQueryEffect processing index %d", index);
-    if (pDescriptor == NULL){
-        ALOGV("\tLVM_ERROR : EffectQueryEffect was passed NULL pointer");
-        return -EINVAL;
-    }
-    if (index >= sizeof(gDescriptors) / sizeof(const effect_descriptor_t *)) {
-        ALOGV("\tLVM_ERROR : EffectQueryEffect index out of range %d", index);
-        return -ENOENT;
-    }
-    *pDescriptor = *gDescriptors[index];
-    ALOGV("\tEffectQueryEffect end\n");
-    return 0;
-}     /* end EffectQueryEffect */
 
 extern "C" int EffectCreate(const effect_uuid_t *uuid,
                             int32_t             sessionId,
@@ -293,7 +271,7 @@ extern "C" int EffectCreate(const effect_uuid_t *uuid,
     pContext->InFrames32  = (LVM_INT32 *)malloc(LVREV_MAX_FRAME_SIZE * sizeof(LVM_INT32) * 2);
     pContext->OutFrames32 = (LVM_INT32 *)malloc(LVREV_MAX_FRAME_SIZE * sizeof(LVM_INT32) * 2);
 
-    ALOGV("\tEffectCreate %p, size %d", pContext, sizeof(ReverbContext));
+    ALOGV("\tEffectCreate %p, size %zu", pContext, sizeof(ReverbContext));
     ALOGV("\tEffectCreate end\n");
     return 0;
 } /* end EffectCreate */
@@ -594,15 +572,15 @@ void Reverb_free(ReverbContext *pContext){
     for (int i=0; i<LVM_NR_MEMORY_REGIONS; i++){
         if (MemTab.Region[i].Size != 0){
             if (MemTab.Region[i].pBaseAddress != NULL){
-                ALOGV("\tfree() - START freeing %ld bytes for region %u at %p\n",
+                ALOGV("\tfree() - START freeing %" PRIu32 " bytes for region %u at %p\n",
                         MemTab.Region[i].Size, i, MemTab.Region[i].pBaseAddress);
 
                 free(MemTab.Region[i].pBaseAddress);
 
-                ALOGV("\tfree() - END   freeing %ld bytes for region %u at %p\n",
+                ALOGV("\tfree() - END   freeing %" PRIu32 " bytes for region %u at %p\n",
                         MemTab.Region[i].Size, i, MemTab.Region[i].pBaseAddress);
             }else{
-                ALOGV("\tLVM_ERROR : free() - trying to free with NULL pointer %ld bytes "
+                ALOGV("\tLVM_ERROR : free() - trying to free with NULL pointer %" PRIu32 " bytes "
                         "for region %u at %p ERROR\n",
                         MemTab.Region[i].Size, i, MemTab.Region[i].pBaseAddress);
             }
@@ -640,10 +618,6 @@ int Reverb_setConfig(ReverbContext *pContext, effect_config_t *pConfig){
               || pConfig->outputCfg.accessMode == EFFECT_BUFFER_ACCESS_ACCUMULATE);
     CHECK_ARG(pConfig->inputCfg.format == AUDIO_FORMAT_PCM_16_BIT);
 
-    if(pConfig->inputCfg.samplingRate != 44100){
-        return -EINVAL;
-    }
-
     //ALOGV("\tReverb_setConfig calling memcpy");
     pContext->config = *pConfig;
 
@@ -672,7 +646,7 @@ int Reverb_setConfig(ReverbContext *pContext, effect_config_t *pConfig){
         return -EINVAL;
     }
 
-    if(pContext->SampleRate != SampleRate){
+    if (pContext->SampleRate != SampleRate) {
 
         LVREV_ControlParams_st    ActiveParams;
         LVREV_ReturnStatus_en     LvmStatus = LVREV_SUCCESS;
@@ -686,11 +660,14 @@ int Reverb_setConfig(ReverbContext *pContext, effect_config_t *pConfig){
         LVM_ERROR_CHECK(LvmStatus, "LVREV_GetControlParameters", "Reverb_setConfig")
         if(LvmStatus != LVREV_SUCCESS) return -EINVAL;
 
+        ActiveParams.SampleRate = SampleRate;
+
         LvmStatus = LVREV_SetControlParameters(pContext->hInstance, &ActiveParams);
 
         LVM_ERROR_CHECK(LvmStatus, "LVREV_SetControlParameters", "Reverb_setConfig")
+        if(LvmStatus != LVREV_SUCCESS) return -EINVAL;
         //ALOGV("\tReverb_setConfig Succesfully called LVREV_SetControlParameters\n");
-
+        pContext->SampleRate = SampleRate;
     }else{
         //ALOGV("\tReverb_setConfig keep sampling rate at %d", SampleRate);
     }
@@ -796,11 +773,12 @@ int Reverb_init(ReverbContext *pContext){
             MemTab.Region[i].pBaseAddress = malloc(MemTab.Region[i].Size);
 
             if (MemTab.Region[i].pBaseAddress == LVM_NULL){
-                ALOGV("\tLVREV_ERROR :Reverb_init CreateInstance Failed to allocate %ld "
-                        "bytes for region %u\n", MemTab.Region[i].Size, i );
+                ALOGV("\tLVREV_ERROR :Reverb_init CreateInstance Failed to allocate %" PRIu32
+                        " bytes for region %u\n", MemTab.Region[i].Size, i );
                 bMallocFailure = LVM_TRUE;
             }else{
-                ALOGV("\tReverb_init CreateInstance allocate %ld bytes for region %u at %p\n",
+                ALOGV("\tReverb_init CreateInstance allocate %" PRIu32
+                        " bytes for region %u at %p\n",
                         MemTab.Region[i].Size, i, MemTab.Region[i].pBaseAddress);
             }
         }
@@ -812,11 +790,11 @@ int Reverb_init(ReverbContext *pContext){
     if(bMallocFailure == LVM_TRUE){
         for (int i=0; i<LVM_NR_MEMORY_REGIONS; i++){
             if (MemTab.Region[i].pBaseAddress == LVM_NULL){
-                ALOGV("\tLVM_ERROR :Reverb_init CreateInstance Failed to allocate %ld bytes "
-                        "for region %u - Not freeing\n", MemTab.Region[i].Size, i );
+                ALOGV("\tLVM_ERROR :Reverb_init CreateInstance Failed to allocate %" PRIu32
+                        " bytes for region %u - Not freeing\n", MemTab.Region[i].Size, i );
             }else{
-                ALOGV("\tLVM_ERROR :Reverb_init CreateInstance Failed: but allocated %ld bytes "
-                        "for region %u at %p- free\n",
+                ALOGV("\tLVM_ERROR :Reverb_init CreateInstance Failed: but allocated %" PRIu32
+                        " bytes for region %u at %p- free\n",
                         MemTab.Region[i].Size, i, MemTab.Region[i].pBaseAddress);
                 free(MemTab.Region[i].pBaseAddress);
             }
@@ -842,6 +820,7 @@ int Reverb_init(ReverbContext *pContext){
     /* General parameters */
     params.OperatingMode  = LVM_MODE_ON;
     params.SampleRate     = LVM_FS_44100;
+    pContext->SampleRate  = LVM_FS_44100;
 
     if(pContext->config.inputCfg.channels == AUDIO_CHANNEL_OUT_MONO){
         params.SourceFormat   = LVM_MONO;
@@ -1558,7 +1537,7 @@ int Reverb_LoadPreset(ReverbContext   *pContext)
 
 int Reverb_getParameter(ReverbContext *pContext,
                         void          *pParam,
-                        size_t        *pValueSize,
+                        uint32_t      *pValueSize,
                         void          *pValue){
     int status = 0;
     int32_t *pParamTemp = (int32_t *)pParam;
@@ -1980,9 +1959,9 @@ int Reverb_command(effect_handle_t  self,
             //ALOGV("\tReverb_command cmdCode Case: "
             //        "EFFECT_CMD_GET_PARAM start");
             if (pCmdData == NULL ||
-                    cmdSize < (int)(sizeof(effect_param_t) + sizeof(int32_t)) ||
+                    cmdSize < (sizeof(effect_param_t) + sizeof(int32_t)) ||
                     pReplyData == NULL ||
-                    *replySize < (int) (sizeof(effect_param_t) + sizeof(int32_t))){
+                    *replySize < (sizeof(effect_param_t) + sizeof(int32_t))){
                 ALOGV("\tLVM_ERROR : Reverb_command cmdCode Case: "
                         "EFFECT_CMD_GET_PARAM: ERROR");
                 return -EINVAL;
@@ -1997,7 +1976,7 @@ int Reverb_command(effect_handle_t  self,
 
             p->status = android::Reverb_getParameter(pContext,
                                                          (void *)p->data,
-                                                         (size_t  *)&p->vsize,
+                                                          &p->vsize,
                                                           p->data + voffset);
 
             *replySize = sizeof(effect_param_t) + voffset + p->vsize;
@@ -2018,8 +1997,8 @@ int Reverb_command(effect_handle_t  self,
             //        *replySize,
             //        *(int16_t *)((char *)pCmdData + sizeof(effect_param_t) + sizeof(int32_t)));
 
-            if (pCmdData == NULL || (cmdSize < (int)(sizeof(effect_param_t) + sizeof(int32_t)))
-                    || pReplyData == NULL || *replySize != (int)sizeof(int32_t)) {
+            if (pCmdData == NULL || (cmdSize < (sizeof(effect_param_t) + sizeof(int32_t)))
+                    || pReplyData == NULL || *replySize != sizeof(int32_t)) {
                 ALOGV("\tLVM_ERROR : Reverb_command cmdCode Case: "
                         "EFFECT_CMD_SET_PARAM: ERROR");
                 return -EINVAL;
@@ -2170,16 +2149,16 @@ const struct effect_interface_s gReverbInterface = {
     NULL,
 };    /* end gReverbInterface */
 
+// This is the only symbol that needs to be exported
+__attribute__ ((visibility ("default")))
 audio_effect_library_t AUDIO_EFFECT_LIBRARY_INFO_SYM = {
-    tag : AUDIO_EFFECT_LIBRARY_TAG,
-    version : EFFECT_LIBRARY_API_VERSION,
-    name : "Reverb Library",
-    implementor : "NXP Software Ltd.",
-    query_num_effects : android::EffectQueryNumberEffects,
-    query_effect : android::EffectQueryEffect,
-    create_effect : android::EffectCreate,
-    release_effect : android::EffectRelease,
-    get_descriptor : android::EffectGetDescriptor,
+    .tag = AUDIO_EFFECT_LIBRARY_TAG,
+    .version = EFFECT_LIBRARY_API_VERSION,
+    .name = "Reverb Library",
+    .implementor = "NXP Software Ltd.",
+    .create_effect = android::EffectCreate,
+    .release_effect = android::EffectRelease,
+    .get_descriptor = android::EffectGetDescriptor,
 };
 
 }

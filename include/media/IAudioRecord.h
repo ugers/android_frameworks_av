@@ -44,9 +44,6 @@ public:
      * will be processed, unless flush() is called.
      */
     virtual void        stop() = 0;
-
-    /* get this tracks control block */
-    virtual sp<IMemory> getCblk() const = 0;
 };
 
 // ----------------------------------------------------------------------------

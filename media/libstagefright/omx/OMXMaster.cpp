@@ -71,6 +71,9 @@ void OMXMaster::addPlugin(const char *libname) {
 }
 
 void OMXMaster::addPlugin(OMXPluginBase *plugin) {
+    if (plugin == 0) {
+       return;
+    }
     Mutex::Autolock autoLock(mLock);
 
     mPlugins.push_back(plugin);
@@ -94,7 +97,7 @@ void OMXMaster::addPlugin(OMXPluginBase *plugin) {
     }
 
     if (err != OMX_ErrorNoMore) {
-        ALOGE("OMX plugin failed w/ error 0x%08x after registering %d "
+        ALOGE("OMX plugin failed w/ error 0x%08x after registering %zu "
              "components", err, mPluginByComponentName.size());
     }
 }

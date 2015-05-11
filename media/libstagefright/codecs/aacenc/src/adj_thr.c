@@ -72,7 +72,7 @@ static void calcThreshExp(Word32 thrExp[MAX_CHANNELS][MAX_GROUPED_SFB],
                           const Word16 nChannels)
 {
   Word16 ch, sfb, sfbGrp;
-  Word32 *pthrExp, *psfbThre;
+  Word32 *pthrExp = NULL, *psfbThre;
   for (ch=0; ch<nChannels; ch++) {
     PSY_OUT_CHANNEL *psyOutChan = &psyOutChannel[ch];
 	 for(sfbGrp = 0; sfbGrp < psyOutChan->sfbCnt; sfbGrp+= psyOutChan->sfbPerGroup)
@@ -96,7 +96,7 @@ static void adaptMinSnr(PSY_OUT_CHANNEL     psyOutChannel[MAX_CHANNELS],
                         MINSNR_ADAPT_PARAM *msaParam,
                         const Word16        nChannels)
 {
-  Word16 ch, sfb, sfbOffs, shift;
+  Word16 ch, sfb, sfbOffs;
   Word32 nSfb, avgEn;
   Word16 log_avgEn = 0;
   Word32 startRatio_x_avgEn = 0;

@@ -22,16 +22,16 @@
 #include <sys/types.h>
 #include <binder/Parcel.h>
 #include <camera/ICamera.h>
-#include <gui/ISurfaceTexture.h>
+#include <gui/IGraphicBufferProducer.h>
 #include <gui/Surface.h>
 
 namespace android {
 
 enum {
     DISCONNECT = IBinder::FIRST_CALL_TRANSACTION,
-    SET_PREVIEW_DISPLAY,
-    SET_PREVIEW_TEXTURE,
+    SET_PREVIEW_TARGET,
     SET_PREVIEW_CALLBACK_FLAG,
+    SET_PREVIEW_CALLBACK_TARGET,
     START_PREVIEW,
     STOP_PREVIEW,
     AUTO_FOCUS,
@@ -66,28 +66,18 @@ public:
         Parcel data, reply;
         data.writeInterfaceToken(ICamera::getInterfaceDescriptor());
         remote()->transact(DISCONNECT, data, &reply);
+        reply.readExceptionCode();
     }
 
-    // pass the buffered Surface to the camera service
-    status_t setPreviewDisplay(const sp<Surface>& surface)
+    // pass the buffered IGraphicBufferProducer to the camera service
+    status_t setPreviewTarget(const sp<IGraphicBufferProducer>& bufferProducer)
     {
-        ALOGV("setPreviewDisplay");
+        ALOGV("setPreviewTarget");
         Parcel data, reply;
         data.writeInterfaceToken(ICamera::getInterfaceDescriptor());
-        Surface::writeToParcel(surface, &data);
-        remote()->transact(SET_PREVIEW_DISPLAY, data, &reply);
-        return reply.readInt32();
-    }
-
-    // pass the buffered SurfaceTexture to the camera service
-    status_t setPreviewTexture(const sp<ISurfaceTexture>& surfaceTexture)
-    {
-        ALOGV("setPreviewTexture");
-        Parcel data, reply;
-        data.writeInterfaceToken(ICamera::getInterfaceDescriptor());
-        sp<IBinder> b(surfaceTexture->asBinder());
+        sp<IBinder> b(bufferProducer->asBinder());
         data.writeStrongBinder(b);
-        remote()->transact(SET_PREVIEW_TEXTURE, data, &reply);
+        remote()->transact(SET_PREVIEW_TARGET, data, &reply);
         return reply.readInt32();
     }
 
@@ -102,7 +92,19 @@ public:
         remote()->transact(SET_PREVIEW_CALLBACK_FLAG, data, &reply);
     }
 
-    // start preview mode, must call setPreviewDisplay first
+    status_t setPreviewCallbackTarget(
+            const sp<IGraphicBufferProducer>& callbackProducer)
+    {
+        ALOGV("setPreviewCallbackTarget");
+        Parcel data, reply;
+        data.writeInterfaceToken(ICamera::getInterfaceDescriptor());
+        sp<IBinder> b(callbackProducer->asBinder());
+        data.writeStrongBinder(b);
+        remote()->transact(SET_PREVIEW_CALLBACK_TARGET, data, &reply);
+        return reply.readInt32();
+    }
+
+    // start preview mode, must call setPreviewTarget first
     status_t startPreview()
     {
         ALOGV("startPreview");
@@ -112,7 +114,7 @@ public:
         return reply.readInt32();
     }
 
-    // start recording mode, must call setPreviewDisplay first
+    // start recording mode, must call setPreviewTarget first
     status_t startRecording()
     {
         ALOGV("startRecording");
@@ -280,20 +282,15 @@ status_t BnCamera::onTransact(
             ALOGV("DISCONNECT");
             CHECK_INTERFACE(ICamera, data, reply);
             disconnect();
+            reply->writeNoException();
             return NO_ERROR;
         } break;
-        case SET_PREVIEW_DISPLAY: {
-            ALOGV("SET_PREVIEW_DISPLAY");
+        case SET_PREVIEW_TARGET: {
+            ALOGV("SET_PREVIEW_TARGET");
             CHECK_INTERFACE(ICamera, data, reply);
-            sp<Surface> surface = Surface::readFromParcel(data);
-            reply->writeInt32(setPreviewDisplay(surface));
-            return NO_ERROR;
-        } break;
-        case SET_PREVIEW_TEXTURE: {
-            ALOGV("SET_PREVIEW_TEXTURE");
-            CHECK_INTERFACE(ICamera, data, reply);
-            sp<ISurfaceTexture> st = interface_cast<ISurfaceTexture>(data.readStrongBinder());
-            reply->writeInt32(setPreviewTexture(st));
+            sp<IGraphicBufferProducer> st =
+                interface_cast<IGraphicBufferProducer>(data.readStrongBinder());
+            reply->writeInt32(setPreviewTarget(st));
             return NO_ERROR;
         } break;
         case SET_PREVIEW_CALLBACK_FLAG: {
@@ -303,6 +300,14 @@ status_t BnCamera::onTransact(
             setPreviewCallbackFlag(callback_flag);
             return NO_ERROR;
         } break;
+        case SET_PREVIEW_CALLBACK_TARGET: {
+            ALOGV("SET_PREVIEW_CALLBACK_TARGET");
+            CHECK_INTERFACE(ICamera, data, reply);
+            sp<IGraphicBufferProducer> cp =
+                interface_cast<IGraphicBufferProducer>(data.readStrongBinder());
+            reply->writeInt32(setPreviewCallbackTarget(cp));
+            return NO_ERROR;
+        }
         case START_PREVIEW: {
             ALOGV("START_PREVIEW");
             CHECK_INTERFACE(ICamera, data, reply);

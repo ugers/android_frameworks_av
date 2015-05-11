@@ -37,16 +37,15 @@ AudioStreamOutSink::~AudioStreamOutSink()
 ssize_t AudioStreamOutSink::negotiate(const NBAIO_Format offers[], size_t numOffers,
                                       NBAIO_Format counterOffers[], size_t& numCounterOffers)
 {
-    if (mFormat == Format_Invalid) {
+    if (!Format_isValid(mFormat)) {
         mStreamBufferSizeBytes = mStream->common.get_buffer_size(&mStream->common);
         audio_format_t streamFormat = mStream->common.get_format(&mStream->common);
-        if (streamFormat == AUDIO_FORMAT_PCM_16_BIT) {
-            uint32_t sampleRate = mStream->common.get_sample_rate(&mStream->common);
-            audio_channel_mask_t channelMask =
-                    (audio_channel_mask_t) mStream->common.get_channels(&mStream->common);
-            mFormat = Format_from_SR_C(sampleRate, popcount(channelMask));
-            mBitShift = Format_frameBitShift(mFormat);
-        }
+        uint32_t sampleRate = mStream->common.get_sample_rate(&mStream->common);
+        audio_channel_mask_t channelMask =
+                (audio_channel_mask_t) mStream->common.get_channels(&mStream->common);
+        mFormat = Format_from_SR_C(sampleRate,
+                audio_channel_count_from_out_mask(channelMask), streamFormat);
+        mFrameSize = Format_frameSize(mFormat);
     }
     return NBAIO_Sink::negotiate(offers, numOffers, counterOffers, numCounterOffers);
 }
@@ -56,10 +55,10 @@ ssize_t AudioStreamOutSink::write(const void *buffer, size_t count)
     if (!mNegotiated) {
         return NEGOTIATE;
     }
-    ALOG_ASSERT(mFormat != Format_Invalid);
-    ssize_t ret = mStream->write(mStream, buffer, count << mBitShift);
+    ALOG_ASSERT(Format_isValid(mFormat));
+    ssize_t ret = mStream->write(mStream, buffer, count * mFrameSize);
     if (ret > 0) {
-        ret >>= mBitShift;
+        ret /= mFrameSize;
         mFramesWritten += ret;
     } else {
         // FIXME verify HAL implementations are returning the correct error codes e.g. WOULD_BLOCK
@@ -78,5 +77,22 @@ status_t AudioStreamOutSink::getNextWriteTimestamp(int64_t *timestamp) {
 
     return mStream->get_next_write_timestamp(mStream, timestamp);
 }
+
+#ifndef HAVE_PRE_KITKAT_AUDIO_BLOB
+status_t AudioStreamOutSink::getTimestamp(AudioTimestamp& timestamp)
+{
+    if (mStream->get_presentation_position == NULL) {
+        return INVALID_OPERATION;
+    }
+    // FIXME position64 won't be needed after AudioTimestamp.mPosition is changed to uint64_t
+    uint64_t position64;
+    int ok = mStream->get_presentation_position(mStream, &position64, &timestamp.mTime);
+    if (ok != 0) {
+        return INVALID_OPERATION;
+    }
+    timestamp.mPosition = position64;
+    return OK;
+}
+#endif
 
 }   // namespace android

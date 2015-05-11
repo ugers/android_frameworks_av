@@ -50,14 +50,12 @@ struct HTTPBase : public DataSource {
 
     virtual status_t setBandwidthStatCollectFreq(int32_t freqMs);
 
-    void setUID(uid_t uid);
-    bool getUID(uid_t *uid) const;
-
-    static sp<HTTPBase> Create(uint32_t flags = 0);
+    virtual void setBandwidthHistorySize(size_t numHistoryItems);
 
     static void RegisterSocketUserTag(int sockfd, uid_t uid, uint32_t kTag);
     static void UnRegisterSocketUserTag(int sockfd);
 
+<<<<<<< HEAD
     //* add by chenxiaochuan for QQ live stream.
     virtual AString getRedirectUri(bool getAll = false)
     {
@@ -87,9 +85,13 @@ struct HTTPBase : public DataSource {
     virtual void forceDisconnect(){};
     virtual void setTimeoutLastUs(int64_t timeoutUs) {};
     //* end.
+=======
+    static void RegisterSocketUserMark(int sockfd, uid_t uid);
+    static void UnRegisterSocketUserMark(int sockfd);
+>>>>>>> 8b8d02886bd9fb8d5ad451c03e486cfad74aa74e
 
 protected:
-    void addBandwidthMeasurement(size_t numBytes, int64_t delayUs);
+    virtual void addBandwidthMeasurement(size_t numBytes, int64_t delayUs);
 
 private:
     struct BandwidthEntry {
@@ -103,6 +105,7 @@ private:
     size_t mNumBandwidthHistoryItems;
     int64_t mTotalTransferTimeUs;
     size_t mTotalTransferBytes;
+    size_t mMaxBandwidthHistoryItems;
 
     enum {
         kMinBandwidthCollectFreqMs = 1000,   // 1 second
@@ -112,9 +115,6 @@ private:
     int64_t mPrevBandwidthMeasureTimeUs;
     int32_t mPrevEstimatedBandWidthKbps;
     int32_t mBandWidthCollectFreqMs;
-
-    bool mUIDValid;
-    uid_t mUID;
 
     DISALLOW_EVIL_CONSTRUCTORS(HTTPBase);
 };

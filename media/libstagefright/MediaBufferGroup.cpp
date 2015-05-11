@@ -55,7 +55,15 @@ void MediaBufferGroup::add_buffer(MediaBuffer *buffer) {
     mLastBuffer = buffer;
 }
 
-status_t MediaBufferGroup::acquire_buffer(MediaBuffer **out) {
+#ifdef ADD_LEGACY_ACQUIRE_BUFFER_SYMBOL
+extern "C" status_t _ZN7android16MediaBufferGroup14acquire_bufferEPPNS_11MediaBufferE(
+    MediaBufferGroup* group, MediaBuffer **out) {
+    return group->acquire_buffer(out, false);
+}
+#endif
+
+status_t MediaBufferGroup::acquire_buffer(
+        MediaBuffer **out, bool nonBlocking) {
     Mutex::Autolock autoLock(mLock);
 
     for (;;) {
@@ -68,6 +76,11 @@ status_t MediaBufferGroup::acquire_buffer(MediaBuffer **out) {
                 *out = buffer;
                 goto exit;
             }
+        }
+
+        if (nonBlocking) {
+            *out = NULL;
+            return WOULD_BLOCK;
         }
 
         // All buffers are in use. Block until one of them is returned to us.

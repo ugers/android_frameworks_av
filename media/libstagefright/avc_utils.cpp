@@ -22,6 +22,7 @@
 
 #include <media/stagefright/foundation/ABitReader.h>
 #include <media/stagefright/foundation/ADebug.h>
+#include <media/stagefright/foundation/hexdump.h>
 #include <media/stagefright/MediaDefs.h>
 #include <media/stagefright/MediaErrors.h>
 #include <media/stagefright/MetaData.h>
@@ -39,9 +40,30 @@ unsigned parseUE(ABitReader *br) {
     return x + (1u << numZeroes) - 1;
 }
 
+signed parseSE(ABitReader *br) {
+    unsigned codeNum = parseUE(br);
+
+    return (codeNum & 1) ? (codeNum + 1) / 2 : -(codeNum / 2);
+}
+
+static void skipScalingList(ABitReader *br, size_t sizeOfScalingList) {
+    size_t lastScale = 8;
+    size_t nextScale = 8;
+    for (size_t j = 0; j < sizeOfScalingList; ++j) {
+        if (nextScale != 0) {
+            signed delta_scale = parseSE(br);
+            nextScale = (lastScale + delta_scale + 256) % 256;
+        }
+
+        lastScale = (nextScale == 0) ? lastScale : nextScale;
+    }
+}
+
 // Determine video dimensions from the sequence parameterset.
 void FindAVCDimensions(
-        const sp<ABuffer> &seqParamSet, int32_t *width, int32_t *height) {
+        const sp<ABuffer> &seqParamSet,
+        int32_t *width, int32_t *height,
+        int32_t *sarWidth, int32_t *sarHeight, int32_t *isInterlaced) {
     ABitReader br(seqParamSet->data() + 1, seqParamSet->size() - 1);
 
     unsigned profile_idc = br.getBits(8);
@@ -60,7 +82,24 @@ void FindAVCDimensions(
         parseUE(&br);  // bit_depth_luma_minus8
         parseUE(&br);  // bit_depth_chroma_minus8
         br.skipBits(1);  // qpprime_y_zero_transform_bypass_flag
-        CHECK_EQ(br.getBits(1), 0u);  // seq_scaling_matrix_present_flag
+
+        if (br.getBits(1)) {  // seq_scaling_matrix_present_flag
+            for (size_t i = 0; i < 8; ++i) {
+                if (br.getBits(1)) {  // seq_scaling_list_present_flag[i]
+
+                    // WARNING: the code below has not ever been exercised...
+                    // need a real-world example.
+
+                    if (i < 6) {
+                        // ScalingList4x4[i],16,...
+                        skipScalingList(&br, 16);
+                    } else {
+                        // ScalingList8x8[i-6],64,...
+                        skipScalingList(&br, 64);
+                    }
+                }
+            }
+        }
     }
 
     parseUE(&br);  // log2_max_frame_num_minus4
@@ -128,6 +167,52 @@ void FindAVCDimensions(
             (frame_crop_left_offset + frame_crop_right_offset) * cropUnitX;
         *height -=
             (frame_crop_top_offset + frame_crop_bottom_offset) * cropUnitY;
+    }
+
+    if (isInterlaced != NULL) {
+	*isInterlaced = !frame_mbs_only_flag;
+    }
+
+    if (sarWidth != NULL) {
+        *sarWidth = 0;
+    }
+
+    if (sarHeight != NULL) {
+        *sarHeight = 0;
+    }
+
+    if (br.getBits(1)) {  // vui_parameters_present_flag
+        unsigned sar_width = 0, sar_height = 0;
+
+        if (br.getBits(1)) {  // aspect_ratio_info_present_flag
+            unsigned aspect_ratio_idc = br.getBits(8);
+
+            if (aspect_ratio_idc == 255 /* extendedSAR */) {
+                sar_width = br.getBits(16);
+                sar_height = br.getBits(16);
+            } else if (aspect_ratio_idc > 0 && aspect_ratio_idc < 14) {
+                static const int32_t kFixedSARWidth[] = {
+                    1, 12, 10, 16, 40, 24, 20, 32, 80, 18, 15, 64, 160
+                };
+
+                static const int32_t kFixedSARHeight[] = {
+                    1, 11, 11, 11, 33, 11, 11, 11, 33, 11, 11, 33, 99
+                };
+
+                sar_width = kFixedSARWidth[aspect_ratio_idc - 1];
+                sar_height = kFixedSARHeight[aspect_ratio_idc - 1];
+            }
+        }
+
+        ALOGV("sample aspect ratio = %u : %u", sar_width, sar_height);
+
+        if (sarWidth != NULL) {
+            *sarWidth = sar_width;
+        }
+
+        if (sarHeight != NULL) {
+            *sarHeight = sar_height;
+        }
     }
 }
 
@@ -206,9 +291,7 @@ status_t getNextNALUnit(
     return OK;
 }
 
-static sp<ABuffer> FindNAL(
-        const uint8_t *data, size_t size, unsigned nalType,
-        size_t *stopOffset) {
+static sp<ABuffer> FindNAL(const uint8_t *data, size_t size, unsigned nalType) {
     const uint8_t *nalStart;
     size_t nalSize;
     while (getNextNALUnit(&data, &size, &nalStart, &nalSize, true) == OK) {
@@ -248,16 +331,17 @@ sp<MetaData> MakeAVCCodecSpecificData(const sp<ABuffer> &accessUnit) {
     const uint8_t *data = accessUnit->data();
     size_t size = accessUnit->size();
 
-    sp<ABuffer> seqParamSet = FindNAL(data, size, 7, NULL);
+    sp<ABuffer> seqParamSet = FindNAL(data, size, 7);
     if (seqParamSet == NULL) {
         return NULL;
     }
 
     int32_t width, height;
-    FindAVCDimensions(seqParamSet, &width, &height);
+    int32_t sarWidth, sarHeight;
+    FindAVCDimensions(
+            seqParamSet, &width, &height, &sarWidth, &sarHeight);
 
-    size_t stopOffset;
-    sp<ABuffer> picParamSet = FindNAL(data, size, 8, &stopOffset);
+    sp<ABuffer> picParamSet = FindNAL(data, size, 8);
     CHECK(picParamSet != NULL);
 
     size_t csdSize =
@@ -301,8 +385,29 @@ sp<MetaData> MakeAVCCodecSpecificData(const sp<ABuffer> &accessUnit) {
     meta->setInt32(kKeyWidth, width);
     meta->setInt32(kKeyHeight, height);
 
-    ALOGI("found AVC codec config (%d x %d, %s-profile level %d.%d)",
-         width, height, AVCProfileToString(profile), level / 10, level % 10);
+    if (sarWidth > 1 && sarHeight > 1) {
+        // We treat 0:0 (unspecified) as 1:1.
+
+        meta->setInt32(kKeySARWidth, sarWidth);
+        meta->setInt32(kKeySARHeight, sarHeight);
+
+        ALOGI("found AVC codec config (%d x %d, %s-profile level %d.%d) "
+              "SAR %d : %d",
+             width,
+             height,
+             AVCProfileToString(profile),
+             level / 10,
+             level % 10,
+             sarWidth,
+             sarHeight);
+    } else {
+        ALOGI("found AVC codec config (%d x %d, %s-profile level %d.%d)",
+             width,
+             height,
+             AVCProfileToString(profile),
+             level / 10,
+             level % 10);
+    }
 
     return meta;
 }
@@ -407,8 +512,8 @@ bool ExtractDimensionsFromVOLHeader(
     CHECK_NE(video_object_type_indication,
              0x21u /* Fine Granularity Scalable */);
 
-    unsigned video_object_layer_verid;
-    unsigned video_object_layer_priority;
+    unsigned video_object_layer_verid __unused;
+    unsigned video_object_layer_priority __unused;
     if (br.getBits(1)) {
         video_object_layer_verid = br.getBits(4);
         video_object_layer_priority = br.getBits(3);
@@ -470,7 +575,7 @@ bool ExtractDimensionsFromVOLHeader(
     unsigned video_object_layer_height = br.getBits(13);
     CHECK(br.getBits(1));  // marker_bit
 
-    unsigned interlaced = br.getBits(1);
+    unsigned interlaced __unused = br.getBits(1);
 
     *width = video_object_layer_width;
     *height = video_object_layer_height;
@@ -516,7 +621,7 @@ bool GetMPEGAudioFrameSize(
         return false;
     }
 
-    unsigned protection = (header >> 16) & 1;
+    unsigned protection __unused = (header >> 16) & 1;
 
     unsigned bitrate_index = (header >> 12) & 0x0f;
 

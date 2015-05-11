@@ -16,13 +16,9 @@
 
 //#define LOG_NDEBUG 0
 #define LOG_TAG "ToneGenerator"
-#include <utils/threads.h>
 
-#include <stdio.h>
 #include <math.h>
 #include <utils/Log.h>
-#include <utils/RefBase.h>
-#include <utils/Timers.h>
 #include <cutils/properties.h>
 #include "media/ToneGenerator.h"
 
@@ -702,6 +698,22 @@ const ToneGenerator::ToneDescriptor ToneGenerator::sToneDescriptors[] = {
           { segments: { { duration: 0, waveFreq: { 0 }, 0, 0 }},
           repeatCnt: 0,
           repeatSegment: 0 },                            // TONE_CDMA_SIGNAL_OFF
+        { segments: { { duration: 300, waveFreq: { 450, 0 }, 0, 0 },
+                      { duration: 300, waveFreq: { 450, 0 }, 0, 0 },
+                      { duration: 5000, waveFreq: { 0 }, 0, 0 },
+                      { duration: 0 , waveFreq: { 0 }, 0, 0}},
+          repeatCnt: ToneGenerator::TONEGEN_INF,
+          repeatSegment: 0 },                              // TONE_LOCAL_CW
+        { segments: { { duration: 3000, waveFreq: { 0 }, 0, 0 },
+                      { duration: 500, waveFreq: { 450, 0 }, 0, 0 },
+                      { duration: 0 , waveFreq: { 0 }, 0, 0}},
+          repeatCnt: ToneGenerator::TONEGEN_INF,
+          repeatSegment: 0 },                              // TONE_SUPERVISORY_CW
+        { segments: { { duration: 15000, waveFreq: { 0 }, 0, 0 },
+                      { duration: 500, waveFreq: { 450, 0 }, 0, 0 },
+                      { duration: 0 , waveFreq: { 0 }, 0, 0}},
+          repeatCnt: ToneGenerator::TONEGEN_INF,
+          repeatSegment: 0 },                              // TONE_HOLD_RECALL
 
         { segments: { { duration: ToneGenerator::TONEGEN_INF, waveFreq: { 350, 440, 0 }, 0, 0 },
                       { duration: 0 , waveFreq: { 0 }, 0, 0}},
@@ -808,10 +820,15 @@ ToneGenerator::ToneGenerator(audio_stream_type_t streamType, float volume, bool 
         ALOGE("Unable to marshal AudioFlinger");
         return;
     }
+
+    if (mSamplingRate > 48000) {
+        ALOGW("mSamplingRate %d . limit to 48k", mSamplingRate);
+        mSamplingRate = 48000;
+    }
+
     mThreadCanCallJava = threadCanCallJava;
     mStreamType = streamType;
     mVolume = volume;
-    mpAudioTrack = NULL;
     mpToneDesc = NULL;
     mpNewToneDesc = NULL;
     // Generate tone by chunks of 20 ms to keep cadencing precision
@@ -855,10 +872,10 @@ ToneGenerator::ToneGenerator(audio_stream_type_t streamType, float volume, bool 
 ToneGenerator::~ToneGenerator() {
     ALOGV("ToneGenerator destructor");
 
-    if (mpAudioTrack != NULL) {
+    if (mpAudioTrack != 0) {
         stopTone();
-        ALOGV("Delete Track: %p", mpAudioTrack);
-        delete mpAudioTrack;
+        ALOGV("Delete Track: %p", mpAudioTrack.get());
+        mpAudioTrack.clear();
     }
 }
 
@@ -885,6 +902,11 @@ bool ToneGenerator::startTone(tone_type toneType, int durationMs) {
     if ((toneType < 0) || (toneType >= NUM_TONES))
         return lResult;
 
+    toneType = getToneForRegion(toneType);
+    if (toneType == TONE_CDMA_SIGNAL_OFF) {
+        return true;
+    }
+
     if (mState == TONE_IDLE) {
         ALOGV("startTone: try to re-init AudioTrack");
         if (!initAudioTrack()) {
@@ -897,7 +919,6 @@ bool ToneGenerator::startTone(tone_type toneType, int durationMs) {
     mLock.lock();
 
     // Get descriptor for requested tone
-    toneType = getToneForRegion(toneType);
     mpNewToneDesc = &sToneDescriptors[toneType];
 
     mDurationMs = durationMs;
@@ -918,6 +939,9 @@ bool ToneGenerator::startTone(tone_type toneType, int durationMs) {
             ALOGV("Immediate start, time %d", (unsigned int)(systemTime()/1000000));
             lResult = true;
             mState = TONE_STARTING;
+            if (clock_gettime(CLOCK_MONOTONIC, &mStartTime) != 0) {
+                mStartTime.tv_sec = 0;
+            }
             mLock.unlock();
             mpAudioTrack->start();
             mLock.lock();
@@ -936,6 +960,7 @@ bool ToneGenerator::startTone(tone_type toneType, int durationMs) {
     } else {
         ALOGV("Delayed start");
         mState = TONE_RESTARTING;
+        mStartTime.tv_sec = 0;
         lStatus = mWaitCbkCond.waitRelative(mLock, seconds(3));
         if (lStatus == NO_ERROR) {
             if (mState != TONE_IDLE) {
@@ -972,20 +997,49 @@ void ToneGenerator::stopTone() {
     ALOGV("stopTone");
 
     mLock.lock();
-    if (mState == TONE_PLAYING || mState == TONE_STARTING || mState == TONE_RESTARTING) {
-        mState = TONE_STOPPING;
+    if (mState != TONE_IDLE && mState != TONE_INIT) {
+        if (mState == TONE_PLAYING || mState == TONE_STARTING || mState == TONE_RESTARTING) {
+            struct timespec stopTime;
+            // If the start time is valid, make sure that the number of audio samples produced
+            // corresponds at least to the time between the start and stop commands.
+            // This is needed in case of cold start of the output stream.
+            if ((mStartTime.tv_sec != 0) && (clock_gettime(CLOCK_MONOTONIC, &stopTime) == 0)) {
+                time_t sec = stopTime.tv_sec - mStartTime.tv_sec;
+                long nsec = stopTime.tv_nsec - mStartTime.tv_nsec;
+                long durationMs;
+                if (nsec < 0) {
+                    --sec;
+                    nsec += 1000000000;
+                }
+
+                if ((sec + 1) > ((long)(INT_MAX / mSamplingRate))) {
+                    mMaxSmp = sec * mSamplingRate;
+                } else {
+                    // mSamplingRate is always > 1000
+                    sec = sec * 1000 + nsec / 1000000; // duration in milliseconds
+                    mMaxSmp = (unsigned int)(((int64_t)sec * mSamplingRate) / 1000);
+                }
+                ALOGV("stopTone() forcing mMaxSmp to %d, total for far %d", mMaxSmp,  mTotalSmp);
+            } else {
+                mState = TONE_STOPPING;
+            }
+        }
         ALOGV("waiting cond");
         status_t lStatus = mWaitCbkCond.waitRelative(mLock, seconds(3));
         if (lStatus == NO_ERROR) {
+            // If the tone was restarted exit now before calling clearWaveGens();
+            if (mState != TONE_INIT) {
+                mLock.unlock();
+                return;
+            }
             ALOGV("track stop complete, time %d", (unsigned int)(systemTime()/1000000));
         } else {
             ALOGE("--- Stop timed out");
             mState = TONE_IDLE;
             mpAudioTrack->stop();
         }
+        clearWaveGens();
     }
-
-    clearWaveGens();
 
     mLock.unlock();
 }
@@ -1010,33 +1064,38 @@ void ToneGenerator::stopTone() {
 ////////////////////////////////////////////////////////////////////////////////
 bool ToneGenerator::initAudioTrack() {
 
-    if (mpAudioTrack) {
-        delete mpAudioTrack;
-        mpAudioTrack = NULL;
+    audio_output_flags_t flags = AUDIO_OUTPUT_FLAG_FAST;
+#ifdef QCOM_HARDWARE
+    // Set AUDIO_OUTPUT_FLAG_DIRECT and AUDIO_OUTPUT_FLAG_INCALL_MUSIC for incall music delivery
+    if (mStreamType == AUDIO_STREAM_INCALL_MUSIC) {
+        flags = (audio_output_flags_t)(AUDIO_OUTPUT_FLAG_DIRECT | AUDIO_OUTPUT_FLAG_INCALL_MUSIC);
     }
+#endif
 
     // Open audio track in mono, PCM 16bit, default sampling rate, default buffer size
     mpAudioTrack = new AudioTrack();
-    ALOGV("Create Track: %p", mpAudioTrack);
+    ALOGV("Create Track: %p", mpAudioTrack.get());
 
     mpAudioTrack->set(mStreamType,
-                      0,    // sampleRate
+                      mSamplingRate,
                       AUDIO_FORMAT_PCM_16_BIT,
                       AUDIO_CHANNEL_OUT_MONO,
                       0,    // frameCount
-                      AUDIO_OUTPUT_FLAG_FAST,
+                      flags,
                       audioCallback,
                       this, // user
                       0,    // notificationFrames
                       0,    // sharedBuffer
-                      mThreadCanCallJava);
+                      mThreadCanCallJava,
+                      AUDIO_SESSION_ALLOCATE,
+                      AudioTrack::TRANSFER_CALLBACK);
 
     if (mpAudioTrack->initCheck() != NO_ERROR) {
         ALOGE("AudioTrack->initCheck failed");
         goto initAudioTrack_exit;
     }
 
-    mpAudioTrack->setVolume(mVolume, mVolume);
+    mpAudioTrack->setVolume(mVolume);
 
     mState = TONE_INIT;
 
@@ -1044,12 +1103,10 @@ bool ToneGenerator::initAudioTrack() {
 
 initAudioTrack_exit:
 
+    ALOGV("Init failed: %p", mpAudioTrack.get());
+
     // Cleanup
-    if (mpAudioTrack != NULL) {
-        ALOGV("Delete Track I: %p", mpAudioTrack);
-        delete mpAudioTrack;
-        mpAudioTrack = NULL;
-    }
+    mpAudioTrack.clear();
 
     return false;
 }
@@ -1254,6 +1311,9 @@ audioCallback_EndLoop:
             ALOGV("Cbk restarting track");
             if (lpToneGen->prepareWave()) {
                 lpToneGen->mState = TONE_STARTING;
+                if (clock_gettime(CLOCK_MONOTONIC, &lpToneGen->mStartTime) != 0) {
+                    lpToneGen->mStartTime.tv_sec = 0;
+                }
                 // must reload lpToneDesc as prepareWave() may change mpToneDesc
                 lpToneDesc = lpToneGen->mpToneDesc;
             } else {
@@ -1295,7 +1355,7 @@ audioCallback_EndLoop:
         }
 
         if (lSignal)
-            lpToneGen->mWaitCbkCond.signal();
+            lpToneGen->mWaitCbkCond.broadcast();
         lpToneGen->mLock.unlock();
     }
 }

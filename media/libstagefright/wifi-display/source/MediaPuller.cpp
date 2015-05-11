@@ -93,6 +93,9 @@ void MediaPuller::onMessageReceived(const sp<AMessage> &msg) {
                 err = mSource->start(params.get());
             } else {
                 err = mSource->start();
+                if (err != OK) {
+                    ALOGE("source failed to start w/ err %d", err);
+                }
             }
 
             if (err == OK) {
@@ -176,7 +179,7 @@ void MediaPuller::onMessageReceived(const sp<AMessage> &msg) {
                 } else {
                     // video encoder will release MediaBuffer when done
                     // with underlying data.
-                    accessUnit->meta()->setPointer("mediaBuffer", mbuf);
+                    accessUnit->setMediaBufferBase(mbuf);
                 }
 
                 sp<AMessage> notify = mNotify->dup();

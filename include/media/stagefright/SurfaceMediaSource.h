@@ -17,7 +17,7 @@
 #ifndef ANDROID_GUI_SURFACEMEDIASOURCE_H
 #define ANDROID_GUI_SURFACEMEDIASOURCE_H
 
-#include <gui/ISurfaceTexture.h>
+#include <gui/IGraphicBufferProducer.h>
 #include <gui/BufferQueue.h>
 
 #include <utils/threads.h>
@@ -35,7 +35,7 @@ class GraphicBuffer;
 // ASSUMPTIONS
 // 1. SurfaceMediaSource is initialized with width*height which
 // can never change.  However, deqeueue buffer does not currently
-// enforce this as in BufferQueue, dequeue can be used by SurfaceTexture
+// enforce this as in BufferQueue, dequeue can be used by Surface
 // which can modify the default width and heght.  Also neither the width
 // nor height can be 0.
 // 2. setSynchronousMode is never used (basically no one should call
@@ -56,7 +56,7 @@ class GraphicBuffer;
 
 class SurfaceMediaSource : public MediaSource,
                                 public MediaBufferObserver,
-                                protected BufferQueue::ConsumerListener {
+                                protected ConsumerListener {
 public:
     enum { MIN_UNDEQUEUED_BUFFERS = 4};
 
@@ -111,7 +111,7 @@ public:
     // pass metadata through the buffers. Currently, it is force set to true
     bool isMetaDataStoredInVideoBuffers() const;
 
-    sp<BufferQueue> getBufferQueue() const { return mBufferQueue; }
+    sp<IGraphicBufferProducer> getProducer() const { return mProducer; }
 
     // To be called before start()
     status_t setMaxAcquiredBufferCount(size_t count);
@@ -122,7 +122,7 @@ public:
 protected:
 
     // Implementation of the BufferQueue::ConsumerListener interface.  These
-    // calls are used to notify the SurfaceTexture of asynchronous events in the
+    // calls are used to notify the Surface of asynchronous events in the
     // BufferQueue.
     virtual void onFrameAvailable();
 
@@ -139,16 +139,25 @@ protected:
     // frames is separate than the one calling stop.
     virtual void onBuffersReleased();
 
+    // SurfaceMediaSource can't handle sideband streams, so this is not expected
+    // to ever be called. Does nothing.
+    virtual void onSidebandStreamChanged();
+
     static bool isExternalFormat(uint32_t format);
 
 private:
-    // mBufferQueue is the exchange point between the producer and
-    // this consumer
-    sp<BufferQueue> mBufferQueue;
+    // A BufferQueue, represented by these interfaces, is the exchange point
+    // between the producer and this consumer
+    sp<IGraphicBufferProducer> mProducer;
+    sp<IGraphicBufferConsumer> mConsumer;
 
-    // mBufferSlot caches GraphicBuffers from the buffer queue
-    sp<GraphicBuffer> mBufferSlot[BufferQueue::NUM_BUFFER_SLOTS];
+    struct SlotData {
+        sp<GraphicBuffer> mGraphicBuffer;
+        uint64_t mFrameNumber;
+    };
 
+    // mSlots caches GraphicBuffers and frameNumbers from the buffer queue
+    SlotData mSlots[BufferQueue::NUM_BUFFER_SLOTS];
 
     // The permenent width and height of SMS buffers
     int mWidth;
@@ -157,7 +166,7 @@ private:
     // mCurrentSlot is the buffer slot index of the buffer that is currently
     // being used by buffer consumer
     // (e.g. StageFrightRecorder in the case of SurfaceMediaSource or GLTexture
-    // in the case of SurfaceTexture).
+    // in the case of Surface).
     // It is initialized to INVALID_BUFFER_SLOT,
     // indicating that no buffer slot is currently bound to the texture. Note,
     // however, that a value of INVALID_BUFFER_SLOT does not necessarily mean

@@ -1,4 +1,7 @@
 /*
+ * Copyright (c) 2013, The Linux Foundation. All rights reserved.
+ * Not a Contribution.
+ *
  * Copyright (C) 2008-2011 The Android Open Source Project
  * Copyright (c) 2012-2013, The Linux Foundation. All rights reserved.
  *
@@ -49,6 +52,7 @@ public:
     static const char * const keyFrameCount;
     static const char * const keyInputSource;
     static const char * const keyScreenState;
+<<<<<<< HEAD
 #ifdef QCOM_HARDWARE
     static const char * const keyHandleFm;
     static const char * const keyVoipCheck;
@@ -57,6 +61,10 @@ public:
     static const char * const keyHandleA2dpDevice;
     static const char * const keyADSPStatus;
 #endif
+=======
+    static const char * const keySSR;
+    static const char * const keyADSPStatus;
+>>>>>>> 8b8d02886bd9fb8d5ad451c03e486cfad74aa74e
 
     String8 toString();
 

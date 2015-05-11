@@ -31,7 +31,9 @@ struct MetaData;
 struct ElementaryStreamQueue {
     enum Mode {
         H264,
+        H265,
         AAC,
+        AC3,
         MPEG_AUDIO,
         MPEG_VIDEO,
         MPEG4_VIDEO,
@@ -66,7 +68,9 @@ private:
     sp<MetaData> mFormat;
 
     sp<ABuffer> dequeueAccessUnitH264();
+    sp<ABuffer> dequeueAccessUnitH265();
     sp<ABuffer> dequeueAccessUnitAAC();
+    sp<ABuffer> dequeueAccessUnitAC3();
     sp<ABuffer> dequeueAccessUnitMPEGAudio();
     sp<ABuffer> dequeueAccessUnitMPEGVideo();
     sp<ABuffer> dequeueAccessUnitMPEG4Video();
@@ -75,6 +79,7 @@ private:
     // consume a logical (compressed) access unit of size "size",
     // returns its timestamp in us (or -1 if no time information).
     int64_t fetchTimestamp(size_t size);
+    int64_t fetchTimestampAAC(size_t size);
 
     DISALLOW_EVIL_CONSTRUCTORS(ElementaryStreamQueue);
 };

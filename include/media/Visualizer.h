@@ -19,7 +19,7 @@
 
 #include <media/AudioEffect.h>
 #include <audio_effects/effect_visualizer.h>
-#include <string.h>
+#include <utils/Thread.h>
 
 /**
  * The Visualizer class enables application to retrieve part of the currently playing audio for
@@ -95,6 +95,7 @@ public:
     // install a callback to receive periodic captures. The capture rate is specified in milliHertz
     // and the capture format is according to flags  (see callback_flags).
     status_t setCaptureCallBack(capture_cbk_t cbk, void* user, uint32_t flags, uint32_t rate);
+    void cancelCaptureCallBack();
 
     // set the capture size capture size must be a power of two in the range
     // [VISUALIZER_CAPTURE_SIZE_MAX. VISUALIZER_CAPTURE_SIZE_MIN]
@@ -113,6 +114,14 @@ public:
     //  VISUALIZER_SCALING_MODE_AS_PLAYED
     status_t setScalingMode(uint32_t mode);
     uint32_t getScalingMode() { return mScalingMode; }
+
+    // set which measurements are done on the audio buffers processed by the effect.
+    // valid measurements (mask): MEASUREMENT_MODE_PEAK_RMS
+    status_t setMeasurementMode(uint32_t mode);
+    uint32_t getMeasurementMode() { return mMeasurementMode; }
+
+    // return a set of int32_t measurements
+    status_t getIntMeasurements(uint32_t type, uint32_t number, int32_t *measurements);
 
     // return a capture in PCM 8 bit unsigned format. The size of the capture is equal to
     // getCaptureSize()
@@ -156,6 +165,7 @@ private:
     uint32_t mCaptureSize;
     uint32_t mSampleRate;
     uint32_t mScalingMode;
+    uint32_t mMeasurementMode;
     capture_cbk_t mCaptureCallBack;
     void *mCaptureCbkUser;
     sp<CaptureThread> mCaptureThread;

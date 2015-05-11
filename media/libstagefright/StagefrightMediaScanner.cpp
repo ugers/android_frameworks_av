@@ -25,6 +25,7 @@
 
 #include <media/stagefright/StagefrightMediaScanner.h>
 
+#include <media/IMediaHTTPService.h>
 #include <media/mediametadataretriever.h>
 #include <private/media/VideoFrame.h>
 
@@ -43,10 +44,18 @@ static int FileHasAcceptableExtension(const char *extension) {
         ".mpeg", ".ogg", ".mid", ".smf", ".imy", ".wma", ".aac",
         ".wav", ".amr", ".midi", ".xmf", ".rtttl", ".rtx", ".ota",
         ".mkv", ".mka", ".webm", ".ts", ".fl", ".flac", ".mxmf",
+<<<<<<< HEAD
         ".avi", ".mpg", ".qcp", ".awb", ".ac3", ".dts", ".wmv",
 #ifdef QCOM_HARDWARE
         ".ec3"
 #endif
+=======
+        ".adts", ".dm", ".m2ts", ".mp3d", ".wmv", ".asf", ".flv",
+        ".mov", ".ra", ".rm", ".rmvb", ".ac3", ".ape", ".dts",
+        ".mp1", ".mp2", ".f4v", "hlv", "nrg", "m2v", ".swf",
+        ".avi", ".mpg", ".mpeg", ".awb", ".vc1", ".vob", ".divx",
+        ".mpga", ".mov", ".qcp", ".ec3"
+>>>>>>> 8b8d02886bd9fb8d5ad451c03e486cfad74aa74e
     };
 
     static const char *kValidExtensionsAW[] = {
@@ -141,7 +150,7 @@ MediaScanResult StagefrightMediaScanner::processFile(
 }
 
 MediaScanResult StagefrightMediaScanner::processFileInternal(
-        const char *path, const char *mimeType,
+        const char *path, const char * /* mimeType */,
         MediaScannerClient &client) {
     const char *extension = strrchr(path, '.');
     short faccext_ret;
@@ -178,7 +187,7 @@ MediaScanResult StagefrightMediaScanner::processFileInternal(
     int fd = open(path, O_RDONLY | O_LARGEFILE);
     if (fd < 0) {
         // couldn't open it locally, maybe the media server can?
-        status = mRetriever->setDataSource(path);
+        status = mRetriever->setDataSource(NULL /* httpService */, path);
     } else {
         status = mRetriever->setDataSource(fd, 0, 0x7ffffffffffffffL);
         close(fd);
@@ -233,7 +242,7 @@ MediaScanResult StagefrightMediaScanner::processFileInternal(
     return MEDIA_SCAN_RESULT_OK;
 }
 
-char *StagefrightMediaScanner::extractAlbumArt(int fd) {
+MediaAlbumArt *StagefrightMediaScanner::extractAlbumArt(int fd) {
     ALOGV("extractAlbumArt %d", fd);
 
     off64_t size = lseek64(fd, 0, SEEK_END);
@@ -245,15 +254,9 @@ char *StagefrightMediaScanner::extractAlbumArt(int fd) {
     sp<MediaMetadataRetriever> mRetriever(new MediaMetadataRetriever);
     if (mRetriever->setDataSource(fd, 0, size) == OK) {
         sp<IMemory> mem = mRetriever->extractAlbumArt();
-
         if (mem != NULL) {
             MediaAlbumArt *art = static_cast<MediaAlbumArt *>(mem->pointer());
-
-            char *data = (char *)malloc(art->mSize + 4);
-            *(int32_t *)data = art->mSize;
-            memcpy(&data[4], &art[1], art->mSize);
-
-            return data;
+            return art->clone();
         }
     }
 

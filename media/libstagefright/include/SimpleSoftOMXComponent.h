@@ -58,6 +58,11 @@ protected:
         } mTransition;
     };
 
+    enum {
+        kStoreMetaDataExtensionIndex = OMX_IndexVendorStartUnused + 1,
+        kPrepareForAdaptivePlaybackIndex,
+    };
+
     void addPort(const OMX_PARAM_PORTDEFINITIONTYPE &def);
 
     virtual OMX_ERRORTYPE internalGetParameter(
@@ -71,6 +76,7 @@ protected:
 
     virtual void onPortFlushCompleted(OMX_U32 portIndex);
     virtual void onPortEnableCompleted(OMX_U32 portIndex, bool enabled);
+    virtual void onReset();
 
     PortInfo *editPortInfo(OMX_U32 portIndex);
 

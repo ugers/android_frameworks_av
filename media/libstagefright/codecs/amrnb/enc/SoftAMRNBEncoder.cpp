@@ -257,7 +257,7 @@ OMX_ERRORTYPE SoftAMRNBEncoder::internalSetParameter(
             }
 
             if (pcmParams->nChannels != 1
-                    || pcmParams->nSamplingRate != kSampleRate) {
+                    || pcmParams->nSamplingRate != (OMX_U32)kSampleRate) {
                 return OMX_ErrorUndefined;
             }
 
@@ -270,7 +270,7 @@ OMX_ERRORTYPE SoftAMRNBEncoder::internalSetParameter(
     }
 }
 
-void SoftAMRNBEncoder::onQueueFilled(OMX_U32 portIndex) {
+void SoftAMRNBEncoder::onQueueFilled(OMX_U32 /* portIndex */) {
     if (mSignalledError) {
         return;
     }
