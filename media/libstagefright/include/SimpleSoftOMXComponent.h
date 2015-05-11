@@ -58,11 +58,6 @@ protected:
         } mTransition;
     };
 
-    enum {
-        kStoreMetaDataExtensionIndex = OMX_IndexVendorStartUnused + 1,
-        kPrepareForAdaptivePlaybackIndex,
-    };
-
     void addPort(const OMX_PARAM_PORTDEFINITIONTYPE &def);
 
     virtual OMX_ERRORTYPE internalGetParameter(
@@ -70,6 +65,10 @@ protected:
 
     virtual OMX_ERRORTYPE internalSetParameter(
             OMX_INDEXTYPE index, const OMX_PTR params);
+
+    
+    virtual OMX_ERRORTYPE getExtensionIndex(
+                const char *name, OMX_INDEXTYPE *index);
 
     virtual void onQueueFilled(OMX_U32 portIndex);
     List<BufferInfo *> &getPortQueue(OMX_U32 portIndex);
@@ -108,9 +107,6 @@ private:
 
     virtual OMX_ERRORTYPE setParameter(
             OMX_INDEXTYPE index, const OMX_PTR params);
-
-    virtual OMX_ERRORTYPE getExtensionIndex(
-            const char *name, OMX_INDEXTYPE *index);
 
     virtual OMX_ERRORTYPE useBuffer(
             OMX_BUFFERHEADERTYPE **buffer,

@@ -20,10 +20,6 @@
 
 #include "SoftVideoDecoderOMXComponent.h"
 
-#include "vpx/vpx_decoder.h"
-#include "vpx/vpx_codec.h"
-#include "vpx/vp8dx.h"
-
 namespace android {
 
 struct SoftVPX : public SoftVideoDecoderOMXComponent {
@@ -50,8 +46,6 @@ private:
     } mMode;
 
     void *mCtx;
-
-    vpx_image_t *mImg;
 
     status_t initDecoder();
 

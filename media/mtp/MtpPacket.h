@@ -28,11 +28,11 @@ class MtpPacket {
 protected:
     uint8_t*            mBuffer;
     // current size of the buffer
-    size_t              mBufferSize;
+    int                 mBufferSize;
     // number of bytes to add when resizing the buffer
-    size_t              mAllocationIncrement;
+    int                 mAllocationIncrement;
     // size of the data in the packet
-    size_t              mPacketSize;
+    int                 mPacketSize;
 
 public:
                         MtpPacket(int bufferSize);
@@ -41,7 +41,7 @@ public:
     // sets packet size to the default container size and sets buffer to zero
     virtual void        reset();
 
-    void                allocate(size_t length);
+    void                allocate(int length);
     void                dump();
     void                copyFrom(const MtpPacket& src);
 

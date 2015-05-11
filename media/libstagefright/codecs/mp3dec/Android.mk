@@ -42,15 +42,20 @@ LOCAL_SRC_FILES += \
  	src/pvmp3_dct_16.cpp
 endif
 
+ifeq ($(BOARD_USES_QCOM_HARDWARE),true)
+ifeq ($(BOARD_USES_LEGACY_ALSA_AUDIO),true)
+LOCAL_SRC_FILES += \
+	MP3Decoder.cpp
+endif
+endif
+
 LOCAL_C_INCLUDES := \
         frameworks/av/media/libstagefright/include \
         $(LOCAL_PATH)/src \
         $(LOCAL_PATH)/include
 
 LOCAL_CFLAGS := \
-        -D"OSCL_UNUSED_ARG(x)=(void)(x)"
-
-LOCAL_CFLAGS += -Werror
+        -DOSCL_UNUSED_ARG=
 
 LOCAL_MODULE := libstagefright_mp3dec
 
@@ -70,8 +75,6 @@ LOCAL_C_INCLUDES := \
         frameworks/native/include/media/openmax \
         $(LOCAL_PATH)/src \
         $(LOCAL_PATH)/include
-
-LOCAL_CFLAGS += -Werror
 
 LOCAL_SHARED_LIBRARIES := \
         libstagefright libstagefright_omx libstagefright_foundation libutils liblog

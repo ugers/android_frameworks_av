@@ -211,6 +211,7 @@ AACExtractor::~AACExtractor() {
 }
 
 sp<MetaData> AACExtractor::getMetaData() {
+    sp<MetaData> meta = new MetaData;
 
     if (mInitCheck != OK) {
         return mApeMeta;
@@ -232,7 +233,7 @@ sp<MediaSource> AACExtractor::getTrack(size_t index) {
     return new AACSource(mDataSource, mMeta, mOffsetVector, mFrameDurationUs);
 }
 
-sp<MetaData> AACExtractor::getTrackMetaData(size_t index, uint32_t /* flags */) {
+sp<MetaData> AACExtractor::getTrackMetaData(size_t index, uint32_t flags) {
     if (mInitCheck != OK || index != 0) {
         return NULL;
     }
@@ -265,7 +266,7 @@ AACSource::~AACSource() {
     }
 }
 
-status_t AACSource::start(MetaData * /* params */) {
+status_t AACSource::start(MetaData *params) {
     CHECK(!mStarted);
 
     if (mOffsetVector.empty()) {

@@ -21,7 +21,6 @@
 #include <utils/threads.h>
 #include <utils/List.h>
 #include <utils/Errors.h>
-#include <utils/String8.h>
 #include <pthread.h>
 
 struct dirent;
@@ -30,7 +29,6 @@ namespace android {
 
 class MediaScannerClient;
 class StringArray;
-class CharacterEncodingDetector;
 
 enum MediaScanResult {
     // This file or directory was scanned successfully.
@@ -42,31 +40,6 @@ enum MediaScanResult {
     // or an exception.
     MEDIA_SCAN_RESULT_ERROR,
 };
-
-struct MediaAlbumArt {
-public:
-    static MediaAlbumArt *fromData(int32_t size, const void* data);
-
-    static void init(MediaAlbumArt* instance, int32_t size, const void* data);
-
-    MediaAlbumArt *clone();
-
-    const char *data() {
-        return &mData[0];
-    }
-
-    int32_t size() {
-        return mSize;
-    }
-
-private:
-    int32_t mSize;
-    char mData[];
-
-    // You can't construct instances of this class directly because this is a
-    // variable-sized object passed through the binder.
-    MediaAlbumArt();
-} __packed;
 
 struct MediaScanner {
     MediaScanner();
@@ -80,7 +53,8 @@ struct MediaScanner {
 
     void setLocale(const char *locale);
 
-    virtual MediaAlbumArt *extractAlbumArt(int fd) = 0;
+    // extracts album art as a block of data
+    virtual char *extractAlbumArt(int fd) = 0;
 
 protected:
     const char *locale() const;
@@ -120,8 +94,15 @@ public:
     virtual status_t setMimeType(const char* mimeType) = 0;
 
 protected:
-    // default encoding from MediaScanner::mLocale
-    String8 mLocale;
+    void convertValues(uint32_t encoding);
+
+protected:
+    // cached name and value strings, for native encoding support.
+    StringArray*    mNames;
+    StringArray*    mValues;
+
+    // default encoding based on MediaScanner::mLocale string
+    uint32_t        mLocaleEncoding;
 };
 
 }; // namespace android

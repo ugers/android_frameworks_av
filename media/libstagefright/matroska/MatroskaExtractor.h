@@ -18,11 +18,13 @@
 
 #define MATROSKA_EXTRACTOR_H_
 
-#include "mkvparser.hpp"
-
 #include <media/stagefright/MediaExtractor.h>
 #include <utils/Vector.h>
 #include <utils/threads.h>
+
+namespace mkvparser {
+struct Segment;
+};
 
 namespace android {
 
@@ -56,11 +58,6 @@ private:
     struct TrackInfo {
         unsigned long mTrackNum;
         sp<MetaData> mMeta;
-        const MatroskaExtractor *mExtractor;
-        Vector<const mkvparser::CuePoint*> mCuePoints;
-
-        const mkvparser::Track* getTrack() const;
-        const mkvparser::CuePoint::TrackPosition *find(long long timeNs) const;
     };
 
     Mutex mLock;
@@ -72,7 +69,6 @@ private:
     bool mExtractedThumbnails;
     bool mIsLiveStreaming;
     bool mIsWebm;
-    int64_t mSeekPreRollNs;
 
     void addTracks();
     void findThumbnails();

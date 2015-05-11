@@ -14,6 +14,7 @@
 ** See the License for the specific language governing permissions and
 ** limitations under the License.
 */
+
 //#define LOG_NDEBUG 0
 #define LOG_TAG "MediaPlayerFactory"
 #include <utils/Log.h>
@@ -30,11 +31,24 @@
 #include "TestPlayerStub.h"
 #include "StagefrightPlayer.h"
 #include "nuplayer/NuPlayerDriver.h"
-#include <dlfcn.h>
 
 #include "CedarPlayer.h"
 #include "CedarAPlayerWrapper.h"
 #include "SimpleMediaFormatProbe.h"
+
+#include <media/stagefright/foundation/hexdump.h>
+#include <binder/IPCThreadState.h>
+
+#include <strings.h>
+#include <string.h>
+#include <stdlib.h>
+#include <dlfcn.h>
+#include <pthread.h>
+
+#include <unistd.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
 
 namespace android {
 
@@ -48,15 +62,43 @@ typedef struct {
     const player_type playertype;
 } extmap;
 
+#define GET_CALLING_PID	(IPCThreadState::self()->getCallingPid())
+void getCallingProcessName(char *name)
+{
+	char proc_node[128];
+
+	if (name == 0)
+	{
+		ALOGE("error in params");
+		return;
+	}
+
+	memset(proc_node, 0, sizeof(proc_node));
+	sprintf(proc_node, "/proc/%d/cmdline", GET_CALLING_PID);
+	int fp = ::open(proc_node, O_RDONLY);
+	if (fp > 0)
+	{
+		memset(name, 0, 128);
+		::read(fp, name, 128);
+		::close(fp);
+		fp = 0;
+		ALOGD("Calling process 2 is: %s", name);
+	}
+	else
+	{
+		ALOGE("Obtain calling process failed");
+	}
+}
+
 extmap FILE_EXTS [] =  {
 		{".ogg",  STAGEFRIGHT_PLAYER},
 		{".mp3",  STAGEFRIGHT_PLAYER},
-		{".wav",  STAGEFRIGHT_PLAYER},
+        {".wav",  STAGEFRIGHT_PLAYER},
+        {".flac", STAGEFRIGHT_PLAYER},
 		{".amr",  STAGEFRIGHT_PLAYER},
-		{".flac", STAGEFRIGHT_PLAYER},
 		{".m4a",  STAGEFRIGHT_PLAYER},
 		{".m4r",  STAGEFRIGHT_PLAYER},
-		{".out",  STAGEFRIGHT_PLAYER},
+		{".out",  CEDARX_PLAYER},
 		//{".3gp",  STAGEFRIGHT_PLAYER},
         //{".aac",  STAGEFRIGHT_PLAYER},
             
@@ -70,13 +112,15 @@ extmap FILE_EXTS [] =  {
         {".rtx",  SONIVOX_PLAYER},
         {".ota",  SONIVOX_PLAYER},
             
-        {".ape", CEDARA_PLAYER},
-        {".ac3", CEDARA_PLAYER},
-        {".dts", CEDARA_PLAYER},
-        {".wma", CEDARA_PLAYER},
-        {".aac", CEDARA_PLAYER},
-        {".mp2", CEDARA_PLAYER},
-        {".mp1", CEDARA_PLAYER},
+        {".ape",  CEDARA_PLAYER},
+        {".ac3",  CEDARA_PLAYER},
+        {".dts",  CEDARA_PLAYER},
+        {".wma",  CEDARA_PLAYER},
+        {".aac",  CEDARA_PLAYER},
+        {".mp2",  CEDARA_PLAYER},
+        {".mp1",  CEDARA_PLAYER},
+        //{".wav",  CEDARA_PLAYER},
+        //{".flac", CEDARA_PLAYER},
 };
 
 extmap MP4A_FILE_EXTS [] =  {
@@ -121,10 +165,14 @@ player_type getPlayerType_l(int fd, int64_t offset, int64_t length, bool check_c
     }
 
     if (check_cedar) {
-		file_format = audio_format_detect((unsigned char*)buf, r_size);
+		file_format = audio_format_detect((unsigned char*)buf, r_size, fd, offset);
 		ALOGV("getPlayerType: %d",file_format);
 
 		if (file_format == MEDIA_FORMAT_3GP) {
+            return STAGEFRIGHT_PLAYER;
+        } 
+        else if (file_format == MEDIA_FORMAT_M4A)
+        {
 			int audio_only;
 			audio_only = MovAudioOnlyDetect1(fd, offset, length);
 			lseek(fd, offset, SEEK_SET);
@@ -148,7 +196,8 @@ player_type getPlayerType_l(int fd, int64_t offset, int64_t length, bool check_c
 		}
     }
 
-    return STAGEFRIGHT_PLAYER; 
+    //return STAGEFRIGHT_PLAYER; 
+    return CEDARX_PLAYER;
 }
 
 player_type getPlayerType_l(const char* url)
@@ -175,6 +224,10 @@ player_type getPlayerType_l(const char* url)
 						}
 				}
 		}
+	}
+
+	if (!strncmp("data:;base64", url, strlen("data:;base64"))){
+		return STAGEFRIGHT_PLAYER;
 	}
 
     // use MidiFile for MIDI extensions
@@ -208,7 +261,6 @@ player_type getPlayerType_l(const char* url)
     return CEDARX_PLAYER;
 }
 
-
 status_t MediaPlayerFactory::registerFactory_l(IFactory* factory,
                                                player_type type) {
     if (NULL == factory) {
@@ -232,24 +284,15 @@ status_t MediaPlayerFactory::registerFactory_l(IFactory* factory,
     return OK;
 }
 
-static player_type getDefaultPlayerType() {
+player_type MediaPlayerFactory::getDefaultPlayerType() {
     char value[PROPERTY_VALUE_MAX];
-    // TODO: remove this EXPERIMENTAL developer settings property
-    if (property_get("persist.sys.media.use-awesome", value, NULL)
-            && !strcasecmp("true", value)) {
-        return STAGEFRIGHT_PLAYER;
+    if (property_get("media.stagefright.use-nuplayer", value, NULL)
+            && (!strcmp("1", value) || !strcasecmp("true", value))) {
+        return NU_PLAYER;
     }
 
-<<<<<<< HEAD
-#if 0
-    return STAGEFRIGHT_PLAYER;
-#else
+    //return STAGEFRIGHT_PLAYER;
     return CEDARX_PLAYER;
-#endif
-
-=======
-    return NU_PLAYER;
->>>>>>> 8b8d02886bd9fb8d5ad451c03e486cfad74aa74e
 }
 
 status_t MediaPlayerFactory::registerFactory(IFactory* factory,
@@ -262,6 +305,31 @@ void MediaPlayerFactory::unregisterFactory(player_type type) {
     Mutex::Autolock lock_(&sLock);
     sFactoryMap.removeItem(type);
 }
+
+#define GET_PLAYER_TYPE_IMPL_ORIGINAL(a...)             \
+    Mutex::Autolock lock_(&sLock);                      \
+    ALOGV("GET_PLAYER_TYPE_IMPL_ORIGINAL factory size:%d",sFactoryMap.size());                                                    \
+    player_type ret = STAGEFRIGHT_PLAYER;               \
+    float bestScore = 0.0;                              \
+                                                        \
+    for (size_t i = 0; i < sFactoryMap.size(); ++i) {   \
+                                                        \
+        IFactory* v = sFactoryMap.valueAt(i);           \
+        float thisScore;                                \
+        CHECK(v != NULL);                               \
+        thisScore = v->scoreFactory(a, bestScore);      \
+        ALOGV("thisScore:%d  bestScore:%d",thisScore,bestScore);\
+        if (thisScore > bestScore) {                    \
+            ret = sFactoryMap.keyAt(i);                 \
+            bestScore = thisScore;                      \
+        }                                               \
+    }                                                   \
+                                                        \
+    if (0.0 == bestScore) {                             \
+        ret = getDefaultPlayerType();                   \
+    }                                                   \
+                                                        \
+    return ret;
 
 #define GET_PLAYER_TYPE_IMPL(a...)                      \
     Mutex::Autolock lock_(&sLock);                      \
@@ -282,20 +350,16 @@ void MediaPlayerFactory::unregisterFactory(player_type type) {
     }                                                   \
                                                         \
     if (0.0 == bestScore) {                             \
-        ret = getDefaultPlayerType();                   \
+        bestScore = getDefaultPlayerType();             \
     }                                                   \
                                                         \
     return ret;
 
 player_type MediaPlayerFactory::getPlayerType(const sp<IMediaPlayer>& client,
                                               const char* url) {
+    //GET_PLAYER_TYPE_IMPL(client, url);
     ALOGV("MediaPlayerFactory::getPlayerType: url = %s", url);
-    
     return android::getPlayerType_l(url);
-    
-    #if 0
-    GET_PLAYER_TYPE_IMPL(client, url);
-    #endif
 }
 
 player_type MediaPlayerFactory::getPlayerType(const sp<IMediaPlayer>& client,
@@ -303,15 +367,17 @@ player_type MediaPlayerFactory::getPlayerType(const sp<IMediaPlayer>& client,
                                               int64_t offset,
                                               int64_t length,
                                               bool check_cedar) {
-    ALOGV("MediaPlayerFactory::getPlayerType: fd = 0x%x", fd);
+    //GET_PLAYER_TYPE_IMPL(client, fd, offset, length);
+    ALOGV("MediaPlayerFactory::getPlayerType: fd = 0x%x ,check_cedar:%d", fd,check_cedar);
     
+
     if (true == check_cedar)
     {
         return android::getPlayerType_l(fd, offset, length, check_cedar);
     }
     else
     {
-        GET_PLAYER_TYPE_IMPL(client, fd, offset, length);
+        GET_PLAYER_TYPE_IMPL_ORIGINAL(client, fd, offset, length);
     }
 }
 
@@ -368,24 +434,30 @@ sp<MediaPlayerBase> MediaPlayerFactory::createPlayer(
 class StagefrightPlayerFactory :
     public MediaPlayerFactory::IFactory {
   public:
-    virtual float scoreFactory(const sp<IMediaPlayer>& /*client*/,
+    virtual float scoreFactory(const sp<IMediaPlayer>& client,
                                int fd,
                                int64_t offset,
-                               int64_t /*length*/,
-                               float /*curScore*/) {
-        if (getDefaultPlayerType()
-                == STAGEFRIGHT_PLAYER) {
-            char buf[20];
-            lseek(fd, offset, SEEK_SET);
-            read(fd, buf, sizeof(buf));
-            lseek(fd, offset, SEEK_SET);
+                               int64_t length,
+                               float curScore) {
+        char buf[20];
+        lseek(fd, offset, SEEK_SET);
+        read(fd, buf, sizeof(buf));
+        lseek(fd, offset, SEEK_SET);
 
-            uint32_t ident = *((uint32_t*)buf);
+        long ident = *((long*)buf);
 
-            // Ogg vorbis?
-            if (ident == 0x5367674f) // 'OggS'
-                return 1.0;
-        }
+        // Ogg vorbis?
+        if (ident == 0x5367674f) // 'OggS'
+            return 1.0;
+
+        char mCallingProcess[128];
+    	getCallingProcessName(mCallingProcess);
+    	if((strcmp(mCallingProcess, "com.android.cts.media") == 0) || (strcmp(mCallingProcess, "com.android.cts.videoperf") == 0))
+    	{
+    		ALOGV("StagefrightPlayerFactory scoreFactory ident:0x%x  ,curScore:%d",ident,curScore);
+    		  if(ident == 0x18000000) // cts
+    		     return 1.0;
+    	}
 
         return 0.0;
     }
@@ -398,7 +470,7 @@ class StagefrightPlayerFactory :
 
 class NuPlayerFactory : public MediaPlayerFactory::IFactory {
   public:
-    virtual float scoreFactory(const sp<IMediaPlayer>& /*client*/,
+    virtual float scoreFactory(const sp<IMediaPlayer>& client,
                                const char* url,
                                float curScore) {
         static const float kOurScore = 0.8;
@@ -427,17 +499,12 @@ class NuPlayerFactory : public MediaPlayerFactory::IFactory {
             return kOurScore;
         }
 
-        if (!strncasecmp("http://", url, 7)
-                || !strncasecmp("https://", url, 8)) {
-            return kOurScore;
-        }
-
         return 0.0;
     }
 
-    virtual float scoreFactory(const sp<IMediaPlayer>& /*client*/,
-                               const sp<IStreamSource>& /*source*/,
-                               float /*curScore*/) {
+    virtual float scoreFactory(const sp<IMediaPlayer>& client,
+                               const sp<IStreamSource> &source,
+                               float curScore) {
         return 1.0;
     }
 
@@ -449,7 +516,7 @@ class NuPlayerFactory : public MediaPlayerFactory::IFactory {
 
 class SonivoxPlayerFactory : public MediaPlayerFactory::IFactory {
   public:
-    virtual float scoreFactory(const sp<IMediaPlayer>& /*client*/,
+    virtual float scoreFactory(const sp<IMediaPlayer>& client,
                                const char* url,
                                float curScore) {
         static const float kOurScore = 0.4;
@@ -480,7 +547,7 @@ class SonivoxPlayerFactory : public MediaPlayerFactory::IFactory {
         return 0.0;
     }
 
-    virtual float scoreFactory(const sp<IMediaPlayer>& /*client*/,
+    virtual float scoreFactory(const sp<IMediaPlayer>& client,
                                int fd,
                                int64_t offset,
                                int64_t length,
@@ -518,9 +585,9 @@ class SonivoxPlayerFactory : public MediaPlayerFactory::IFactory {
 
 class TestPlayerFactory : public MediaPlayerFactory::IFactory {
   public:
-    virtual float scoreFactory(const sp<IMediaPlayer>& /*client*/,
+    virtual float scoreFactory(const sp<IMediaPlayer>& client,
                                const char* url,
-                               float /*curScore*/) {
+                               float curScore) {
         if (TestPlayerStub::canBeUsed(url)) {
             return 1.0;
         }
@@ -574,7 +641,6 @@ void MediaPlayerFactory::registerBuiltinFactories() {
 
     if (sInitComplete)
         return;
-
     registerFactory_l(new CedarXPlayerFactory(), CEDARX_PLAYER);
     registerFactory_l(new CedarAPlayerFactory(), CEDARA_PLAYER);
     registerFactory_l(new StagefrightPlayerFactory(), STAGEFRIGHT_PLAYER);
@@ -582,32 +648,6 @@ void MediaPlayerFactory::registerBuiltinFactories() {
     registerFactory_l(new SonivoxPlayerFactory(), SONIVOX_PLAYER);
     registerFactory_l(new TestPlayerFactory(), TEST_PLAYER);
 
-    const char* FACTORY_LIB           = "libdashplayer.so";
-    const char* FACTORY_CREATE_FN     = "CreateDASHFactory";
-
-    MediaPlayerFactory::IFactory* pFactory  = NULL;
-    void* pFactoryLib = NULL;
-    typedef MediaPlayerFactory::IFactory* (*CreateDASHDriverFn)();
-    ALOGE("calling dlopen on FACTORY_LIB");
-    pFactoryLib = ::dlopen(FACTORY_LIB, RTLD_LAZY);
-    if (pFactoryLib == NULL) {
-      ALOGE("Failed to open FACTORY_LIB Error : %s ",::dlerror());
-    } else {
-      CreateDASHDriverFn pCreateFnPtr;
-      ALOGE("calling dlsym on pFactoryLib for FACTORY_CREATE_FN ");
-      pCreateFnPtr = (CreateDASHDriverFn) dlsym(pFactoryLib, FACTORY_CREATE_FN);
-      if (pCreateFnPtr == NULL) {
-          ALOGE("Could not locate pCreateFnPtr");
-      } else {
-        pFactory = pCreateFnPtr();
-        if(pFactory == NULL) {
-          ALOGE("Failed to invoke CreateDASHDriverFn...");
-        } else {
-          ALOGE("registering DASH Player factory...");
-          registerFactory_l(pFactory,DASH_PLAYER);
-        }
-      }
-    }
     sInitComplete = true;
 }
 

@@ -23,8 +23,6 @@
 #include "AnotherPacketSource.h"
 #include "ESQueue.h"
 #include "include/avc_utils.h"
-#include "include/ID3.h"
-#include "include/ExtendedUtils.h"
 
 #include <media/stagefright/foundation/ABitReader.h>
 #include <media/stagefright/foundation/ABuffer.h>
@@ -37,8 +35,6 @@
 #include <media/stagefright/Utils.h>
 #include <media/IStreamSource.h>
 #include <utils/KeyedVector.h>
-
-#include <inttypes.h>
 
 namespace android {
 
@@ -139,12 +135,8 @@ private:
 
     ElementaryStreamQueue *mQueue;
 
-    bool mImageFound;
-
     status_t flush();
     status_t parsePES(ABitReader *br);
-
-    void parseImageMetaData(const uint8_t *data, size_t size);
 
     void onPayloadData(
             unsigned PTS_DTS_flags, uint64_t PTS, uint64_t DTS,
@@ -481,19 +473,11 @@ ATSParser::Stream::Stream(
       mExpectedContinuityCounter(-1),
       mPayloadStarted(false),
       mPrevPTS(0),
-      mQueue(NULL),
-      mImageFound(false) {
+      mQueue(NULL) {
     switch (mStreamType) {
         case STREAMTYPE_H264:
             mQueue = new ElementaryStreamQueue(
                     ElementaryStreamQueue::H264,
-                    (mProgram->parserFlags() & ALIGNED_VIDEO_DATA)
-                        ? ElementaryStreamQueue::kFlag_AlignedData : 0);
-            break;
-        case STREAMTYPE_H265:
-            ALOGV("create ESQ for H265");
-            mQueue = new ElementaryStreamQueue(
-                    ElementaryStreamQueue::H265,
                     (mProgram->parserFlags() & ALIGNED_VIDEO_DATA)
                         ? ElementaryStreamQueue::kFlag_AlignedData : 0);
             break;
@@ -517,8 +501,12 @@ ATSParser::Stream::Stream(
                     ElementaryStreamQueue::MPEG4_VIDEO);
             break;
 
-        case STREAMTYPE_LPCM_AC3:
-        case STREAMTYPE_AC3:
+        case STREAMTYPE_PCM_AUDIO:
+            mQueue = new ElementaryStreamQueue(
+                    ElementaryStreamQueue::PCM_AUDIO);
+            break;
+
+        case STREAMTYPE_AC3_AUDIO:
             mQueue = new ElementaryStreamQueue(
                     ElementaryStreamQueue::AC3);
             break;
@@ -529,7 +517,7 @@ ATSParser::Stream::Stream(
 
     ALOGV("new stream PID 0x%02x, type 0x%02x", elementaryPID, streamType);
 
-    if (mQueue != NULL || mStreamType == STREAMTYPE_METADATA_PES) {
+    if (mQueue != NULL) {
         mBuffer = new ABuffer(192 * 1024);
         mBuffer->setRange(0, 0);
     }
@@ -543,18 +531,29 @@ ATSParser::Stream::~Stream() {
 status_t ATSParser::Stream::parse(
         unsigned continuity_counter,
         unsigned payload_unit_start_indicator, ABitReader *br) {
-    if (mQueue == NULL && mStreamType != STREAMTYPE_METADATA_PES) {
+    if (mQueue == NULL) {
         return OK;
     }
 
     if (mExpectedContinuityCounter >= 0
             && (unsigned)mExpectedContinuityCounter != continuity_counter) {
-        ALOGI("discontinuity on stream pid 0x%04x, Ignored", mElementaryPID);
+        ALOGI("discontinuity on stream pid 0x%04x", mElementaryPID);
 
+        mPayloadStarted = false;
+        mBuffer->setRange(0, 0);
         mExpectedContinuityCounter = -1;
-        if (!payload_unit_start_indicator) {
-            return OK;
+
+#if 0
+        // Uncomment this if you'd rather see no corruption whatsoever on
+        // screen and suspend updates until we come across another IDR frame.
+
+        if (mStreamType == STREAMTYPE_H264) {
+            ALOGI("clearing video queue");
+            mQueue->clear(true /* clearFormat */);
         }
+#endif
+
+        return OK;
     }
 
     mExpectedContinuityCounter = (continuity_counter + 1) & 0x0f;
@@ -587,7 +586,7 @@ status_t ATSParser::Stream::parse(
         // Increment in multiples of 64K.
         neededSize = (neededSize + 65535) & ~65535;
 
-        ALOGI("resizing buffer to %zu bytes", neededSize);
+        ALOGI("resizing buffer to %d bytes", neededSize);
 
         sp<ABuffer> newBuffer = new ABuffer(neededSize);
         memcpy(newBuffer->data(), mBuffer->data(), mBuffer->size());
@@ -604,7 +603,6 @@ status_t ATSParser::Stream::parse(
 bool ATSParser::Stream::isVideo() const {
     switch (mStreamType) {
         case STREAMTYPE_H264:
-        case STREAMTYPE_H265:
         case STREAMTYPE_MPEG1_VIDEO:
         case STREAMTYPE_MPEG2_VIDEO:
         case STREAMTYPE_MPEG4_VIDEO:
@@ -620,8 +618,8 @@ bool ATSParser::Stream::isAudio() const {
         case STREAMTYPE_MPEG1_AUDIO:
         case STREAMTYPE_MPEG2_AUDIO:
         case STREAMTYPE_MPEG2_AUDIO_ADTS:
-        case STREAMTYPE_LPCM_AC3:
-        case STREAMTYPE_AC3:
+        case STREAMTYPE_PCM_AUDIO:
+        case STREAMTYPE_AC3_AUDIO:
             return true;
 
         default:
@@ -667,7 +665,7 @@ void ATSParser::Stream::signalDiscontinuity(
     }
 
     if (mSource != NULL) {
-        mSource->queueDiscontinuity(type, extra, true);
+        mSource->queueDiscontinuity(type, extra);
     }
 }
 
@@ -750,7 +748,7 @@ status_t ATSParser::Stream::parsePES(ABitReader *br) {
             PTS |= br->getBits(15);
             CHECK_EQ(br->getBits(1), 1u);
 
-            ALOGV("PTS = 0x%016" PRIx64 " (%.2f)", PTS, PTS / 90000.0);
+            ALOGV("PTS = 0x%016llx (%.2f)", PTS, PTS / 90000.0);
 
             optional_bytes_remaining -= 5;
 
@@ -766,7 +764,7 @@ status_t ATSParser::Stream::parsePES(ABitReader *br) {
                 DTS |= br->getBits(15);
                 CHECK_EQ(br->getBits(1), 1u);
 
-                ALOGV("DTS = %" PRIu64, DTS);
+                ALOGV("DTS = %llu", DTS);
 
                 optional_bytes_remaining -= 5;
             }
@@ -784,7 +782,7 @@ status_t ATSParser::Stream::parsePES(ABitReader *br) {
             ESCR |= br->getBits(15);
             CHECK_EQ(br->getBits(1), 1u);
 
-            ALOGV("ESCR = %" PRIu64, ESCR);
+            ALOGV("ESCR = %llu", ESCR);
             MY_LOGV("ESCR_extension = %u", br->getBits(9));
 
             CHECK_EQ(br->getBits(1), 1u);
@@ -814,7 +812,7 @@ status_t ATSParser::Stream::parsePES(ABitReader *br) {
 
             if (br->numBitsLeft() < dataLength * 8) {
                 ALOGE("PES packet does not carry enough data to contain "
-                     "payload. (numBitsLeft = %zu, required = %u)",
+                     "payload. (numBitsLeft = %d, required = %d)",
                      br->numBitsLeft(), dataLength * 8);
 
                 return ERROR_MALFORMED;
@@ -834,7 +832,7 @@ status_t ATSParser::Stream::parsePES(ABitReader *br) {
             size_t payloadSizeBits = br->numBitsLeft();
             CHECK_EQ(payloadSizeBits % 8, 0u);
 
-            ALOGV("There's %zu bytes of payload.", payloadSizeBits / 8);
+            ALOGV("There's %d bytes of payload.", payloadSizeBits / 8);
         }
     } else if (stream_id == 0xbe) {  // padding_stream
         CHECK_NE(PES_packet_length, 0u);
@@ -852,7 +850,7 @@ status_t ATSParser::Stream::flush() {
         return OK;
     }
 
-    ALOGV("flushing stream 0x%04x size = %zu", mElementaryPID, mBuffer->size());
+    ALOGV("flushing stream 0x%04x size = %d", mElementaryPID, mBuffer->size());
 
     ABitReader br(mBuffer->data(), mBuffer->size());
 
@@ -863,43 +861,8 @@ status_t ATSParser::Stream::flush() {
     return err;
 }
 
-void ATSParser::Stream::parseImageMetaData(const uint8_t *data, size_t size) {
-    if (mImageFound) {
-        ALOGV("album image was already processed");
-        return;
-    }
-    ALOGV("parseImageMetaData");
-    ID3 id3(data, size);
-    if (!id3.isValid())
-        return;
-    size_t dataSize;
-    String8 mime;
-    const void *imageData = id3.getAlbumArt(&dataSize, &mime);
-    if (dataSize == 0) {
-        return;
-    }
-    ALOGV("found the album image (%s) with ID3 format in meta data", mime.string());
-    if (strcasecmp(mime.string(), MEDIA_MIMETYPE_IMAGE_JPEG) != 0) {
-        ALOGE("only support image/jpeg");
-        return;
-    }
-    sp<AnotherPacketSource> audioSource =
-            static_cast<AnotherPacketSource *>(mProgram->getSource(AUDIO).get());
-    sp<AnotherPacketSource> videoSource =
-            static_cast<AnotherPacketSource *>(mProgram->getSource(VIDEO).get());
-    if (audioSource != NULL && videoSource == NULL) {
-        // attach the image in audio only clip
-        sp<MetaData> meta = audioSource->getFormat();
-        if (meta != NULL) {
-            ALOGV("set AlbumArt in audio track source");
-            mImageFound = true;
-            meta->setData(kKeyAlbumArt, MetaData::TYPE_NONE, imageData, dataSize);
-        }
-    }
-}
-
 void ATSParser::Stream::onPayloadData(
-        unsigned PTS_DTS_flags, uint64_t PTS, uint64_t /* DTS */,
+        unsigned PTS_DTS_flags, uint64_t PTS, uint64_t DTS,
         const uint8_t *data, size_t size) {
 #if 0
     ALOGI("payload streamType 0x%02x, PTS = 0x%016llx, dPTS = %lld",
@@ -914,11 +877,6 @@ void ATSParser::Stream::onPayloadData(
     int64_t timeUs = 0ll;  // no presentation timestamp available.
     if (PTS_DTS_flags == 2 || PTS_DTS_flags == 3) {
         timeUs = mProgram->convertPTSToTimestamp(PTS);
-    }
-
-    if (mStreamType == STREAMTYPE_METADATA_PES) {
-        parseImageMetaData(data, size);
-        return;
     }
 
     status_t err = mQueue->appendData(data, size, timeUs);
@@ -936,15 +894,6 @@ void ATSParser::Stream::onPayloadData(
                 ALOGV("Stream PID 0x%08x of type 0x%02x now has data.",
                      mElementaryPID, mStreamType);
 
-                const char *mime;
-                bool isAvcIDR = !strcasecmp(mime, MEDIA_MIMETYPE_VIDEO_AVC)
-                        && !IsIDR(accessUnit);
-                bool isHevcIDR = !strcasecmp(mime, MEDIA_MIMETYPE_VIDEO_HEVC)
-                        && !ExtendedUtils::IsHevcIDR(accessUnit);
-                if (meta->findCString(kKeyMIMEType, &mime)
-                        && (isAvcIDR || isHevcIDR)) {
-                    continue;
-                }
                 mSource = new AnotherPacketSource(meta);
                 mSource->queueAccessUnit(accessUnit);
             }
@@ -1223,7 +1172,7 @@ void ATSParser::parseAdaptationField(ABitReader *br, unsigned PID) {
 
             uint64_t PCR = PCR_base * 300 + PCR_ext;
 
-            ALOGV("PID 0x%04x: PCR = 0x%016" PRIx64 " (%.2f)",
+            ALOGV("PID 0x%04x: PCR = 0x%016llx (%.2f)",
                   PID, PCR, PCR / 27E6);
 
             // The number of bytes received by this parser up to and
@@ -1318,8 +1267,8 @@ bool ATSParser::PTSTimeDeltaEstablished() {
 }
 
 void ATSParser::updatePCR(
-        unsigned /* PID */, uint64_t PCR, size_t byteOffsetFromStart) {
-    ALOGV("PCR 0x%016" PRIx64 " @ %zu", PCR, byteOffsetFromStart);
+        unsigned PID, uint64_t PCR, size_t byteOffsetFromStart) {
+    ALOGV("PCR 0x%016llx @ %d", PCR, byteOffsetFromStart);
 
     if (mNumPCRs == 2) {
         mPCR[0] = mPCR[1];

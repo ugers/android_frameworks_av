@@ -12,7 +12,6 @@ LOCAL_SRC_FILES:=                 \
     AMessage.cpp                  \
     ANetworkSession.cpp           \
     AString.cpp                   \
-    AWakeLock.cpp                 \
     ParsedMessage.cpp             \
     base64.cpp                    \
     hexdump.cpp
@@ -23,10 +22,9 @@ LOCAL_C_INCLUDES:= \
 LOCAL_SHARED_LIBRARIES := \
         libbinder         \
         libutils          \
-        liblog            \
-        libpowermanager
+        liblog
 
-LOCAL_CFLAGS += -Wno-multichar -Werror
+LOCAL_CFLAGS += -Wno-multichar
 
 LOCAL_MODULE:= libstagefright_foundation
 

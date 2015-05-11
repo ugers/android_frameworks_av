@@ -50,20 +50,15 @@ public:
     virtual     status_t   prepare();
     virtual     status_t   getMaxAmplitude(int* max);
     virtual     status_t   start();
-    virtual     status_t   pause();
     virtual     status_t   stop();
     virtual     status_t   reset();
     virtual     status_t   init();
     virtual     status_t   close();
     virtual     status_t   release();
     virtual     status_t   dump(int fd, const Vector<String16>& args) const;
-<<<<<<< HEAD
-    virtual     sp<ISurfaceTexture> querySurfaceMediaSource();
-    virtual   status_t queueBuffer(int index, int addr_y, int addr_c, int64_t timestamp);
-    virtual    sp<IMemory> getOneBsFrame(int mode);
-=======
     virtual     sp<IGraphicBufferProducer> querySurfaceMediaSource();
->>>>>>> 8b8d02886bd9fb8d5ad451c03e486cfad74aa74e
+    virtual 	status_t queueBuffer(int index, int addr_y, int addr_c, int64_t timestamp);
+    virtual		sp<IMemory> getOneBsFrame(int mode);
 
 private:
     friend class           MediaPlayerService;  // for accessing private constructor

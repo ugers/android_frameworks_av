@@ -16,17 +16,16 @@ LOCAL_PATH:= $(call my-dir)
 
 include $(CLEAR_VARS)
 
+ifeq ($(BOARD_SCREENRECORD_LANDSCAPE_ONLY),true)
+	LOCAL_CFLAGS += -DLANDSCAPE_ONLY
+endif
+
 LOCAL_SRC_FILES := \
 	screenrecord.cpp \
-	EglWindow.cpp \
-	FrameOutput.cpp \
-	TextRenderer.cpp \
-	Overlay.cpp \
-	Program.cpp
 
 LOCAL_SHARED_LIBRARIES := \
 	libstagefright libmedia libutils libbinder libstagefright_foundation \
-	libjpeg libgui libcutils liblog libEGL libGLESv2
+	libjpeg libgui libcutils liblog libcutils
 
 LOCAL_C_INCLUDES := \
 	frameworks/av/media/libstagefright \
@@ -35,7 +34,6 @@ LOCAL_C_INCLUDES := \
 	external/jpeg
 
 LOCAL_CFLAGS += -Wno-multichar
-#LOCAL_CFLAGS += -UNDEBUG
 
 LOCAL_MODULE_TAGS := optional
 

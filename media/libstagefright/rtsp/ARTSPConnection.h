@@ -60,7 +60,6 @@ private:
     enum {
         kWhatConnect            = 'conn',
         kWhatDisconnect         = 'disc',
-        kWhatReconnect          = 'reco',
         kWhatCompleteConnection = 'comc',
         kWhatSendRequest        = 'sreq',
         kWhatReceiveResponse    = 'rres',
@@ -92,23 +91,16 @@ private:
 
     sp<AMessage> mObserveBinaryMessage;
 
-    void *mAddrHeader;
-
-    int32_t mConnectionTimes;
-
     void performDisconnect();
 
     void onConnect(const sp<AMessage> &msg);
     void onDisconnect(const sp<AMessage> &msg);
-    void onReconnect(const sp<AMessage> &msg);
     void onCompleteConnection(const sp<AMessage> &msg);
     void onSendRequest(const sp<AMessage> &msg);
     void onReceiveResponse();
 
     void flushPendingRequests();
     void postReceiveReponseEvent();
-
-    bool createSocketAndConnect(void *res, unsigned int, const sp<AMessage> &reply);
 
     // Return false iff something went unrecoverably wrong.
     bool receiveRTSPReponse();

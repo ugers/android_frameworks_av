@@ -36,7 +36,7 @@ namespace android {
 
 // ----------------------------------------------------------------------------
 
-struct effect_param_cblk_t;
+class effect_param_cblk_t;
 
 // ----------------------------------------------------------------------------
 
@@ -133,11 +133,10 @@ public:
      *
      * Returned value
      *   *descriptor updated with descriptors of pre processings enabled by default
-     *   *count      number of descriptors returned if returned status is NO_ERROR.
+     *   *count      number of descriptors returned if returned status is N_ERROR.
      *               total number of pre processing enabled by default if returned status is
      *               NO_MEMORY. This happens if the count passed as input is less than the number
-     *               of descriptors to return.
-     *               *count is limited to kMaxPreProcessing on return.
+     *               of descriptors to return
      */
     static status_t queryDefaultPreProcessing(int audioSession,
                                               effect_descriptor_t *descriptors,
@@ -218,9 +217,8 @@ public:
      *      higher priorities, 0 being the normal priority.
      * cbf:         optional callback function (see effect_callback_t)
      * user:        pointer to context for use by the callback receiver.
-     * sessionID:   audio session this effect is associated to.
-     *      If equal to AUDIO_SESSION_OUTPUT_MIX, the effect will be global to
-     *      the output mix.  Otherwise, the effect will be applied to all players
+     * sessionID:   audio session this effect is associated to. If 0, the effect will be global to
+     *      the output mix. If not 0, the effect will be applied to all players
      *      (AudioTrack or MediaPLayer) within the same audio session.
      * io:  HAL audio output or input stream to which this effect must be attached. Leave at 0 for
      *      automatic output selection by AudioFlinger.
@@ -231,8 +229,8 @@ public:
                   int32_t priority = 0,
                   effect_callback_t cbf = NULL,
                   void* user = NULL,
-                  int sessionId = AUDIO_SESSION_OUTPUT_MIX,
-                  audio_io_handle_t io = AUDIO_IO_HANDLE_NONE
+                  int sessionId = 0,
+                  audio_io_handle_t io = 0
                   );
 
     /* Constructor.
@@ -243,8 +241,8 @@ public:
                     int32_t priority = 0,
                     effect_callback_t cbf = NULL,
                     void* user = NULL,
-                    int sessionId = AUDIO_SESSION_OUTPUT_MIX,
-                    audio_io_handle_t io = AUDIO_IO_HANDLE_NONE
+                    int sessionId = 0,
+                    audio_io_handle_t io = 0
                     );
 
     /* Terminates the AudioEffect and unregisters it from AudioFlinger.
@@ -265,8 +263,8 @@ public:
                             int32_t priority = 0,
                             effect_callback_t cbf = NULL,
                             void* user = NULL,
-                            int sessionId = AUDIO_SESSION_OUTPUT_MIX,
-                            audio_io_handle_t io = AUDIO_IO_HANDLE_NONE
+                            int sessionId = 0,
+                            audio_io_handle_t io = 0
                             );
 
     /* Result of constructing the AudioEffect. This must be checked
@@ -392,10 +390,6 @@ public:
       */
      static status_t guidToString(const effect_uuid_t *guid, char *str, size_t maxLen);
 
-     // kMaxPreProcessing is a reasonable value for the maximum number of preprocessing effects
-     // that can be applied simultaneously.
-     static const uint32_t kMaxPreProcessing = 10;
-
 protected:
      bool                    mEnabled;           // enable state
      int32_t                 mSessionId;         // audio session ID
@@ -454,7 +448,6 @@ private:
     sp<EffectClient>        mIEffectClient;     // IEffectClient implementation
     sp<IMemory>             mCblkMemory;        // shared memory for deferred parameter setting
     effect_param_cblk_t*    mCblk;              // control block for deferred parameter setting
-    pid_t                   mClientPid;
 };
 
 

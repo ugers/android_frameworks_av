@@ -23,7 +23,6 @@
 #include <utils/KeyedVector.h>
 #include <utils/List.h>
 #include <camera/CameraMetadata.h>
-#include <camera/CaptureResult.h>
 
 namespace android {
 
@@ -40,16 +39,16 @@ class FrameProcessorBase: public Thread {
     virtual ~FrameProcessorBase();
 
     struct FilteredListener: virtual public RefBase {
-        virtual void onResultAvailable(const CaptureResult &result) = 0;
+        virtual void onFrameAvailable(int32_t requestId,
+                                      const CameraMetadata &frame) = 0;
     };
 
     // Register a listener for a range of IDs [minId, maxId). Multiple listeners
-    // can be listening to the same range. Registering the same listener with
-    // the same range of IDs has no effect.
-    // sendPartials controls whether partial results will be sent.
+    // can be listening to the same range.
+    // QUIRK: sendPartials controls whether partial results will be sent.
     status_t registerListener(int32_t minId, int32_t maxId,
                               wp<FilteredListener> listener,
-                              bool sendPartials = true);
+                              bool quirkSendPartials = true);
     status_t removeListener(int32_t minId, int32_t maxId,
                             wp<FilteredListener> listener);
 
@@ -67,19 +66,16 @@ class FrameProcessorBase: public Thread {
         int32_t minId;
         int32_t maxId;
         wp<FilteredListener> listener;
-        bool sendPartials;
+        bool quirkSendPartials;
     };
     List<RangeListener> mRangeListeners;
 
-    // Number of partial result the HAL will potentially send.
-    int32_t mNumPartialResults;
-
     void processNewFrames(const sp<CameraDeviceBase> &device);
 
-    virtual bool processSingleFrame(CaptureResult &result,
+    virtual bool processSingleFrame(CameraMetadata &frame,
                                     const sp<CameraDeviceBase> &device);
 
-    status_t processListeners(const CaptureResult &result,
+    status_t processListeners(const CameraMetadata &frame,
                               const sp<CameraDeviceBase> &device);
 
     CameraMetadata mLastFrame;

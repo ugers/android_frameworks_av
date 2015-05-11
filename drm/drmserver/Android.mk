@@ -39,6 +39,4 @@ LOCAL_MODULE:= drmserver
 
 LOCAL_MODULE_TAGS := optional
 
-LOCAL_32_BIT_ONLY := true
-
 include $(BUILD_EXECUTABLE)

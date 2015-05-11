@@ -40,15 +40,16 @@ AudioStreamInSource::~AudioStreamInSource()
 ssize_t AudioStreamInSource::negotiate(const NBAIO_Format offers[], size_t numOffers,
                                       NBAIO_Format counterOffers[], size_t& numCounterOffers)
 {
-    if (!Format_isValid(mFormat)) {
+    if (mFormat == Format_Invalid) {
         mStreamBufferSizeBytes = mStream->common.get_buffer_size(&mStream->common);
         audio_format_t streamFormat = mStream->common.get_format(&mStream->common);
-        uint32_t sampleRate = mStream->common.get_sample_rate(&mStream->common);
-        audio_channel_mask_t channelMask =
-                (audio_channel_mask_t) mStream->common.get_channels(&mStream->common);
-        mFormat = Format_from_SR_C(sampleRate,
-                audio_channel_count_from_in_mask(channelMask), streamFormat);
-        mFrameSize = Format_frameSize(mFormat);
+        if (streamFormat == AUDIO_FORMAT_PCM_16_BIT) {
+            uint32_t sampleRate = mStream->common.get_sample_rate(&mStream->common);
+            audio_channel_mask_t channelMask =
+                    (audio_channel_mask_t) mStream->common.get_channels(&mStream->common);
+            mFormat = Format_from_SR_C(sampleRate, popcount(channelMask));
+            mBitShift = Format_frameBitShift(mFormat);
+        }
     }
     return NBAIO_Source::negotiate(offers, numOffers, counterOffers, numCounterOffers);
 }
@@ -64,14 +65,14 @@ size_t AudioStreamInSource::framesOverrun()
     return mFramesOverrun;
 }
 
-ssize_t AudioStreamInSource::read(void *buffer, size_t count, int64_t readPTS __unused)
+ssize_t AudioStreamInSource::read(void *buffer, size_t count)
 {
-    if (CC_UNLIKELY(!Format_isValid(mFormat))) {
+    if (CC_UNLIKELY(mFormat == Format_Invalid)) {
         return NEGOTIATE;
     }
-    ssize_t bytesRead = mStream->read(mStream, buffer, count * mFrameSize);
+    ssize_t bytesRead = mStream->read(mStream, buffer, count << mBitShift);
     if (bytesRead > 0) {
-        size_t framesRead = bytesRead / mFrameSize;
+        size_t framesRead = bytesRead >> mBitShift;
         mFramesRead += framesRead;
         return framesRead;
     } else {

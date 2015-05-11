@@ -1,7 +1,6 @@
 /*
  **
  ** Copyright 2010, The Android Open Source Project.
- ** Copyright (c) 2010 - 2012, The Linux Foundation. All rights reserved.
  **
  ** Licensed under the Apache License, Version 2.0 (the "License");
  ** you may not use this file except in compliance with the License.
@@ -34,18 +33,17 @@ enum camcorder_quality {
     CAMCORDER_QUALITY_720P = 5,
     CAMCORDER_QUALITY_1080P = 6,
     CAMCORDER_QUALITY_QVGA = 7,
-    CAMCORDER_QUALITY_2160P = 8, // a.k.a 4K-UHD
+    CAMCORDER_QUALITY_FWVGA = 8,
     CAMCORDER_QUALITY_WVGA = 9,
     CAMCORDER_QUALITY_VGA = 10,
     CAMCORDER_QUALITY_WQVGA = 11,
-    CAMCORDER_QUALITY_FWVGA = 12,
+#ifdef QCOM_HARDWARE
+    CAMCORDER_QUALITY_4kUHD = 12,
     CAMCORDER_QUALITY_4kDCI = 13,
-    CAMCORDER_QUALITY_HEVC720P = 14,
-    CAMCORDER_QUALITY_HEVC1080P = 15,
-    CAMCORDER_QUALITY_HEVC4kUHD = 16,
-    CAMCORDER_QUALITY_HEVC4kDCI = 17,
-    CAMCORDER_QUALITY_HVGA = 18,
-    CAMCORDER_QUALITY_LIST_END = 18,
+    CAMCORDER_QUALITY_LIST_END = 13,
+#else
+    CAMCORDER_QUALITY_LIST_END = 11,
+#endif
 
     CAMCORDER_QUALITY_TIME_LAPSE_LIST_START = 1000,
     CAMCORDER_QUALITY_TIME_LAPSE_LOW  = 1000,
@@ -56,23 +54,19 @@ enum camcorder_quality {
     CAMCORDER_QUALITY_TIME_LAPSE_720P = 1005,
     CAMCORDER_QUALITY_TIME_LAPSE_1080P = 1006,
     CAMCORDER_QUALITY_TIME_LAPSE_QVGA = 1007,
-    CAMCORDER_QUALITY_TIME_LAPSE_2160P = 1008,
+#ifdef QCOM_HARDWARE
+    CAMCORDER_QUALITY_TIME_LAPSE_FWVGA = 1008,
     CAMCORDER_QUALITY_TIME_LAPSE_WVGA = 1009,
     CAMCORDER_QUALITY_TIME_LAPSE_VGA = 1010,
     CAMCORDER_QUALITY_TIME_LAPSE_WQVGA = 1011,
-    CAMCORDER_QUALITY_TIME_LAPSE_FWVGA = 1012,
+    CAMCORDER_QUALITY_TIME_LAPSE_4kUHD = 1012,
     CAMCORDER_QUALITY_TIME_LAPSE_4kDCI = 1013,
     CAMCORDER_QUALITY_TIME_LAPSE_LIST_END = 1013,
-
-    CAMCORDER_QUALITY_HIGH_SPEED_LIST_START = 2000,
-    CAMCORDER_QUALITY_HIGH_SPEED_LOW  = 2000,
-    CAMCORDER_QUALITY_HIGH_SPEED_HIGH = 2001,
-    CAMCORDER_QUALITY_HIGH_SPEED_480P = 2002,
-    CAMCORDER_QUALITY_HIGH_SPEED_720P = 2003,
-    CAMCORDER_QUALITY_HIGH_SPEED_1080P = 2004,
-    CAMCORDER_QUALITY_HIGH_SPEED_2160P = 2005,
-    CAMCORDER_QUALITY_HIGH_SPEED_LIST_END = 2005,
+#else
+    CAMCORDER_QUALITY_TIME_LAPSE_LIST_END = 1007,
+#endif
 };
+
 /**
  * Set CIF as default maximum import and export resolution of video editor.
  * The maximum import and export resolutions are platform specific,
@@ -491,15 +485,6 @@ private:
     static VideoEncoderCap* createDefaultH263VideoEncoderCap();
     static VideoEncoderCap* createDefaultM4vVideoEncoderCap();
     static AudioEncoderCap* createDefaultAmrNBEncoderCap();
-<<<<<<< HEAD
-#ifdef QCOM_HARDWARE
-    static AudioEncoderCap* createDefaultAacEncoderCap();
-    static AudioEncoderCap* createDefaultLpcmEncoderCap();
-#endif
-=======
-    static AudioEncoderCap* createDefaultAacEncoderCap();
-    static AudioEncoderCap* createDefaultLpcmEncoderCap();
->>>>>>> 8b8d02886bd9fb8d5ad451c03e486cfad74aa74e
 
     static int findTagForName(const NameToTagMap *map, size_t nMappings, const char *name);
 

@@ -21,7 +21,7 @@
 
 #include <cutils/properties.h> // for property_get
 #include <media/stagefright/foundation/ADebug.h>
-#include <media/stagefright/foundation/AMessage.h>
+#include <media/stagefright/MetaData.h>
 #include <system/window.h>
 #include <ui/GraphicBufferMapper.h>
 #include <gui/IGraphicBufferProducer.h>
@@ -33,70 +33,33 @@ static bool runningInEmulator() {
     return (property_get("ro.kernel.qemu", prop, NULL) > 0);
 }
 
-static int ALIGN(int x, int y) {
-    // y must be a power of 2.
-    return (x + y - 1) & ~(y - 1);
-}
-
-SoftwareRenderer::SoftwareRenderer(const sp<ANativeWindow> &nativeWindow)
-    : mColorFormat(OMX_COLOR_FormatUnused),
-      mConverter(NULL),
+SoftwareRenderer::SoftwareRenderer(
+        const sp<ANativeWindow> &nativeWindow, const sp<MetaData> &meta)
+    : mConverter(NULL),
       mYUVMode(None),
-      mNativeWindow(nativeWindow),
-      mWidth(0),
-      mHeight(0),
-      mCropLeft(0),
-      mCropTop(0),
-      mCropRight(0),
-      mCropBottom(0),
-      mCropWidth(0),
-      mCropHeight(0) {
-}
+      mNativeWindow(nativeWindow) {
+    int32_t tmp;
+    CHECK(meta->findInt32(kKeyColorFormat, &tmp));
+    mColorFormat = (OMX_COLOR_FORMATTYPE)tmp;
 
-SoftwareRenderer::~SoftwareRenderer() {
-    delete mConverter;
-    mConverter = NULL;
-}
+    CHECK(meta->findInt32(kKeyWidth, &mWidth));
+    CHECK(meta->findInt32(kKeyHeight, &mHeight));
 
-void SoftwareRenderer::resetFormatIfChanged(const sp<AMessage> &format) {
-    CHECK(format != NULL);
-
-    int32_t colorFormatNew;
-    CHECK(format->findInt32("color-format", &colorFormatNew));
-
-    int32_t widthNew, heightNew;
-    CHECK(format->findInt32("stride", &widthNew));
-    CHECK(format->findInt32("slice-height", &heightNew));
-
-    int32_t cropLeftNew, cropTopNew, cropRightNew, cropBottomNew;
-    if (!format->findRect(
-            "crop", &cropLeftNew, &cropTopNew, &cropRightNew, &cropBottomNew)) {
-        cropLeftNew = cropTopNew = 0;
-        cropRightNew = widthNew - 1;
-        cropBottomNew = heightNew - 1;
+    if (!meta->findRect(
+                kKeyCropRect,
+                &mCropLeft, &mCropTop, &mCropRight, &mCropBottom)) {
+        mCropLeft = mCropTop = 0;
+        mCropRight = mWidth - 1;
+        mCropBottom = mHeight - 1;
     }
-
-    if (static_cast<int32_t>(mColorFormat) == colorFormatNew &&
-        mWidth == widthNew &&
-        mHeight == heightNew &&
-        mCropLeft == cropLeftNew &&
-        mCropTop == cropTopNew &&
-        mCropRight == cropRightNew &&
-        mCropBottom == cropBottomNew) {
-        // Nothing changed, no need to reset renderer.
-        return;
-    }
-
-    mColorFormat = static_cast<OMX_COLOR_FORMATTYPE>(colorFormatNew);
-    mWidth = widthNew;
-    mHeight = heightNew;
-    mCropLeft = cropLeftNew;
-    mCropTop = cropTopNew;
-    mCropRight = cropRightNew;
-    mCropBottom = cropBottomNew;
 
     mCropWidth = mCropRight - mCropLeft + 1;
     mCropHeight = mCropBottom - mCropTop + 1;
+
+    int32_t rotationDegrees;
+    if (!meta->findInt32(kKeyRotation, &rotationDegrees)) {
+        rotationDegrees = 0;
+    }
 
     int halFormat;
     size_t bufWidth, bufHeight;
@@ -132,20 +95,11 @@ void SoftwareRenderer::resetFormatIfChanged(const sp<AMessage> &format) {
     CHECK(mCropHeight > 0);
     CHECK(mConverter == NULL || mConverter->isValid());
 
-#ifdef EXYNOS4_ENHANCEMENTS
-    CHECK_EQ(0,
-            native_window_set_usage(
-            mNativeWindow.get(),
-            GRALLOC_USAGE_SW_READ_NEVER | GRALLOC_USAGE_SW_WRITE_OFTEN
-            | GRALLOC_USAGE_HW_TEXTURE | GRALLOC_USAGE_EXTERNAL_DISP
-            | GRALLOC_USAGE_HW_FIMC1 | GRALLOC_USAGE_HWC_HWOVERLAY));
-#else
     CHECK_EQ(0,
             native_window_set_usage(
             mNativeWindow.get(),
             GRALLOC_USAGE_SW_READ_NEVER | GRALLOC_USAGE_SW_WRITE_OFTEN
             | GRALLOC_USAGE_HW_TEXTURE | GRALLOC_USAGE_EXTERNAL_DISP));
-#endif
 
     CHECK_EQ(0,
             native_window_set_scaling_mode(
@@ -153,29 +107,12 @@ void SoftwareRenderer::resetFormatIfChanged(const sp<AMessage> &format) {
             NATIVE_WINDOW_SCALING_MODE_SCALE_TO_WINDOW));
 
     // Width must be multiple of 32???
-    CHECK_EQ(0, native_window_set_buffers_dimensions(
+    CHECK_EQ(0, native_window_set_buffers_geometry(
                 mNativeWindow.get(),
                 bufWidth,
-                bufHeight));
-    CHECK_EQ(0, native_window_set_buffers_format(
-                mNativeWindow.get(),
+                bufHeight,
                 halFormat));
 
-    // NOTE: native window uses extended right-bottom coordinate
-    android_native_rect_t crop;
-    crop.left = mCropLeft;
-    crop.top = mCropTop;
-    crop.right = mCropRight + 1;
-    crop.bottom = mCropBottom + 1;
-    ALOGV("setting crop: [%d, %d, %d, %d] for size [%zu, %zu]",
-          crop.left, crop.top, crop.right, crop.bottom, bufWidth, bufHeight);
-
-    CHECK_EQ(0, native_window_set_crop(mNativeWindow.get(), &crop));
-
-    int32_t rotationDegrees;
-    if (!format->findInt32("rotation-degrees", &rotationDegrees)) {
-        rotationDegrees = 0;
-    }
     uint32_t transform;
     switch (rotationDegrees) {
         case 0: transform = 0; break;
@@ -185,15 +122,24 @@ void SoftwareRenderer::resetFormatIfChanged(const sp<AMessage> &format) {
         default: transform = 0; break;
     }
 
-    CHECK_EQ(0, native_window_set_buffers_transform(
-                mNativeWindow.get(), transform));
+    if (transform) {
+        CHECK_EQ(0, native_window_set_buffers_transform(
+                    mNativeWindow.get(), transform));
+    }
+}
+
+SoftwareRenderer::~SoftwareRenderer() {
+    delete mConverter;
+    mConverter = NULL;
+}
+
+static int ALIGN(int x, int y) {
+    // y must be a power of 2.
+    return (x + y - 1) & ~(y - 1);
 }
 
 void SoftwareRenderer::render(
-        const void *data, size_t /*size*/, int64_t timestampNs,
-        void* /*platformPrivate*/, const sp<AMessage>& format) {
-    resetFormatIfChanged(format);
-
+        const void *data, size_t size, void *platformPrivate) {
     ANativeWindowBuffer *buf;
     int err;
     if ((err = native_window_dequeue_buffer_and_wait(mNativeWindow.get(),
@@ -246,12 +192,11 @@ void SoftwareRenderer::render(
             dst_u += dst_c_stride;
             dst_v += dst_c_stride;
         }
-    }
-    else if (mColorFormat == HAL_PIXEL_FORMAT_YV12) {
+    } else if (mColorFormat == HAL_PIXEL_FORMAT_YV12){
         size_t dst_y_size = buf->stride * buf->height;
         size_t dst_c_stride = ALIGN(buf->stride / 2, 16);
         size_t dst_c_size = dst_c_stride * buf->height / 2;
-
+        
         memcpy(dst, data, dst_y_size + dst_c_size*2);
     } else {
         CHECK_EQ(mColorFormat, OMX_TI_COLOR_FormatYUV420PackedSemiPlanar);
@@ -262,25 +207,13 @@ void SoftwareRenderer::render(
         const uint8_t *src_uv =
             (const uint8_t *)data + mWidth * (mHeight - mCropTop / 2);
 
-#ifdef EXYNOS4_ENHANCEMENTS
-        void *pYUVBuf[3];
+        uint8_t *dst_y = (uint8_t *)dst;
 
-        CHECK_EQ(0, mapper.unlock(buf->handle));
-        CHECK_EQ(0, mapper.lock(
-                buf->handle, GRALLOC_USAGE_SW_WRITE_OFTEN | GRALLOC_USAGE_YUV_ADDR, bounds, pYUVBuf));
-
-        size_t dst_c_stride = buf->stride / 2;
-        uint8_t *dst_y = (uint8_t *)pYUVBuf[0];
-        uint8_t *dst_v = (uint8_t *)pYUVBuf[1];
-        uint8_t *dst_u = (uint8_t *)pYUVBuf[2];
-#else
         size_t dst_y_size = buf->stride * buf->height;
         size_t dst_c_stride = ALIGN(buf->stride / 2, 16);
         size_t dst_c_size = dst_c_stride * buf->height / 2;
-        uint8_t *dst_y = (uint8_t *)dst;
         uint8_t *dst_v = dst_y + dst_y_size;
         uint8_t *dst_u = dst_v + dst_c_size;
-#endif
 
         for (int y = 0; y < mCropHeight; ++y) {
             memcpy(dst_y, src_y, mCropWidth);
@@ -303,11 +236,6 @@ void SoftwareRenderer::render(
     }
 
     CHECK_EQ(0, mapper.unlock(buf->handle));
-
-    if ((err = native_window_set_buffers_timestamp(mNativeWindow.get(),
-            timestampNs)) != 0) {
-        ALOGW("Surface::set_buffers_timestamp returned error %d", err);
-    }
 
     if ((err = mNativeWindow->queueBuffer(mNativeWindow.get(), buf,
             -1)) != 0) {

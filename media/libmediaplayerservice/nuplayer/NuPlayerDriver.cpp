@@ -16,7 +16,6 @@
 
 //#define LOG_NDEBUG 0
 #define LOG_TAG "NuPlayerDriver"
-#include <inttypes.h>
 #include <utils/Log.h>
 
 #include "NuPlayerDriver.h"
@@ -26,11 +25,7 @@
 
 #include <media/stagefright/foundation/ADebug.h>
 #include <media/stagefright/foundation/ALooper.h>
-#include <media/stagefright/foundation/AUtils.h>
 #include <media/stagefright/MetaData.h>
-#include <media/stagefright/Utils.h>
-
-#include "ExtendedUtils.h"
 
 namespace android {
 
@@ -41,14 +36,12 @@ NuPlayerDriver::NuPlayerDriver()
       mSetSurfaceInProgress(false),
       mDurationUs(-1),
       mPositionUs(-1),
-      mSeekInProgress(false),
+      mNumFramesTotal(0),
+      mNumFramesDropped(0),
       mLooper(new ALooper),
       mPlayerFlags(0),
       mAtEOS(false),
-      mLooping(false),
-      mAutoLoop(false),
       mStartupSeekTimeUs(-1) {
-    ALOGV("NuPlayerDriver(%p)", this);
     mLooper->setName("NuPlayerDriver Looper");
 
     mLooper->start(
@@ -63,7 +56,6 @@ NuPlayerDriver::NuPlayerDriver()
 }
 
 NuPlayerDriver::~NuPlayerDriver() {
-    ALOGV("~NuPlayerDriver(%p)", this);
     mLooper->stop();
 }
 
@@ -78,10 +70,7 @@ status_t NuPlayerDriver::setUID(uid_t uid) {
 }
 
 status_t NuPlayerDriver::setDataSource(
-        const sp<IMediaHTTPService> &httpService,
-        const char *url,
-        const KeyedVector<String8, String8> *headers) {
-    ALOGV("setDataSource(%p) url(%s)", this, uriDebugString(url, false).c_str());
+        const char *url, const KeyedVector<String8, String8> *headers) {
     Mutex::Autolock autoLock(mLock);
 
     if (mState != STATE_IDLE) {
@@ -90,7 +79,7 @@ status_t NuPlayerDriver::setDataSource(
 
     mState = STATE_SET_DATASOURCE_PENDING;
 
-    mPlayer->setDataSourceAsync(httpService, url, headers);
+    mPlayer->setDataSourceAsync(url, headers);
 
     while (mState == STATE_SET_DATASOURCE_PENDING) {
         mCondition.wait(mLock);
@@ -100,7 +89,6 @@ status_t NuPlayerDriver::setDataSource(
 }
 
 status_t NuPlayerDriver::setDataSource(int fd, int64_t offset, int64_t length) {
-    ALOGV("setDataSource(%p) file(%d)", this, fd);
     Mutex::Autolock autoLock(mLock);
 
     if (mState != STATE_IDLE) {
@@ -115,15 +103,10 @@ status_t NuPlayerDriver::setDataSource(int fd, int64_t offset, int64_t length) {
         mCondition.wait(mLock);
     }
 
-    if (fd) {
-        ExtendedUtils::printFileName(fd);
-    }
-
     return mAsyncResult;
 }
 
 status_t NuPlayerDriver::setDataSource(const sp<IStreamSource> &source) {
-    ALOGV("setDataSource(%p) stream source", this);
     Mutex::Autolock autoLock(mLock);
 
     if (mState != STATE_IDLE) {
@@ -143,7 +126,6 @@ status_t NuPlayerDriver::setDataSource(const sp<IStreamSource> &source) {
 
 status_t NuPlayerDriver::setVideoSurfaceTexture(
         const sp<IGraphicBufferProducer> &bufferProducer) {
-    ALOGV("setVideoSurfaceTexture(%p)", this);
     Mutex::Autolock autoLock(mLock);
 
     if (mSetSurfaceInProgress) {
@@ -171,7 +153,6 @@ status_t NuPlayerDriver::setVideoSurfaceTexture(
 }
 
 status_t NuPlayerDriver::prepare() {
-    ALOGV("prepare(%p)", this);
     Mutex::Autolock autoLock(mLock);
     return prepare_l();
 }
@@ -190,23 +171,12 @@ status_t NuPlayerDriver::prepare_l() {
                 mCondition.wait(mLock);
             }
             return (mState == STATE_PREPARED) ? OK : UNKNOWN_ERROR;
-        case STATE_STOPPED:
-            // this is really just paused. handle as seek to start
-            mAtEOS = false;
-            mState = STATE_STOPPED_AND_PREPARING;
-            mIsAsyncPrepare = false;
-            mPlayer->seekToAsync(0, true /* needNotify */);
-            while (mState == STATE_STOPPED_AND_PREPARING) {
-                mCondition.wait(mLock);
-            }
-            return (mState == STATE_STOPPED_AND_PREPARED) ? OK : UNKNOWN_ERROR;
         default:
             return INVALID_OPERATION;
     };
 }
 
 status_t NuPlayerDriver::prepareAsync() {
-    ALOGV("prepareAsync(%p)", this);
     Mutex::Autolock autoLock(mLock);
 
     switch (mState) {
@@ -215,20 +185,12 @@ status_t NuPlayerDriver::prepareAsync() {
             mIsAsyncPrepare = true;
             mPlayer->prepareAsync();
             return OK;
-        case STATE_STOPPED:
-            // this is really just paused. handle as seek to start
-            mAtEOS = false;
-            mState = STATE_STOPPED_AND_PREPARING;
-            mIsAsyncPrepare = true;
-            mPlayer->seekToAsync(0, true /* needNotify */);
-            return OK;
         default:
             return INVALID_OPERATION;
     };
 }
 
 status_t NuPlayerDriver::start() {
-    ALOGD("start(%p)", this);
     Mutex::Autolock autoLock(mLock);
 
     switch (mState) {
@@ -251,7 +213,9 @@ status_t NuPlayerDriver::start() {
             mPlayer->start();
 
             if (mStartupSeekTimeUs >= 0) {
-                if (mStartupSeekTimeUs > 0) {
+                if (mStartupSeekTimeUs == 0) {
+                    notifySeekComplete();
+                } else {
                     mPlayer->seekToAsync(mStartupSeekTimeUs);
                 }
 
@@ -261,26 +225,11 @@ status_t NuPlayerDriver::start() {
         }
 
         case STATE_RUNNING:
-        {
-            if (mAtEOS) {
-                mPlayer->seekToAsync(0);
-                mAtEOS = false;
-                mPositionUs = -1;
-            }
             break;
-        }
 
         case STATE_PAUSED:
-        case STATE_STOPPED_AND_PREPARED:
         {
-            if (mAtEOS) {
-                mPlayer->seekToAsync(0);
-                mAtEOS = false;
-                mPlayer->resume();
-                mPositionUs = -1;
-            } else {
-                mPlayer->resume();
-            }
+            mPlayer->resume();
             break;
         }
 
@@ -294,41 +243,10 @@ status_t NuPlayerDriver::start() {
 }
 
 status_t NuPlayerDriver::stop() {
-    ALOGD("stop(%p)", this);
-    Mutex::Autolock autoLock(mLock);
-
-    switch (mState) {
-        case STATE_RUNNING:
-            mPlayer->pause();
-            // fall through
-
-        case STATE_PAUSED:
-            mState = STATE_STOPPED;
-            notifyListener_l(MEDIA_STOPPED);
-            break;
-
-        case STATE_PREPARED:
-        case STATE_STOPPED:
-        case STATE_STOPPED_AND_PREPARING:
-        case STATE_STOPPED_AND_PREPARED:
-            mState = STATE_STOPPED;
-            break;
-
-        default:
-            return INVALID_OPERATION;
-    }
-
-    return OK;
+    return pause();
 }
 
 status_t NuPlayerDriver::pause() {
-    // The NuPlayerRenderer may get flushed if pause for long enough, e.g. the pause timeout tear
-    // down for audio offload mode. If that happens, the NuPlayerRenderer will no longer know the
-    // current position. So similar to seekTo, update |mPositionUs| to the pause position by calling
-    // getCurrentPosition here.
-    int msec;
-    getCurrentPosition(&msec);
-
     Mutex::Autolock autoLock(mLock);
 
     switch (mState) {
@@ -337,14 +255,15 @@ status_t NuPlayerDriver::pause() {
             return OK;
 
         case STATE_RUNNING:
-            mState = STATE_PAUSED;
-            notifyListener_l(MEDIA_PAUSED);
+            notifyListener(MEDIA_PAUSED);
             mPlayer->pause();
             break;
 
         default:
             return INVALID_OPERATION;
     }
+
+    mState = STATE_PAUSED;
 
     return OK;
 }
@@ -357,21 +276,16 @@ int NuPlayerDriver::getMeidaPlayerState() {
     ALOGV("getMeidaPlayerState");
     return PLAYER_STATE_SUSPEND;
 }
+
 status_t NuPlayerDriver::seekTo(int msec) {
-    ALOGD("seekTo(%p) %d ms", this, msec);
     Mutex::Autolock autoLock(mLock);
 
     int64_t seekTimeUs = msec * 1000ll;
 
     switch (mState) {
         case STATE_PREPARED:
-        case STATE_SUSPENDED:
         {
             mStartupSeekTimeUs = seekTimeUs;
-            // pretend that the seek completed. It will actually happen when starting playback.
-            // TODO: actually perform the seek here, so the player is ready to go at the new
-            // location
-            notifySeekComplete_l();
             break;
         }
 
@@ -379,10 +293,9 @@ status_t NuPlayerDriver::seekTo(int msec) {
         case STATE_PAUSED:
         {
             mAtEOS = false;
-            mSeekInProgress = true;
             // seeks can take a while, so we essentially paused
-            notifyListener_l(MEDIA_PAUSED);
-            mPlayer->seekToAsync(seekTimeUs, true /* needNotify */);
+            notifyListener(MEDIA_PAUSED);
+            mPlayer->seekToAsync(seekTimeUs);
             break;
         }
 
@@ -390,24 +303,18 @@ status_t NuPlayerDriver::seekTo(int msec) {
             return INVALID_OPERATION;
     }
 
-    mPositionUs = seekTimeUs;
     return OK;
 }
 
 status_t NuPlayerDriver::getCurrentPosition(int *msec) {
-    int64_t tempUs = 0;
-    status_t ret = mPlayer->getCurrentPosition(&tempUs);
-
     Mutex::Autolock autoLock(mLock);
-    // We need to check mSeekInProgress here because mPlayer->seekToAsync is an async call, which
-    // means getCurrentPosition can be called before seek is completed. Iow, renderer may return a
-    // position value that's different the seek to position.
-    if (ret != OK || mSeekInProgress) {
-        tempUs = (mPositionUs <= 0) ? 0 : mPositionUs;
+
+    if (mPositionUs < 0) {
+        *msec = 0;
     } else {
-        mPositionUs = tempUs;
+        *msec = (mPositionUs + 500ll) / 1000;
     }
-    *msec = (int)divRound(tempUs, (int64_t)(1000));
+
     return OK;
 }
 
@@ -424,7 +331,6 @@ status_t NuPlayerDriver::getDuration(int *msec) {
 }
 
 status_t NuPlayerDriver::reset() {
-    ALOGD("reset(%p)", this);
     Mutex::Autolock autoLock(mLock);
 
     switch (mState) {
@@ -439,7 +345,7 @@ status_t NuPlayerDriver::reset() {
         {
             CHECK(mIsAsyncPrepare);
 
-            notifyListener_l(MEDIA_PREPARED);
+            notifyListener(MEDIA_PREPARED);
             break;
         }
 
@@ -447,9 +353,7 @@ status_t NuPlayerDriver::reset() {
             break;
     }
 
-    if (mState != STATE_STOPPED) {
-        notifyListener_l(MEDIA_STOPPED);
-    }
+    notifyListener(MEDIA_STOPPED);
 
     mState = STATE_RESET_IN_PROGRESS;
     mPlayer->resetAsync();
@@ -461,14 +365,12 @@ status_t NuPlayerDriver::reset() {
     mDurationUs = -1;
     mPositionUs = -1;
     mStartupSeekTimeUs = -1;
-    mLooping = false;
 
     return OK;
 }
 
 status_t NuPlayerDriver::setLooping(int loop) {
-    mLooping = loop != 0;
-    return OK;
+    return INVALID_OPERATION;
 }
 
 player_type NuPlayerDriver::playerType() {
@@ -512,12 +414,6 @@ status_t NuPlayerDriver::invoke(const Parcel &request, Parcel *reply) {
             return mPlayer->selectTrack(trackIndex, false /* select */);
         }
 
-        case INVOKE_ID_GET_SELECTED_TRACK:
-        {
-            int32_t type = request.readInt32();
-            return mPlayer->getSelectedTrack(type, reply);
-        }
-
         default:
         {
             return INVALID_OPERATION;
@@ -527,29 +423,25 @@ status_t NuPlayerDriver::invoke(const Parcel &request, Parcel *reply) {
 
 void NuPlayerDriver::setAudioSink(const sp<AudioSink> &audioSink) {
     mPlayer->setAudioSink(audioSink);
-    mAudioSink = audioSink;
 }
 
-status_t NuPlayerDriver::setParameter(
-        int /* key */, const Parcel & /* request */) {
+status_t NuPlayerDriver::setParameter(int key, const Parcel &request) {
     return INVALID_OPERATION;
 }
 
-status_t NuPlayerDriver::getParameter(int /* key */, Parcel * /* reply */) {
+status_t NuPlayerDriver::getParameter(int key, Parcel *reply) {
     return INVALID_OPERATION;
 }
 
 status_t NuPlayerDriver::getMetadata(
-        const media::Metadata::Filter& /* ids */, Parcel *records) {
+        const media::Metadata::Filter& ids, Parcel *records) {
     Mutex::Autolock autoLock(mLock);
 
     using media::Metadata;
 
     Metadata meta(records);
 
-    meta.appendInt32(
-            Metadata::kServerTimeout,
-            (int32_t)(mPlayer->getServerTimeoutUs() / 1000));
+    meta.appendInt32(Metadata::kServerTimeout, mPlayer->getServerTimeoutMs());
 
     meta.appendBool(
             Metadata::kPauseAvailable,
@@ -571,7 +463,6 @@ status_t NuPlayerDriver::getMetadata(
 }
 
 void NuPlayerDriver::notifyResetComplete() {
-    ALOGD("notifyResetComplete(%p)", this);
     Mutex::Autolock autoLock(mLock);
 
     CHECK_EQ(mState, STATE_RESET_IN_PROGRESS);
@@ -580,7 +471,6 @@ void NuPlayerDriver::notifyResetComplete() {
 }
 
 void NuPlayerDriver::notifySetSurfaceComplete() {
-    ALOGV("notifySetSurfaceComplete(%p)", this);
     Mutex::Autolock autoLock(mLock);
 
     CHECK(mSetSurfaceInProgress);
@@ -594,45 +484,34 @@ void NuPlayerDriver::notifyDuration(int64_t durationUs) {
     mDurationUs = durationUs;
 }
 
-void NuPlayerDriver::notifySeekComplete() {
-    ALOGV("notifySeekComplete(%p)", this);
+void NuPlayerDriver::notifyPosition(int64_t positionUs) {
     Mutex::Autolock autoLock(mLock);
-    mSeekInProgress = false;
-    notifySeekComplete_l();
+    mPositionUs = positionUs;
 }
 
-void NuPlayerDriver::notifySeekComplete_l() {
-    bool wasSeeking = true;
-    if (mState == STATE_STOPPED_AND_PREPARING) {
-        wasSeeking = false;
-        mState = STATE_STOPPED_AND_PREPARED;
-        mCondition.broadcast();
-        if (!mIsAsyncPrepare) {
-            // if we are preparing synchronously, no need to notify listener
-            return;
-        }
-    } else if (mState == STATE_STOPPED) {
-        // no need to notify listener
-        return;
-    }
-    notifyListener_l(wasSeeking ? MEDIA_SEEK_COMPLETE : MEDIA_PREPARED);
+void NuPlayerDriver::notifySeekComplete() {
+    notifyListener(MEDIA_SEEK_COMPLETE);
 }
 
-status_t NuPlayerDriver::dump(
-        int fd, const Vector<String16> & /* args */) const {
-    int64_t numFramesTotal;
-    int64_t numFramesDropped;
-    mPlayer->getStats(&numFramesTotal, &numFramesDropped);
+void NuPlayerDriver::notifyFrameStats(
+        int64_t numFramesTotal, int64_t numFramesDropped) {
+    Mutex::Autolock autoLock(mLock);
+    mNumFramesTotal = numFramesTotal;
+    mNumFramesDropped = numFramesDropped;
+}
+
+status_t NuPlayerDriver::dump(int fd, const Vector<String16> &args) const {
+    Mutex::Autolock autoLock(mLock);
 
     FILE *out = fdopen(dup(fd), "w");
 
     fprintf(out, " NuPlayer\n");
-    fprintf(out, "  numFramesTotal(%" PRId64 "), numFramesDropped(%" PRId64 "), "
+    fprintf(out, "  numFramesTotal(%lld), numFramesDropped(%lld), "
                  "percentageDropped(%.2f)\n",
-                 numFramesTotal,
-                 numFramesDropped,
-                 numFramesTotal == 0
-                    ? 0.0 : (double)numFramesDropped / numFramesTotal);
+                 mNumFramesTotal,
+                 mNumFramesDropped,
+                 mNumFramesTotal == 0
+                    ? 0.0 : (double)mNumFramesDropped / mNumFramesTotal);
 
     fclose(out);
     out = NULL;
@@ -642,41 +521,11 @@ status_t NuPlayerDriver::dump(
 
 void NuPlayerDriver::notifyListener(
         int msg, int ext1, int ext2, const Parcel *in) {
-    Mutex::Autolock autoLock(mLock);
-    notifyListener_l(msg, ext1, ext2, in);
-}
-
-void NuPlayerDriver::notifyListener_l(
-        int msg, int ext1, int ext2, const Parcel *in) {
-    switch (msg) {
-        case MEDIA_PLAYBACK_COMPLETE:
-        {
-            if (mState != STATE_RESET_IN_PROGRESS) {
-                if (mLooping || (mAutoLoop
-                        && (mAudioSink == NULL || mAudioSink->realtime()))) {
-                    mPlayer->seekToAsync(0);
-                    break;
-                }
-
-                mPlayer->pause();
-                mState = STATE_PAUSED;
-            }
-            // fall through
-        }
-
-        case MEDIA_ERROR:
-        {
-            mAtEOS = true;
-            break;
-        }
-
-        default:
-            break;
+    if (msg == MEDIA_PLAYBACK_COMPLETE || msg == MEDIA_ERROR) {
+        mAtEOS = true;
     }
 
-    mLock.unlock();
     sendEvent(msg, ext1, ext2, in);
-    mLock.lock();
 }
 
 void NuPlayerDriver::notifySetDataSourceCompleted(status_t err) {
@@ -705,24 +554,15 @@ void NuPlayerDriver::notifyPrepareCompleted(status_t err) {
     mAsyncResult = err;
 
     if (err == OK) {
-        // update state before notifying client, so that if client calls back into NuPlayerDriver
-        // in response, NuPlayerDriver has the right state
+        if (mIsAsyncPrepare) {
+            notifyListener(MEDIA_PREPARED);
+        }
         mState = STATE_PREPARED;
-        if (mIsAsyncPrepare) {
-            notifyListener_l(MEDIA_PREPARED);
-        }
     } else {
-        mState = STATE_UNPREPARED;
         if (mIsAsyncPrepare) {
-            notifyListener_l(MEDIA_ERROR, MEDIA_ERROR_UNKNOWN, err);
+            notifyListener(MEDIA_ERROR, MEDIA_ERROR_UNKNOWN, err);
         }
-    }
-
-    sp<MetaData> meta = mPlayer->getFileMeta();
-    int32_t loop;
-    if (meta != NULL
-            && meta->findInt32(kKeyAutoLoop, &loop) && loop != 0) {
-        mAutoLoop = true;
+        mState = STATE_UNPREPARED;
     }
 
     mCondition.broadcast();
@@ -732,79 +572,6 @@ void NuPlayerDriver::notifyFlagsChanged(uint32_t flags) {
     Mutex::Autolock autoLock(mLock);
 
     mPlayerFlags = flags;
-}
-
-void NuPlayerDriver::notifySuspendCompleted(status_t err) {
-    ALOGD("notifySuspendCompleted(%p, %d)", this, err);
-    Mutex::Autolock autoLock(mLock);
-
-    CHECK_EQ(mState, STATE_SUSPEND_IN_PROGRESS);
-    mState = STATE_SUSPENDED;
-    mAsyncResult = err;
-    mCondition.broadcast();
-}
-
-void NuPlayerDriver::notifyResumeFromSuspendedCompleted(status_t err) {
-    ALOGD("notifyResumeFromSuspendedCompleted(%p, %d)", this, err);
-    Mutex::Autolock autoLock(mLock);
-
-    CHECK_EQ(mState, STATE_RESUME_IN_PROGRESS);
-    mState = STATE_PREPARED;
-    mAsyncResult = err;
-    mCondition.broadcast();
-}
-
-status_t NuPlayerDriver::suspend() {
-    ALOGV("suspend");
-    Mutex::Autolock autoLock(mLock);
-
-    switch (mState) {
-        case STATE_SUSPENDED:
-            return OK;
-
-        case STATE_PREPARED:
-        case STATE_PAUSED:
-        case STATE_RUNNING:
-        case STATE_STOPPED:
-        case STATE_STOPPED_AND_PREPARING:
-        case STATE_STOPPED_AND_PREPARED:
-            ALOGV("suspend from state %d", mState);
-            break;
-
-        default:
-            return INVALID_OPERATION;
-    }
-
-    mState = STATE_SUSPEND_IN_PROGRESS;
-    mPlayer->suspendAsync();
-
-    while (mState == STATE_SUSPEND_IN_PROGRESS) {
-        mCondition.wait(mLock);
-    }
-
-    return mAsyncResult;
-}
-
-status_t NuPlayerDriver::resume() {
-    ALOGV("resume");
-    Mutex::Autolock autoLock(mLock);
-
-    if (mState == STATE_PREPARED) {
-        return OK;
-    }
-
-    if (mState != STATE_SUSPENDED) {
-        return INVALID_OPERATION;
-    }
-
-    mState = STATE_RESUME_IN_PROGRESS;
-    mPlayer->resumeFromSuspendedAsync();
-
-    while (mState == STATE_RESUME_IN_PROGRESS) {
-        mCondition.wait(mLock);
-    }
-
-    return mAsyncResult;
 }
 
 }  // namespace android

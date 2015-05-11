@@ -16,7 +16,6 @@
 
 #include "SineSource.h"
 
-#include <inttypes.h>
 #include <binder/ProcessState.h>
 #include <media/stagefright/foundation/ADebug.h>
 #include <media/stagefright/AudioPlayer.h>
@@ -73,7 +72,7 @@ public:
         return meta;
     }
 
-    virtual status_t start(MetaData *params __unused) {
+    virtual status_t start(MetaData *params) {
         mNumFramesOutput = 0;
         return OK;
     }
@@ -83,7 +82,7 @@ public:
     }
 
     virtual status_t read(
-            MediaBuffer **buffer, const MediaSource::ReadOptions *options __unused) {
+            MediaBuffer **buffer, const MediaSource::ReadOptions *options) {
 
         if (mNumFramesOutput % 10 == 0) {
             fprintf(stderr, ".");
@@ -100,12 +99,8 @@ public:
         // We don't care about the contents. we just test video encoder
         // Also, by skipping the content generation, we can return from
         // read() much faster.
-#if 0
-        // iterate through solid planes of color.
-        static unsigned char x = 0x60;
-        memset((*buffer)->data(), x, mSize);
-        x = x >= 0xa0 ? 0x60 : x + 1;
-#endif
+        //char x = (char)((double)rand() / RAND_MAX * 255);
+        //memset((*buffer)->data(), x, mSize);
         (*buffer)->set_range(0, mSize);
         (*buffer)->meta_data()->clear();
         (*buffer)->meta_data()->setInt64(
@@ -167,7 +162,7 @@ int main(int argc, char **argv) {
     int level = -1;        // Encoder specific default
     int profile = -1;      // Encoder specific default
     int codec = 0;
-    const char *fileName = "/sdcard/output.mp4";
+    char *fileName = "/sdcard/output.mp4";
     bool preferSoftwareCodec = false;
 
     android::ProcessState::self()->startThreadPool();
@@ -317,7 +312,7 @@ int main(int argc, char **argv) {
         fprintf(stderr, "record failed: %d\n", err);
         return 1;
     }
-    fprintf(stderr, "encoding %d frames in %" PRId64 " us\n", nFrames, (end-start)/1000);
+    fprintf(stderr, "encoding %d frames in %lld us\n", nFrames, (end-start)/1000);
     fprintf(stderr, "encoding speed is: %.2f fps\n", (nFrames * 1E9) / (end-start));
     return 0;
 }

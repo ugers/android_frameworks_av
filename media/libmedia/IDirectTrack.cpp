@@ -1,11 +1,6 @@
 /*
 ** Copyright (c) 2012, The Linux Foundation. All rights reserved.
-<<<<<<< HEAD
-** Not a Contribution, Apache license notifications and license are retained
-** for attribution purposes only.
-=======
 ** Not a Contribution
->>>>>>> 8b8d02886bd9fb8d5ad451c03e486cfad74aa74e
 **
 ** Copyright 2007, The Android Open Source Project
 **

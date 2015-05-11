@@ -34,14 +34,12 @@
 #include "MediaLogService.h"
 #include "MediaPlayerService.h"
 #include "AudioPolicyService.h"
-#include "SoundTriggerHwService.h"
 #ifdef AUDIO_LISTEN_ENABLED
 #include "ListenService.h"
 #endif
 
 using namespace android;
 
-<<<<<<< HEAD
 #ifdef SECTVOUT
 namespace android { namespace SecTVOutService {
 void instantiate(void);
@@ -49,22 +47,6 @@ void instantiate(void);
 #endif
 
 int main(int argc, char** argv)
-{
-    signal(SIGPIPE, SIG_IGN);
-    sp<ProcessState> proc(ProcessState::self());
-    sp<IServiceManager> sm = defaultServiceManager();
-    ALOGI("ServiceManager: %p", sm.get());
-#ifdef SECTVOUT
-    SecTVOutService::instantiate();
-#endif
-    AudioFlinger::instantiate();
-    MediaPlayerService::instantiate();
-    CameraService::instantiate();
-    AudioPolicyService::instantiate();
-    ProcessState::self()->startThreadPool();
-    IPCThreadState::self()->joinThreadPool();
-=======
-int main(int argc __unused, char** argv)
 {
     signal(SIGPIPE, SIG_IGN);
     char value[PROPERTY_VALUE_MAX];
@@ -151,6 +133,9 @@ int main(int argc __unused, char** argv)
         sp<ProcessState> proc(ProcessState::self());
         sp<IServiceManager> sm = defaultServiceManager();
         ALOGI("ServiceManager: %p", sm.get());
+#ifdef SECTVOUT
+        SecTVOutService::instantiate();
+#endif
         AudioFlinger::instantiate();
         MediaPlayerService::instantiate();
         CameraService::instantiate();
@@ -159,10 +144,8 @@ int main(int argc __unused, char** argv)
         ListenService::instantiate();
 #endif
         AudioPolicyService::instantiate();
-        SoundTriggerHwService::instantiate();
         registerExtensions();
         ProcessState::self()->startThreadPool();
         IPCThreadState::self()->joinThreadPool();
     }
->>>>>>> 8b8d02886bd9fb8d5ad451c03e486cfad74aa74e
 }

@@ -330,10 +330,6 @@ status_t SampleTable::setTimeToSampleParams(
     }
 
     mTimeToSampleCount = U32_AT(&header[4]);
-    uint64_t allocSize = mTimeToSampleCount * 2 * sizeof(uint32_t);
-    if (allocSize > SIZE_MAX) {
-        return ERROR_OUT_OF_RANGE;
-    }
     mTimeToSample = new uint32_t[mTimeToSampleCount * 2];
 
     size_t size = sizeof(uint32_t) * mTimeToSampleCount * 2;
@@ -364,9 +360,8 @@ status_t SampleTable::setCompositionTimeToSampleParams(
         return ERROR_IO;
     }
 
-    if (U32_AT(header) != 0 &&
-        U32_AT(header) != 0x01000000) {
-        // Expected version = 0/1, flags = 0.
+    if (U32_AT(header) != 0) {
+        // Expected version = 0, flags = 0.
         return ERROR_MALFORMED;
     }
 
@@ -377,11 +372,6 @@ status_t SampleTable::setCompositionTimeToSampleParams(
     }
 
     mNumCompositionTimeDeltaEntries = numEntries;
-    uint64_t allocSize = numEntries * 2 * sizeof(uint32_t);
-    if (allocSize > SIZE_MAX) {
-        return ERROR_OUT_OF_RANGE;
-    }
-
     mCompositionTimeDeltaEntries = new uint32_t[2 * numEntries];
 
     if (mDataSource->readAt(
@@ -427,11 +417,6 @@ status_t SampleTable::setSyncSampleParams(off64_t data_offset, size_t data_size)
         ALOGV("Table of sync samples is empty or has only a single entry!");
     }
 
-    uint64_t allocSize = mNumSyncSamples * sizeof(uint32_t);
-    if (allocSize > SIZE_MAX) {
-        return ERROR_OUT_OF_RANGE;
-    }
-
     mSyncSamples = new uint32_t[mNumSyncSamples];
     size_t size = mNumSyncSamples * sizeof(uint32_t);
     if (mDataSource->readAt(mSyncSampleOffset + 8, mSyncSamples, size)
@@ -475,7 +460,7 @@ status_t SampleTable::getMaxSampleSize(size_t *max_size) {
     return OK;
 }
 
-uint32_t abs_difference(uint64_t time1, uint64_t time2) {
+uint64_t abs_difference(uint64_t time1, uint64_t time2) {
     return time1 > time2 ? time1 - time2 : time2 - time1;
 }
 
@@ -535,7 +520,6 @@ void SampleTable::buildSampleEntriesTable() {
 }
 
 status_t SampleTable::findSampleAtTime(
-<<<<<<< HEAD
         uint64_t req_time, uint32_t *sample_index, uint32_t flags) {
     buildSampleEntriesTable();
 
@@ -545,64 +529,52 @@ status_t SampleTable::findSampleAtTime(
         uint32_t center = (left + right) / 2;
         uint64_t centerTime = mSampleTimeEntries[center].mCompositionTime;
         ALOGV("req_time:%lld centerTime:%lld center:%d,mNumSampleSizes:%d cts:%lld",req_time, centerTime, center,mNumSampleSizes,
-            (centerTime * 1000000ll) / 48000);
-=======
-        uint64_t req_time, uint64_t scale_num, uint64_t scale_den,
-        uint32_t *sample_index, uint32_t flags) {
-    buildSampleEntriesTable();
-
-    uint32_t left = 0;
-    uint32_t right_plus_one = mNumSampleSizes;
-    while (left < right_plus_one) {
-        uint32_t center = left + (right_plus_one - left) / 2;
-        uint64_t centerTime =
-            getSampleTime(center, scale_num, scale_den);
->>>>>>> 8b8d02886bd9fb8d5ad451c03e486cfad74aa74e
+        		(centerTime * 1000000ll) / 48000);
 
         if (req_time < centerTime) {
-            right_plus_one = center;
+            right = center;
         } else if (req_time > centerTime) {
             left = center + 1;
         } else {
-            *sample_index = mSampleTimeEntries[center].mSampleIndex;
-            return OK;
+            left = center;
+            break;
         }
+    }
+
+    if (left == mNumSampleSizes) {
+        if (flags == kFlagAfter) {
+            return ERROR_OUT_OF_RANGE;
+        }
+
+        --left;
     }
 
     uint32_t closestIndex = left;
 
-    if (closestIndex == mNumSampleSizes) {
-        if (flags == kFlagAfter) {
-            return ERROR_OUT_OF_RANGE;
-        }
-        flags = kFlagBefore;
-    } else if (closestIndex == 0) {
-        if (flags == kFlagBefore) {
-            // normally we should return out of range, but that is
-            // treated as end-of-stream.  instead return first sample
-            //
-            // return ERROR_OUT_OF_RANGE;
-        }
-        flags = kFlagAfter;
-    }
-
     switch (flags) {
         case kFlagBefore:
         {
-            --closestIndex;
+            while (closestIndex > 0
+                    && mSampleTimeEntries[closestIndex].mCompositionTime
+                            > req_time) {
+                --closestIndex;
+            }
             break;
         }
 
         case kFlagAfter:
         {
-            // nothing to do
+            while (closestIndex + 1 < mNumSampleSizes
+                    && mSampleTimeEntries[closestIndex].mCompositionTime
+                            < req_time) {
+                ++closestIndex;
+            }
             break;
         }
 
         default:
         {
             CHECK(flags == kFlagClosest);
-<<<<<<< HEAD
 
             if (closestIndex > 0) {
                 // Check left neighbour and pick closest.
@@ -619,20 +591,14 @@ status_t SampleTable::findSampleAtTime(
                 if (absdiff1 > absdiff2) {
                     closestIndex = closestIndex - 1;
                 }
-=======
-            // pick closest based on timestamp. use abs_difference for safety
-            if (abs_difference(
-                    getSampleTime(closestIndex, scale_num, scale_den), req_time) >
-                abs_difference(
-                    req_time, getSampleTime(closestIndex - 1, scale_num, scale_den))) {
-                --closestIndex;
->>>>>>> 8b8d02886bd9fb8d5ad451c03e486cfad74aa74e
             }
+
             break;
         }
     }
 
     *sample_index = mSampleTimeEntries[closestIndex].mSampleIndex;
+
     return OK;
 }
 
@@ -654,33 +620,28 @@ status_t SampleTable::findSyncSampleNear(
     }
 
     uint32_t left = 0;
-    uint32_t right_plus_one = mNumSyncSamples;
-    while (left < right_plus_one) {
-        uint32_t center = left + (right_plus_one - left) / 2;
+    uint32_t right = mNumSyncSamples;
+    while (left < right) {
+        uint32_t center = left + (right - left) / 2;
         uint32_t x = mSyncSamples[center];
 
         if (start_sample_index < x) {
-            right_plus_one = center;
+            right = center;
         } else if (start_sample_index > x) {
             left = center + 1;
         } else {
-            *sample_index = x;
-            return OK;
+            left = center;
+            break;
         }
     }
-
     if (left == mNumSyncSamples) {
         if (flags == kFlagAfter) {
             ALOGE("tried to find a sync frame after the last one: %d", left);
             return ERROR_OUT_OF_RANGE;
         }
-        flags = kFlagBefore;
+        left = left - 1;
     }
-    else if (left == 0) {
-        if (flags == kFlagBefore) {
-            ALOGE("tried to find a sync frame before the first one: %d", left);
 
-<<<<<<< HEAD
     // Now ssi[left] is the sync sample index just before (or at)
     // start_sample_index.
     // Also start_sample_index < ssi[left + 1], if left + 1 < mNumSyncSamples.
@@ -717,61 +678,51 @@ status_t SampleTable::findSyncSampleNear(
             // Pick the sync sample closest (timewise) to the start-sample.
             x = y;
             ++left;
-=======
-            // normally we should return out of range, but that is
-            // treated as end-of-stream.  instead seek to first sync
-            //
-            // return ERROR_OUT_OF_RANGE;
->>>>>>> 8b8d02886bd9fb8d5ad451c03e486cfad74aa74e
         }
-        flags = kFlagAfter;
     }
 
-    // Now ssi[left - 1] <(=) start_sample_index <= ssi[left]
     switch (flags) {
         case kFlagBefore:
         {
-            --left;
+            if (x > start_sample_index) {
+                CHECK(left > 0);
+
+                x = mSyncSamples[left - 1];
+
+                if (x > start_sample_index) {
+                    // The table of sync sample indices was not sorted
+                    // properly.
+                    return ERROR_MALFORMED;
+                }
+            }
             break;
         }
+
         case kFlagAfter:
         {
-            // nothing to do
+            if (x < start_sample_index) {
+                if (left + 1 >= mNumSyncSamples) {
+                    return ERROR_OUT_OF_RANGE;
+                }
+
+                x = mSyncSamples[left + 1];
+
+                if (x < start_sample_index) {
+                    // The table of sync sample indices was not sorted
+                    // properly.
+                    return ERROR_MALFORMED;
+                }
+            }
+
             break;
         }
+
         default:
-        {
-            // this route is not used, but implement it nonetheless
-            CHECK(flags == kFlagClosest);
-
-            status_t err = mSampleIterator->seekTo(start_sample_index);
-            if (err != OK) {
-                return err;
-            }
-            uint32_t sample_time = mSampleIterator->getSampleTime();
-
-            err = mSampleIterator->seekTo(mSyncSamples[left]);
-            if (err != OK) {
-                return err;
-            }
-            uint32_t upper_time = mSampleIterator->getSampleTime();
-
-            err = mSampleIterator->seekTo(mSyncSamples[left - 1]);
-            if (err != OK) {
-                return err;
-            }
-            uint32_t lower_time = mSampleIterator->getSampleTime();
-
-            // use abs_difference for safety
-            if (abs_difference(upper_time, sample_time) >
-                abs_difference(sample_time, lower_time)) {
-                --left;
-            }
             break;
-        }
     }
 
-    *sample_index = mSyncSamples[left];
+    *sample_index = x;
+
     return OK;
 }
 
@@ -828,14 +779,8 @@ status_t SampleTable::getMetaDataForSample(
         uint32_t sampleIndex,
         off64_t *offset,
         size_t *size,
-<<<<<<< HEAD
         uint64_t *compositionTime,
         bool *isSyncSample) {
-=======
-        uint32_t *compositionTime,
-        bool *isSyncSample,
-        uint32_t *sampleDuration) {
->>>>>>> 8b8d02886bd9fb8d5ad451c03e486cfad74aa74e
     Mutex::Autolock autoLock(mLock);
 
     status_t err;
@@ -875,10 +820,6 @@ status_t SampleTable::getMetaDataForSample(
 
             mLastSyncSampleIndex = i;
         }
-    }
-
-    if (sampleDuration) {
-        *sampleDuration = mSampleIterator->getSampleDuration();
     }
 
     return OK;

@@ -34,7 +34,7 @@ static const struct {
     const char *mRole;
 
 } kComponents[] = {
-    { "OMX.ffmpeg.mpeg2.decoder", "ffmpegvdec", "video_decoder.mpeg2" },
+    { "OMX.ffmpeg.mpeg2v.decoder", "ffmpegvdec", "video_decoder.mpeg2v" },
     { "OMX.ffmpeg.h263.decoder", "ffmpegvdec", "video_decoder.h263" },
     { "OMX.ffmpeg.mpeg4.decoder", "ffmpegvdec", "video_decoder.mpeg4" },
     { "OMX.ffmpeg.wmv.decoder", "ffmpegvdec", "video_decoder.wmv" },
@@ -63,10 +63,8 @@ static const struct {
     { "OMX.google.amrnb.encoder", "amrnbenc", "audio_encoder.amrnb" },
     { "OMX.google.amrwb.decoder", "amrdec", "audio_decoder.amrwb" },
     { "OMX.google.amrwb.encoder", "amrwbenc", "audio_encoder.amrwb" },
-    { "OMX.google.h264.decoder", "cedar_h264dec", "video_decoder.avc" },
-    //{ "OMX.google.h264.decoder", "h264dec", "video_decoder.avc" },
+    { "OMX.google.h264.decoder", "h264dec", "video_decoder.avc" },
     { "OMX.google.h264.encoder", "h264enc", "video_encoder.avc" },
-    { "OMX.google.hevc.decoder", "hevcdec", "video_decoder.hevc" },
     { "OMX.google.g711.alaw.decoder", "g711dec", "audio_decoder.g711alaw" },
     { "OMX.google.g711.mlaw.decoder", "g711dec", "audio_decoder.g711mlaw" },
     { "OMX.google.h263.decoder", "mpeg4dec", "video_decoder.h263" },
@@ -75,7 +73,6 @@ static const struct {
     { "OMX.google.mpeg4.encoder", "mpeg4enc", "video_encoder.mpeg4" },
     { "OMX.google.mp3.decoder", "mp3dec", "audio_decoder.mp3" },
     { "OMX.google.vorbis.decoder", "vorbisdec", "audio_decoder.vorbis" },
-    { "OMX.google.opus.decoder", "opusdec", "audio_decoder.opus" },
     { "OMX.google.vp8.decoder", "vpxdec", "video_decoder.vp8" },
     { "OMX.google.vp9.decoder", "vpxdec", "video_decoder.vp9" },
     { "OMX.google.vp8.encoder", "vpxenc", "video_encoder.vp8" },
@@ -97,7 +94,6 @@ OMX_ERRORTYPE SoftOMXPlugin::makeComponentInstance(
         OMX_COMPONENTTYPE **component) {
     ALOGV("makeComponentInstance '%s'", name);
 
-    dlerror(); // clear any existing error
     for (size_t i = 0; i < kNumComponents; ++i) {
         if (strcmp(name, kComponents[i].mName)) {
             continue;
@@ -110,12 +106,10 @@ OMX_ERRORTYPE SoftOMXPlugin::makeComponentInstance(
         void *libHandle = dlopen(libName.c_str(), RTLD_NOW);
 
         if (libHandle == NULL) {
-            ALOGE("unable to dlopen %s: %s", libName.c_str(), dlerror());
+            ALOGE("unable to dlopen %s", libName.c_str());
 
             return OMX_ErrorComponentNotFound;
         }
-
-        ALOGV("load component %s for %s", libName.c_str(), name);
 
         typedef SoftOMXComponent *(*CreateSoftOMXComponentFunc)(
                 const char *, const OMX_CALLBACKTYPE *,
@@ -127,8 +121,7 @@ OMX_ERRORTYPE SoftOMXPlugin::makeComponentInstance(
                     "_Z22createSoftOMXComponentPKcPK16OMX_CALLBACKTYPE"
                     "PvPP17OMX_COMPONENTTYPE");
 
-        if (const char *error = dlerror()) {
-            ALOGE("unable to dlsym %s: %s", libName.c_str(), error);
+        if (createSoftOMXComponent == NULL) {
             dlclose(libHandle);
             libHandle = NULL;
 
@@ -184,7 +177,7 @@ OMX_ERRORTYPE SoftOMXPlugin::destroyComponentInstance(
 
 OMX_ERRORTYPE SoftOMXPlugin::enumerateComponents(
         OMX_STRING name,
-        size_t /* size */,
+        size_t size,
         OMX_U32 index) {
     if (index >= kNumComponents) {
         return OMX_ErrorNoMore;

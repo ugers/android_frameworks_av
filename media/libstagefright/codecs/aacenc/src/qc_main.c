@@ -33,7 +33,6 @@
 #include "channel_map.h"
 #include "memalign.h"
 
-#define UNUSED(x) (void)(x)
 
 typedef enum{
   FRAME_LEN_BYTES_MODULO =  1,
@@ -205,8 +204,11 @@ Word16 QCNew(QC_STATE *hQC, VO_MEM_OPERATOR *pMemOP)
 **********************************************************************************/
 void QCDelete(QC_STATE *hQC, VO_MEM_OPERATOR *pMemOP)
 {
-  UNUSED(hQC);
-  UNUSED(pMemOP);
+
+  /*
+     nothing to do
+  */
+  hQC=NULL;
 }
 
 /*********************************************************************************

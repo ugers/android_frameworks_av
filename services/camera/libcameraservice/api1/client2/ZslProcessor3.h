@@ -50,8 +50,8 @@ class ZslProcessor3 :
     ZslProcessor3(sp<Camera2Client> client, wp<CaptureSequencer> sequencer);
     ~ZslProcessor3();
 
-    // From FrameProcessor::FilteredListener
-    virtual void onResultAvailable(const CaptureResult &result);
+    // From FrameProcessor
+    virtual void onFrameAvailable(int32_t requestId, const CameraMetadata &frame);
 
     /**
      ****************************************
@@ -82,7 +82,6 @@ class ZslProcessor3 :
 
   private:
     static const nsecs_t kWaitDuration = 10000000; // 10 ms
-    nsecs_t mLatestClearedBufferTimestamp;
 
     enum {
         RUNNING,
@@ -108,9 +107,8 @@ class ZslProcessor3 :
         CameraMetadata frame;
     };
 
-    static const int32_t kDefaultMaxPipelineDepth = 4;
-    size_t mBufferQueueDepth;
-    size_t mFrameListDepth;
+    static const size_t kZslBufferDepth = 4;
+    static const size_t kFrameListDepth = kZslBufferDepth * 2;
     Vector<CameraMetadata> mFrameList;
     size_t mFrameListHead;
 
@@ -122,22 +120,13 @@ class ZslProcessor3 :
 
     CameraMetadata mLatestCapturedRequest;
 
-    bool mHasFocuser;
-
     virtual bool threadLoop();
 
     status_t clearZslQueueLocked();
 
-    void clearZslResultQueueLocked();
-
     void dumpZslQueue(int id) const;
 
     nsecs_t getCandidateTimestampLocked(size_t* metadataIdx) const;
-
-    bool isFixedFocusMode(uint8_t afMode) const;
-
-    // Update the post-processing metadata with the default still capture request template
-    status_t updateRequestWithDefaultStillRequest(CameraMetadata &request) const;
 };
 
 

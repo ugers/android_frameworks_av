@@ -34,6 +34,9 @@ class IAudioRecord : public IInterface
 public:
     DECLARE_META_INTERFACE(AudioRecord);
 
+    /* get this tracks control block */
+    virtual sp<IMemory> getCblk() const = 0;
+
     /* After it's created the track is not active. Call start() to
      * make it active.
      */

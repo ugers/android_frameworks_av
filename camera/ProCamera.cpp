@@ -249,14 +249,11 @@ status_t ProCamera::createStreamCpu(int width, int height, int format,
     sp <IProCameraUser> c = mCamera;
     if (c == 0) return NO_INIT;
 
-    sp<IGraphicBufferProducer> producer;
-    sp<IGraphicBufferConsumer> consumer;
-    BufferQueue::createBufferQueue(&producer, &consumer);
-    sp<CpuConsumer> cc = new CpuConsumer(consumer, heapCount
-            /*, synchronousMode*/);
+    sp<BufferQueue> bq = new BufferQueue();
+    sp<CpuConsumer> cc = new CpuConsumer(bq, heapCount/*, synchronousMode*/);
     cc->setName(String8("ProCamera::mCpuConsumer"));
 
-    sp<Surface> stc = new Surface(producer);
+    sp<Surface> stc = new Surface(bq);
 
     status_t s = createStream(width, height, format,
                               stc->getIGraphicBufferProducer(),

@@ -79,8 +79,6 @@ status_t RepeaterSource::stop() {
 
     ALOGV("stopping");
 
-    status_t err = mSource->stop();
-
     if (mLooper != NULL) {
         mLooper->stop();
         mLooper.clear();
@@ -94,6 +92,7 @@ status_t RepeaterSource::stop() {
         mBuffer = NULL;
     }
 
+    status_t err = mSource->stop();
 
     ALOGV("stopped");
 

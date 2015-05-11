@@ -34,8 +34,6 @@ namespace android {
 struct ICrypto;
 struct IDrm;
 struct IHDCP;
-struct IMediaCodecList;
-struct IMediaHTTPService;
 class IMediaRecorder;
 class IOMX;
 class IRemoteDisplay;
@@ -59,14 +57,9 @@ public:
     virtual sp<IMediaMetadataRetriever> createMetadataRetriever() = 0;
     virtual sp<IMediaPlayer> create(const sp<IMediaPlayerClient>& client, int audioSessionId = 0) = 0;
 
-    virtual status_t         decode(
-            const sp<IMediaHTTPService> &httpService,
-            const char* url,
-            uint32_t *pSampleRate,
-            int* pNumChannels,
-            audio_format_t* pFormat,
-            const sp<IMemoryHeap>& heap, size_t *pSize) = 0;
-
+    virtual status_t         decode(const char* url, uint32_t *pSampleRate, int* pNumChannels,
+                                    audio_format_t* pFormat,
+                                    const sp<IMemoryHeap>& heap, size_t *pSize) = 0;
     virtual status_t         decode(int fd, int64_t offset, int64_t length, uint32_t *pSampleRate,
                                     int* pNumChannels, audio_format_t* pFormat,
                                     const sp<IMemoryHeap>& heap, size_t *pSize) = 0;
@@ -74,7 +67,6 @@ public:
     virtual sp<ICrypto>         makeCrypto() = 0;
     virtual sp<IDrm>            makeDrm() = 0;
     virtual sp<IHDCP>           makeHDCP(bool createEncryptionModule) = 0;
-    virtual sp<IMediaCodecList> getCodecList() const = 0;
 
     // Connects to a remote display.
     // 'iface' specifies the address of the local interface on which to listen for
@@ -129,19 +121,21 @@ public:
     virtual status_t        setBlackExtend(int value) = 0;
     virtual int             getBlackExtend() = 0;
     /* add by Gary. end   -----------------------------------}} */
+	    virtual status_t updateProxyConfig(
+            const char *host, int32_t port, const char *exclusionList) = 0;
 
     /* add by Gary. start {{----------------------------------- */
     /* 2012-03-12 */
     /* add the global interfaces to control the subtitle gate  */
     virtual status_t        setGlobalSubGate(bool showSub) = 0;
     virtual bool            getGlobalSubGate() = 0;
-    /* add by Gary. end   -----------------------------------}} */
-
-    /* add by Gary. start {{----------------------------------- */
-    /* 2012-4-24 */
-    /* add two general interfaces for expansibility */
+    //* add general interfaces for expansibility 
     virtual status_t        generalGlobalInterface(int cmd, int int1, int int2, int int3, void *p) = 0;
     /* add by Gary. end   -----------------------------------}} */
+	/*Begin (Modified by Michael. 2014.05.22)*/
+	virtual  status_t        getMediaPlayerList() = 0;
+	virtual  status_t        getMediaPlayerInfo(int mediaPlayerId, struct MediaPlayerInfo* mediaPlayerInfo) = 0;
+    /*End (Modified by Michael. 2014.05.22)*/
 };
 
 // ----------------------------------------------------------------------------

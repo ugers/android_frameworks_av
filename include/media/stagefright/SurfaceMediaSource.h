@@ -111,7 +111,7 @@ public:
     // pass metadata through the buffers. Currently, it is force set to true
     bool isMetaDataStoredInVideoBuffers() const;
 
-    sp<IGraphicBufferProducer> getProducer() const { return mProducer; }
+    sp<BufferQueue> getBufferQueue() const { return mBufferQueue; }
 
     // To be called before start()
     status_t setMaxAcquiredBufferCount(size_t count);
@@ -139,17 +139,12 @@ protected:
     // frames is separate than the one calling stop.
     virtual void onBuffersReleased();
 
-    // SurfaceMediaSource can't handle sideband streams, so this is not expected
-    // to ever be called. Does nothing.
-    virtual void onSidebandStreamChanged();
-
     static bool isExternalFormat(uint32_t format);
 
 private:
-    // A BufferQueue, represented by these interfaces, is the exchange point
-    // between the producer and this consumer
-    sp<IGraphicBufferProducer> mProducer;
-    sp<IGraphicBufferConsumer> mConsumer;
+    // mBufferQueue is the exchange point between the producer and
+    // this consumer
+    sp<BufferQueue> mBufferQueue;
 
     struct SlotData {
         sp<GraphicBuffer> mGraphicBuffer;
@@ -231,6 +226,8 @@ private:
     Condition mFrameAvailableCondition;
 
     Condition mMediaBuffersAvailableCondition;
+
+    bool mBuffersReleased;
 
     // Avoid copying and equating and default constructor
     DISALLOW_IMPLICIT_CONSTRUCTORS(SurfaceMediaSource);

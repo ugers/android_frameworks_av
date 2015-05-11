@@ -18,8 +18,6 @@
 
 #define MEDIA_BUFFER_H_
 
-#include <media/stagefright/foundation/MediaBufferBase.h>
-
 #include <pthread.h>
 
 #include <utils/Errors.h>
@@ -45,7 +43,7 @@ private:
     MediaBufferObserver &operator=(const MediaBufferObserver &);
 };
 
-class MediaBuffer : public MediaBufferBase {
+class MediaBuffer {
 public:
     // The underlying data remains the responsibility of the caller!
     MediaBuffer(void *data, size_t size);
@@ -58,10 +56,10 @@ public:
 
     // Decrements the reference count and returns the buffer to its
     // associated MediaBufferGroup if the reference count drops to 0.
-    virtual void release();
+    void release();
 
     // Increments the reference count.
-    virtual void add_ref();
+    void add_ref();
 
     void *data() const;
     size_t size() const;

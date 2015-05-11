@@ -30,11 +30,7 @@ class Pipe : public NBAIO_Sink {
 
 public:
     // maxFrames will be rounded up to a power of 2, and all slots are available. Must be >= 2.
-    // buffer is an optional parameter specifying the virtual address of the pipe buffer,
-    // which must be of size roundup(maxFrames) * Format_frameSize(format) bytes.
-    Pipe(size_t maxFrames, const NBAIO_Format& format, void *buffer = NULL);
-
-    // If a buffer was specified in the constructor, it is not automatically freed by destructor.
+    Pipe(size_t maxFrames, NBAIO_Format format);
     virtual ~Pipe();
 
     // NBAIO_Port interface
@@ -61,7 +57,6 @@ private:
     void * const    mBuffer;
     volatile int32_t mRear;         // written by android_atomic_release_store
     volatile int32_t mReaders;      // number of PipeReader clients currently attached to this Pipe
-    const bool      mFreeBufferInDestructor;
 };
 
 }   // namespace android

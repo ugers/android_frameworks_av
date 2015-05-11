@@ -54,13 +54,13 @@ void MediaLogService::unregisterWriter(const sp<IMemory>& shared)
     }
 }
 
-status_t MediaLogService::dump(int fd, const Vector<String16>& args __unused)
+status_t MediaLogService::dump(int fd, const Vector<String16>& args)
 {
     // FIXME merge with similar but not identical code at services/audioflinger/ServiceUtilities.cpp
     static const String16 sDump("android.permission.DUMP");
     if (!(IPCThreadState::self()->getCallingUid() == AID_MEDIA ||
             PermissionCache::checkCallingPermission(sDump))) {
-        dprintf(fd, "Permission Denial: can't dump media.log from pid=%d, uid=%d\n",
+        fdprintf(fd, "Permission Denial: can't dump media.log from pid=%d, uid=%d\n",
                 IPCThreadState::self()->getCallingPid(),
                 IPCThreadState::self()->getCallingUid());
         return NO_ERROR;
@@ -74,7 +74,7 @@ status_t MediaLogService::dump(int fd, const Vector<String16>& args __unused)
     for (size_t i = 0; i < namedReaders.size(); i++) {
         const NamedReader& namedReader = namedReaders[i];
         if (fd >= 0) {
-            dprintf(fd, "\n%s:\n", namedReader.name());
+            fdprintf(fd, "\n%s:\n", namedReader.name());
         } else {
             ALOGI("%s:", namedReader.name());
         }

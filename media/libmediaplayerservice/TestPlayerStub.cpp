@@ -113,9 +113,7 @@ status_t TestPlayerStub::parseUrl()
 // Create the test player.
 // Call setDataSource on the test player with the url in param.
 status_t TestPlayerStub::setDataSource(
-        const sp<IMediaHTTPService> &httpService,
-        const char *url,
-        const KeyedVector<String8, String8> *headers) {
+        const char *url, const KeyedVector<String8, String8> *headers) {
     if (!isTestUrl(url) || NULL != mHandle) {
         return INVALID_OPERATION;
     }
@@ -164,7 +162,7 @@ status_t TestPlayerStub::setDataSource(
     }
 
     mPlayer = (*mNewPlayer)();
-    return mPlayer->setDataSource(httpService, mContentUrl, headers);
+    return mPlayer->setDataSource(mContentUrl, headers);
 }
 
 // Internal cleanup.

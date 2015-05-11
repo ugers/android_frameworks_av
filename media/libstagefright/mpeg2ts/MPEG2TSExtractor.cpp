@@ -141,7 +141,7 @@ sp<MediaSource> MPEG2TSExtractor::getTrack(size_t index) {
 }
 
 sp<MetaData> MPEG2TSExtractor::getTrackMetaData(
-        size_t index, uint32_t /* flags */) {
+        size_t index, uint32_t flags) {
     return index < mSourceImpls.size()
         ? mSourceImpls.editItemAt(index)->getFormat() : NULL;
 }
@@ -159,6 +159,7 @@ void MPEG2TSExtractor::init() {
     int numPacketsParsed = 0;
 
     while (feedMore() == OK) {
+        ATSParser::SourceType type;
         if (haveAudio && haveVideo) {
             break;
         }

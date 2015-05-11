@@ -1,15 +1,7 @@
 /*
-<<<<<<< HEAD
- * Copyright (C) 2009 The Android Open Source Project
- * Copyright (c) 2009-2013, The Linux Foundation. All rights reserved.
- * Not a Contribution, Apache license notifications and license are retained
- * for attribution purposes only.
- *
-=======
  * Copyright (c) 2009-2013, The Linux Foundation. All rights reserved.
  * Not a Contribution.
  * Copyright (C) 2009 The Android Open Source Project
->>>>>>> 8b8d02886bd9fb8d5ad451c03e486cfad74aa74e
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,11 +16,7 @@
  * limitations under the License.
  */
 
-<<<<<<< HEAD
-#define LOG_NDDEBUG 0
-=======
 //#define LOG_NDDEBUG 0
->>>>>>> 8b8d02886bd9fb8d5ad451c03e486cfad74aa74e
 //#define LOG_NDEBUG 0
 #define LOG_TAG "LPAPlayerALSA"
 
@@ -37,12 +25,6 @@
 
 #include <signal.h>
 #include <sys/prctl.h>
-<<<<<<< HEAD
-#include <sys/resource.h>
-#include <sys/poll.h>
-#include <sys/eventfd.h>
-=======
->>>>>>> 8b8d02886bd9fb8d5ad451c03e486cfad74aa74e
 #include <binder/IPCThreadState.h>
 #include <media/AudioTrack.h>
 
@@ -54,53 +36,29 @@
 #include <media/stagefright/MediaSource.h>
 #include <media/stagefright/MetaData.h>
 #include <media/stagefright/MediaErrors.h>
-<<<<<<< HEAD
-
-#include <hardware_legacy/power.h>
-
-#include <linux/unistd.h>
-
 #include "include/AwesomePlayer.h"
-#include <powermanager/PowerManager.h>
-=======
-#include "include/AwesomePlayer.h"
->>>>>>> 8b8d02886bd9fb8d5ad451c03e486cfad74aa74e
 
 static const char   mName[] = "LPAPlayer";
 
 #define MEM_METADATA_SIZE 64
-#define MEM_BUFFER_SIZE ((256*1024) - MEM_METADATA_SIZE)
+#ifndef LPA_DEFAULT_BUFFER_SIZE
+#define LPA_DEFAULT_BUFFER_SIZE 256
+#endif
+#define MEM_BUFFER_SIZE ((LPA_DEFAULT_BUFFER_SIZE*1024) - MEM_METADATA_SIZE)
 #define MEM_BUFFER_COUNT 4
-<<<<<<< HEAD
-#define PCM_FORMAT 2
-#define NUM_FDS 2
-#define LPA_BUFFER_TIME 1500000
-
-namespace android {
-int LPAPlayer::objectsAlive = 0;
-=======
 #define LPA_BUFFER_TIME 1500000
 
 namespace android {
 int LPAPlayer::mObjectsAlive = 0;
->>>>>>> 8b8d02886bd9fb8d5ad451c03e486cfad74aa74e
 
 LPAPlayer::LPAPlayer(
                     const sp<MediaPlayerBase::AudioSink> &audioSink, bool &initCheck,
                     AwesomePlayer *observer)
-<<<<<<< HEAD
-:AudioPlayer(audioSink,observer),
-=======
 :AudioPlayer(audioSink, 0, observer),
->>>>>>> 8b8d02886bd9fb8d5ad451c03e486cfad74aa74e
 mPositionTimeMediaUs(-1),
 mPositionTimeRealUs(-1),
 mInternalSeeking(false),
 mStarted(false),
-<<<<<<< HEAD
-mA2DPEnabled(false),
-=======
->>>>>>> 8b8d02886bd9fb8d5ad451c03e486cfad74aa74e
 mSampleRate(0),
 mLatencyUs(0),
 mFrameSize(0),
@@ -119,32 +77,16 @@ mFirstBuffer(NULL),
 mAudioSink(audioSink),
 mObserver(observer) {
     ALOGV("LPAPlayer::LPAPlayer() ctor");
-<<<<<<< HEAD
-    objectsAlive++;
-    mNumOutputChannels =0;
-    mNumInputChannels = 0;
-    mPaused = false;
-    mIsA2DPEnabled = false;
-    mAudioFlinger = NULL;
-    AudioFlingerClient = NULL;
-=======
     mObjectsAlive++;
     mNumOutputChannels =0;
     mNumInputChannels = 0;
     mPaused = false;
->>>>>>> 8b8d02886bd9fb8d5ad451c03e486cfad74aa74e
     /* Initialize Suspend/Resume related variables */
     mQueue.start();
     mQueueStarted      = true;
     mPauseEvent        = new TimedEvent(this, &LPAPlayer::onPauseTimeOut);
     mPauseEventPending = false;
-<<<<<<< HEAD
-    getAudioFlinger();
     ALOGV("Registering client with AudioFlinger");
-    //mAudioFlinger->registerClient(AudioFlingerClient);
-=======
-    ALOGV("Registering client with AudioFlinger");
->>>>>>> 8b8d02886bd9fb8d5ad451c03e486cfad74aa74e
 
     mIsAudioRouted = false;
 
@@ -160,90 +102,7 @@ LPAPlayer::~LPAPlayer() {
 
     reset();
 
-<<<<<<< HEAD
-    //mAudioFlinger->deregisterClient(AudioFlingerClient);
-    objectsAlive--;
-}
-
-void LPAPlayer::getAudioFlinger() {
-    Mutex::Autolock _l(AudioFlingerLock);
-
-    if ( mAudioFlinger.get() == 0 ) {
-        sp<IServiceManager> sm = defaultServiceManager();
-        sp<IBinder> binder;
-        do {
-            binder = sm->getService(String16("media.audio_flinger"));
-            if ( binder != 0 )
-                break;
-            ALOGW("AudioFlinger not published, waiting...");
-            usleep(500000); // 0.5 s
-        } while ( true );
-        if ( AudioFlingerClient == NULL ) {
-            AudioFlingerClient = new AudioFlingerLPAdecodeClient(this);
-        }
-
-        binder->linkToDeath(AudioFlingerClient);
-        mAudioFlinger = interface_cast<IAudioFlinger>(binder);
-    }
-    ALOGE_IF(mAudioFlinger==0, "no AudioFlinger!?");
-}
-
-LPAPlayer::AudioFlingerLPAdecodeClient::AudioFlingerLPAdecodeClient(void *obj)
-{
-    ALOGV("LPAPlayer::AudioFlingerLPAdecodeClient::AudioFlingerLPAdecodeClient");
-    pBaseClass = (LPAPlayer*)obj;
-}
-
-void LPAPlayer::AudioFlingerLPAdecodeClient::binderDied(const wp<IBinder>& who) {
-    Mutex::Autolock _l(pBaseClass->AudioFlingerLock);
-
-    pBaseClass->mAudioFlinger.clear();
-    ALOGW("AudioFlinger server died!");
-}
-
-void LPAPlayer::AudioFlingerLPAdecodeClient::ioConfigChanged(int event, audio_io_handle_t ioHandle, const void *param2) {
-    ALOGV("ioConfigChanged() event %d", event);
-    /*
-    if ( event != AudioSystem::A2DP_OUTPUT_STATE &&
-         event != AudioSystem::EFFECT_CONFIG_CHANGED) {
-        return;
-    }
-
-    switch ( event ) {
-    case AudioSystem::A2DP_OUTPUT_STATE:
-        {
-            ALOGV("ioConfigChanged() A2DP_OUTPUT_STATE iohandle is %d with A2DPEnabled in %d", ioHandle, pBaseClass->mIsA2DPEnabled);
-            if ( -1 == ioHandle ) {
-                if ( pBaseClass->mIsA2DPEnabled ) {
-                    pBaseClass->mIsA2DPEnabled = false;
-                    if (pBaseClass->mStarted) {
-                        pBaseClass->handleA2DPSwitch();
-                    }
-                    ALOGV("ioConfigChanged:: A2DP Disabled");
-                }
-            } else {
-                if ( !pBaseClass->mIsA2DPEnabled ) {
-
-                    pBaseClass->mIsA2DPEnabled = true;
-                    if (pBaseClass->mStarted) {
-                        pBaseClass->handleA2DPSwitch();
-                    }
-
-                    ALOGV("ioConfigChanged:: A2DP Enabled");
-                }
-            }
-        }
-        break;
-    }
-    ALOGV("ioConfigChanged Out");
-    */
-}
-
-void LPAPlayer::handleA2DPSwitch() {
-    //TODO: Implement
-=======
     mObjectsAlive--;
->>>>>>> 8b8d02886bd9fb8d5ad451c03e486cfad74aa74e
 }
 
 void LPAPlayer::setSource(const sp<MediaSource> &source) {
@@ -267,11 +126,7 @@ status_t LPAPlayer::start(bool sourceAlreadyStarted) {
         }
     }
 
-<<<<<<< HEAD
-    //Create decoder and a2dp notification thread and initialize all the
-=======
     //Create decoder thread and initialize all the
->>>>>>> 8b8d02886bd9fb8d5ad451c03e486cfad74aa74e
     //mutexes and coditional variables
     createThreads();
     ALOGV("All Threads Created.");
@@ -330,12 +185,8 @@ status_t LPAPlayer::start(bool sourceAlreadyStarted) {
         DEFAULT_AUDIOSINK_BUFFERCOUNT,
         &LPAPlayer::AudioSinkCallback,
         this,
-<<<<<<< HEAD
-        (mA2DPEnabled ? AUDIO_OUTPUT_FLAG_NONE : flags));
-=======
         flags,
         NULL);
->>>>>>> 8b8d02886bd9fb8d5ad451c03e486cfad74aa74e
 
     if (err != OK) {
         if (mFirstBuffer != NULL) {
@@ -355,13 +206,9 @@ status_t LPAPlayer::start(bool sourceAlreadyStarted) {
     mStarted = true;
     mAudioSink->start();
     ALOGV("Waking up decoder thread");
-<<<<<<< HEAD
-    pthread_cond_signal(&decoder_cv);
-=======
     mLock.lock();
     mDecoderCv.signal();
     mLock.unlock();
->>>>>>> 8b8d02886bd9fb8d5ad451c03e486cfad74aa74e
 
     return OK;
 }
@@ -391,11 +238,7 @@ status_t LPAPlayer::seekTo(int64_t time_us) {
         mReachedOutputEOS = false;
         if(mPaused == false) {
             ALOGV("Going to signal decoder thread since playback is already going on ");
-<<<<<<< HEAD
-            pthread_cond_signal(&decoder_cv);
-=======
             mDecoderCv.signal();
->>>>>>> 8b8d02886bd9fb8d5ad451c03e486cfad74aa74e
             ALOGV("Signalled extractor thread.");
         }
     }
@@ -410,26 +253,12 @@ void LPAPlayer::pause(bool playPendingSamples) {
     }
     ALOGV("pause: playPendingSamples %d", playPendingSamples);
     mPaused = true;
-<<<<<<< HEAD
-    A2DPState state;
-    if (!mIsA2DPEnabled) {
-       if (!mPauseEventPending) {
-           ALOGV("Posting an event for Pause timeout");
-           mQueue.postEventWithDelay(mPauseEvent, LPA_PAUSE_TIMEOUT_USEC);
-           mPauseEventPending = true;
-       }
-       mPauseTime = mSeekTimeUs + getTimeStamp(A2DP_DISABLED);
-    } else {
-        mPauseTime = mSeekTimeUs + getTimeStamp(A2DP_ENABLED);
-    }
-=======
     if (!mPauseEventPending) {
         ALOGV("Posting an event for Pause timeout");
         mQueue.postEventWithDelay(mPauseEvent, LPA_PAUSE_TIMEOUT_USEC);
         mPauseEventPending = true;
     }
     mPauseTime = mSeekTimeUs + getTimeStamp();
->>>>>>> 8b8d02886bd9fb8d5ad451c03e486cfad74aa74e
 
     if (mAudioSink.get() != NULL) {
         ALOGV("AudioSink pause");
@@ -437,20 +266,6 @@ void LPAPlayer::pause(bool playPendingSamples) {
     }
 }
 
-<<<<<<< HEAD
-void LPAPlayer::resume() {
-    ALOGV("resume: mPaused %d",mPaused);
-    Mutex::Autolock autoLock(mLock);
-    if ( mPaused) {
-        CHECK(mStarted);
-        if (!mIsA2DPEnabled) {
-            if(mPauseEventPending) {
-                ALOGV("Resume(): Cancelling the puaseTimeout event");
-                mPauseEventPending = false;
-                mQueue.cancelEvent(mPauseEvent->eventID());
-            }
-
-=======
 status_t LPAPlayer::resume() {
     ALOGV("resume: mPaused %d",mPaused);
     status_t err = NO_ERROR;
@@ -461,27 +276,18 @@ status_t LPAPlayer::resume() {
             ALOGV("Resume(): Cancelling the puaseTimeout event");
             mPauseEventPending = false;
             mQueue.cancelEvent(mPauseEvent->eventID());
->>>>>>> 8b8d02886bd9fb8d5ad451c03e486cfad74aa74e
         }
 
         if (!mIsAudioRouted) {
             audio_output_flags_t flags = (audio_output_flags_t) (AUDIO_OUTPUT_FLAG_LPA |
                                                                 AUDIO_OUTPUT_FLAG_DIRECT);
-<<<<<<< HEAD
-            status_t err = mAudioSink->open(
-=======
             err = mAudioSink->open(
->>>>>>> 8b8d02886bd9fb8d5ad451c03e486cfad74aa74e
                 mSampleRate, mNumOutputChannels, mChannelMask, AUDIO_FORMAT_PCM_16_BIT,
                 DEFAULT_AUDIOSINK_BUFFERCOUNT,
                 &LPAPlayer::AudioSinkCallback,
                 this,
-<<<<<<< HEAD
-                (mA2DPEnabled ?  AUDIO_OUTPUT_FLAG_NONE : flags ));
-=======
                 flags,
                 NULL);
->>>>>>> 8b8d02886bd9fb8d5ad451c03e486cfad74aa74e
             if (err != NO_ERROR) {
                 ALOGE("Audio sink open failed.");
             }
@@ -489,26 +295,17 @@ status_t LPAPlayer::resume() {
         }
         mPaused = false;
         mAudioSink->start();
-<<<<<<< HEAD
-        pthread_cond_signal(&decoder_cv);
-    }
-=======
         mDecoderCv.signal();
 
     }
     return err;
->>>>>>> 8b8d02886bd9fb8d5ad451c03e486cfad74aa74e
 }
 
 //static
 size_t LPAPlayer::AudioSinkCallback(
         MediaPlayerBase::AudioSink *audioSink,
-<<<<<<< HEAD
-        void *buffer, size_t size, void *cookie) {
-=======
         void *buffer, size_t size, void *cookie,
         MediaPlayerBase::AudioSink::cb_event_t event) {
->>>>>>> 8b8d02886bd9fb8d5ad451c03e486cfad74aa74e
     if (buffer == NULL && size == AudioTrack::EVENT_UNDERRUN) {
         LPAPlayer *me = (LPAPlayer *)cookie;
         if(me->mReachedEOS == true) {
@@ -538,20 +335,11 @@ void LPAPlayer::reset() {
 
     // make sure Decoder thread has exited
     ALOGD("Closing all the threads");
-<<<<<<< HEAD
-    requestAndWaitForDecoderThreadExit();
-    requestAndWaitForA2DPNotificationThreadExit();
-
-    ALOGD("Close the Sink");
-    if (mIsAudioRouted) {
-	    mAudioSink->stop();
-=======
     requestAndWaitForDecoderThreadExit_l();
 
     ALOGD("Close the Sink");
     if (mIsAudioRouted) {
         mAudioSink->stop();
->>>>>>> 8b8d02886bd9fb8d5ad451c03e486cfad74aa74e
         mAudioSink->close();
         mAudioSink.clear();
         mIsAudioRouted = false;
@@ -611,25 +399,11 @@ void *LPAPlayer::decoderThreadWrapper(void *me) {
 
 void LPAPlayer::decoderThreadEntry() {
 
-<<<<<<< HEAD
-    pthread_mutex_lock(&decoder_mutex);
-
-=======
     mLock.lock();
->>>>>>> 8b8d02886bd9fb8d5ad451c03e486cfad74aa74e
     pid_t tid  = gettid();
     androidSetThreadPriority(tid, ANDROID_PRIORITY_AUDIO);
     prctl(PR_SET_NAME, (unsigned long)"LPA DecodeThread", 0, 0, 0);
 
-<<<<<<< HEAD
-    ALOGV("decoderThreadEntry wait for signal \n");
-    if (!mStarted) {
-        pthread_cond_wait(&decoder_cv, &decoder_mutex);
-    }
-    ALOGV("decoderThreadEntry ready to work \n");
-    pthread_mutex_unlock(&decoder_mutex);
-    if (killDecoderThread) {
-=======
     ALOGV("mDecoderThreadEntry wait for signal \n");
     if (!mStarted) {
         mDecoderCv.wait(mLock);
@@ -637,16 +411,11 @@ void LPAPlayer::decoderThreadEntry() {
     ALOGV("decoderThreadEntry ready to work \n");
     mLock.unlock();
     if (mKillDecoderThread) {
->>>>>>> 8b8d02886bd9fb8d5ad451c03e486cfad74aa74e
         return;
     }
     void* local_buf = malloc(MEM_BUFFER_SIZE);
     if(local_buf == (void*) NULL) {
-<<<<<<< HEAD
-        killDecoderThread = true;
-=======
         mKillDecoderThread = true;
->>>>>>> 8b8d02886bd9fb8d5ad451c03e486cfad74aa74e
         ALOGE("Malloc failed");
         return;
     }
@@ -654,87 +423,28 @@ void LPAPlayer::decoderThreadEntry() {
     int bytesWritten = 0;
 
     if (!local_buf) {
-<<<<<<< HEAD
-      ALOGE("Failed to allocate temporary buffer for decoderThread");
-=======
       ALOGE("Failed to allocate temporary buffer for mDecoderThread");
->>>>>>> 8b8d02886bd9fb8d5ad451c03e486cfad74aa74e
       return;
     }
 
     bool lSeeking = false;
     bool lPaused = false;
 
-<<<<<<< HEAD
-    while (!killDecoderThread) {
-=======
     while (!mKillDecoderThread) {
->>>>>>> 8b8d02886bd9fb8d5ad451c03e486cfad74aa74e
 
         if (mReachedEOS || mPaused || !mIsAudioRouted) {
             ALOGV("Going to sleep before write since "
                   "mReachedEOS %d, mPaused %d, mIsAudioRouted %d",
                   mReachedEOS, mPaused, mIsAudioRouted);
-<<<<<<< HEAD
-            pthread_mutex_lock(&decoder_mutex);
-            pthread_cond_wait(&decoder_cv, &decoder_mutex);
-            pthread_mutex_unlock(&decoder_mutex);
-=======
             mDecoderMutex.lock();
             mDecoderCv.wait(mDecoderMutex);
             mDecoderMutex.unlock();
->>>>>>> 8b8d02886bd9fb8d5ad451c03e486cfad74aa74e
             ALOGV("Woke up from sleep before write since "
                   "mReachedEOS %d, mPaused %d, mIsAudioRouted %d",
                   mReachedEOS, mPaused, mIsAudioRouted);
             continue;
         }
 
-<<<<<<< HEAD
-        if (!mIsA2DPEnabled) {
-            ALOGV("FillBuffer: MemBuffer size %d", MEM_BUFFER_SIZE);
-            ALOGV("Fillbuffer started");
-            if (mNumInputChannels == 1) {
-                bytesWritten = fillBuffer(local_buf, MEM_BUFFER_SIZE/2);
-                CHECK(bytesWritten <= MEM_BUFFER_SIZE/2);
-
-                convertMonoToStereo((int16_t*)local_buf, bytesWritten);
-                bytesWritten *= 2;
-            } else {
-                bytesWritten = fillBuffer(local_buf, MEM_BUFFER_SIZE);
-                CHECK(bytesWritten <= MEM_BUFFER_SIZE);
-            }
-
-            ALOGV("FillBuffer completed bytesToWrite %d", bytesWritten);
-            if(!killDecoderThread) {
-                mLock.lock();
-                lPaused = mPaused;
-                mLock.unlock();
-
-                if(lPaused == true) {
-                    //write only if player is not in paused state. Sleep on lock
-                    // resume is called
-                    ALOGV("Going to sleep in decodethreadiwrite since sink is paused");
-                    pthread_mutex_lock(&decoder_mutex);
-                    pthread_cond_wait(&decoder_cv, &decoder_mutex);
-                    ALOGV("Going to unlock n decodethreadwrite since sink "
-                          "resumed mPaused %d, mIsAudioRouted %d, mReachedEOS %d",
-                          mPaused, mIsAudioRouted, mReachedEOS);
-                    pthread_mutex_unlock(&decoder_mutex);
-                }
-                mLock.lock();
-                lSeeking = mSeeking||mInternalSeeking;
-                mLock.unlock();
-
-                if(lSeeking == false && (killDecoderThread == false)){
-                    //if we are seeking, ignore write, otherwise write
-                    ALOGV("Fillbuffer before seeling flag %d", mSeeking);
-                    int lWrittenBytes = mAudioSink->write(local_buf, bytesWritten);
-                    ALOGV("Fillbuffer after write, written bytes %d and seek flag %d", lWrittenBytes, mSeeking);
-                } else {
-                    ALOGV("Fillbuffer ignored since we seeked after fillBuffer was set %d", mSeeking);
-                }
-=======
         ALOGV("FillBuffer: MemBuffer size %d", MEM_BUFFER_SIZE);
         ALOGV("Fillbuffer started");
         if (mNumInputChannels == 1) {
@@ -776,7 +486,6 @@ void LPAPlayer::decoderThreadEntry() {
                 ALOGV("Fillbuffer after write, written bytes %d and seek flag %d", lWrittenBytes, mSeeking);
             } else {
                 ALOGV("Fillbuffer ignored since we seeked after fillBuffer was set %d", mSeeking);
->>>>>>> 8b8d02886bd9fb8d5ad451c03e486cfad74aa74e
             }
         }
     }
@@ -786,72 +495,19 @@ void LPAPlayer::decoderThreadEntry() {
     //TODO: Call fillbuffer with different size and write to mAudioSink()
 }
 
-<<<<<<< HEAD
-void *LPAPlayer::A2DPNotificationThreadWrapper(void *me) {
-    static_cast<LPAPlayer *>(me)->A2DPNotificationThreadEntry();
-    return NULL;
-}
-
-void LPAPlayer::A2DPNotificationThreadEntry() {
-    while (1) {
-        pthread_mutex_lock(&a2dp_notification_mutex);
-        pthread_cond_wait(&a2dp_notification_cv, &a2dp_notification_mutex);
-        pthread_mutex_unlock(&a2dp_notification_mutex);
-        if (killA2DPNotificationThread) {
-            break;
-        }
-
-        ALOGV("A2DP notification has come mIsA2DPEnabled: %d", mIsA2DPEnabled);
-
-        if (mIsA2DPEnabled) {
-            //TODO:
-        }
-        else {
-        //TODO
-        }
-    }
-    a2dpNotificationThreadAlive = false;
-    ALOGV("A2DPNotificationThread is dying");
-
-}
-
 void LPAPlayer::createThreads() {
 
-    //Initialize all the Mutexes and Condition Variables
-    pthread_mutex_init(&decoder_mutex, NULL);
-    pthread_mutex_init(&a2dp_notification_mutex, NULL);
-    pthread_cond_init (&decoder_cv, NULL);
-    pthread_cond_init (&a2dp_notification_cv, NULL);
-
-=======
-void LPAPlayer::createThreads() {
-
->>>>>>> 8b8d02886bd9fb8d5ad451c03e486cfad74aa74e
     // Create 4 threads Effect, decoder, event and A2dp
     pthread_attr_t attr;
     pthread_attr_init(&attr);
     pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
 
-<<<<<<< HEAD
-    killDecoderThread = false;
-    killA2DPNotificationThread = false;
-
-    decoderThreadAlive = true;
-    a2dpNotificationThreadAlive = true;
-
-    ALOGV("Creating decoder Thread");
-    pthread_create(&decoderThread, &attr, decoderThreadWrapper, this);
-
-    ALOGV("Creating A2DP Notification Thread");
-    pthread_create(&A2DPNotificationThread, &attr, A2DPNotificationThreadWrapper, this);
-=======
     mKillDecoderThread = false;
 
     mDecoderThreadAlive = true;
 
     ALOGV("Creating decoder Thread");
     pthread_create(&mDecoderThread, &attr, decoderThreadWrapper, this);
->>>>>>> 8b8d02886bd9fb8d5ad451c03e486cfad74aa74e
 
     pthread_attr_destroy(&attr);
 }
@@ -987,47 +643,18 @@ int64_t LPAPlayer::getRealTimeUsLocked(){
     return 0;
 }
 
-<<<<<<< HEAD
-int64_t LPAPlayer::getTimeStamp(A2DPState state) {
-    uint64_t timestamp = 0;
-    switch (state) {
-    case A2DP_ENABLED:
-    case A2DP_DISCONNECT:
-        ALOGV("Get timestamp for A2DP");
-        break;
-    case A2DP_DISABLED:
-    case A2DP_CONNECT: {
-        mAudioSink->getTimeStamp(&timestamp);
-        break;
-    }
-    default:
-        break;
-    }
-=======
 int64_t LPAPlayer::getTimeStamp() {
     uint64_t timestamp = 0;
     mAudioSink->getTimeStamp(&timestamp);
->>>>>>> 8b8d02886bd9fb8d5ad451c03e486cfad74aa74e
     ALOGV("timestamp %lld ", timestamp);
     return timestamp;
 }
 
-<<<<<<< HEAD
-int64_t LPAPlayer::getMediaTimeUs_l( ) {
-    ALOGV("getMediaTimeUs() mPaused %d mSeekTimeUs %lld mPauseTime %lld",
-          mPaused, mSeekTimeUs, mPauseTime);
-    if (mPaused) {
-        return mPauseTime;
-    } else {
-        A2DPState state = mIsA2DPEnabled ? A2DP_ENABLED : A2DP_DISABLED;
-        return (mSeekTimeUs + getTimeStamp(state));
-=======
 int64_t LPAPlayer::getMediaTimeUs_l() {
     if (mPaused) {
         return mPauseTime;
     } else {
         return (mSeekTimeUs + getTimeStamp());
->>>>>>> 8b8d02886bd9fb8d5ad451c03e486cfad74aa74e
     }
 }
 
@@ -1045,14 +672,6 @@ bool LPAPlayer::getMediaTimeMapping(
     return false;
 }
 
-<<<<<<< HEAD
-//lock taken in reset()
-void LPAPlayer::requestAndWaitForDecoderThreadExit() {
-
-    if (!decoderThreadAlive)
-        return;
-    killDecoderThread = true;
-=======
 bool LPAPlayer::seekTooClose(int64_t time_us) {
     int64_t t1 = getMediaTimeUs_l();
     /*
@@ -1075,39 +694,20 @@ void LPAPlayer::requestAndWaitForDecoderThreadExit_l() {
     if (!mDecoderThreadAlive)
         return;
     mKillDecoderThread = true;
->>>>>>> 8b8d02886bd9fb8d5ad451c03e486cfad74aa74e
 
     /* Flush the audio sink to unblock the decoder thread
        if any write to audio HAL is blocked */
     if (!mReachedOutputEOS && mIsAudioRouted)
         mAudioSink->flush();
 
-<<<<<<< HEAD
-    pthread_cond_signal(&decoder_cv);
-    mLock.unlock();
-    pthread_join(decoderThread,NULL);
-=======
     mDecoderCv.signal();
     mLock.unlock();
     pthread_join(mDecoderThread,NULL);
->>>>>>> 8b8d02886bd9fb8d5ad451c03e486cfad74aa74e
     mLock.lock();
     ALOGD("decoder thread killed");
 
 }
 
-<<<<<<< HEAD
-void LPAPlayer::requestAndWaitForA2DPNotificationThreadExit() {
-    if (!a2dpNotificationThreadAlive)
-        return;
-    killA2DPNotificationThread = true;
-    pthread_cond_signal(&a2dp_notification_cv);
-    pthread_join(A2DPNotificationThread,NULL);
-    ALOGV("a2dp notification thread killed");
-}
-
-=======
->>>>>>> 8b8d02886bd9fb8d5ad451c03e486cfad74aa74e
 void LPAPlayer::onPauseTimeOut() {
     ALOGV("onPauseTimeOut");
     Mutex::Autolock autoLock(mLock);
@@ -1115,30 +715,6 @@ void LPAPlayer::onPauseTimeOut() {
         return;
     }
     mPauseEventPending = false;
-<<<<<<< HEAD
-    if(!mIsA2DPEnabled) {
-        // 1.) Set seek flags
-        mReachedEOS = false;
-        mReachedOutputEOS = false;
-        if(mSeeking == false) {
-            mSeekTimeUs += getTimeStamp(A2DP_DISABLED);
-            mInternalSeeking = true;
-        } else {
-            //do not update seek time if user has already seeked
-            // to a new position
-            // also seek has to be posted back to player,
-            // so do not set mInternalSeeking flag
-            ALOGV("do not update seek time %lld ", mSeekTimeUs);
-        }
-        ALOGV("newseek time = %lld ", mSeekTimeUs);
-        // 2.) Close routing Session
-        mAudioSink->flush();
-        mAudioSink->stop();
-        mAudioSink->close();
-        mIsAudioRouted = false;
-    }
-
-=======
     // 1.) Set seek flags
     mReachedEOS = false;
     mReachedOutputEOS = false;
@@ -1158,7 +734,6 @@ void LPAPlayer::onPauseTimeOut() {
     mAudioSink->stop();
     mAudioSink->close();
     mIsAudioRouted = false;
->>>>>>> 8b8d02886bd9fb8d5ad451c03e486cfad74aa74e
 }
 
 //dup each mono frame
@@ -1175,23 +750,4 @@ void LPAPlayer::convertMonoToStereo(int16_t *data, size_t size)
     }
 }
 
-<<<<<<< HEAD
-bool LPAPlayer::seekTooClose(int64_t time_us) {
-    int64_t t1 = getMediaTimeUs_l();
-    /*
-     * empirical
-     * -----------
-     * This constant signifies how much data (in Us) has been rendered by the
-     * DSP in the interval between the moment flush is issued on AudioSink to
-     * after ioctl(PAUSE) returns in Audio HAL. (flush triggers an implicit
-     * pause in audio HAL)
-     *
-     */
-    const int64_t kDeltaUs = 60000LL; /* 60-70ms on msm8974, must be measured for other targets */
-    t1 += kDeltaUs;
-    return (time_us > t1) && ((time_us - t1) <= LPA_BUFFER_TIME);
-}
-
-=======
->>>>>>> 8b8d02886bd9fb8d5ad451c03e486cfad74aa74e
 } //namespace android

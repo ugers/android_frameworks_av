@@ -555,7 +555,7 @@ status_t MPEG2TSWriter::addSource(const sp<MediaSource> &source) {
     return OK;
 }
 
-status_t MPEG2TSWriter::start(MetaData * /* param */) {
+status_t MPEG2TSWriter::start(MetaData *param) {
     CHECK(!mStarted);
 
     mStarted = true;
@@ -596,8 +596,7 @@ bool MPEG2TSWriter::reachedEOS() {
     return !mStarted || (mNumSourcesDone == mSources.size() ? true : false);
 }
 
-status_t MPEG2TSWriter::dump(
-        int /* fd */, const Vector<String16> & /* args */) {
+status_t MPEG2TSWriter::dump(int fd, const Vector<String16> &args) {
     return OK;
 }
 
@@ -682,7 +681,7 @@ void MPEG2TSWriter::onMessageReceived(const sp<AMessage> &msg) {
                     break;
                 }
 
-                ALOGV("writing access unit at time %.2f secs (index %zu)",
+                ALOGV("writing access unit at time %.2f secs (index %d)",
                      minTimeUs / 1E6, minIndex);
 
                 source = mSources.editItemAt(minIndex);

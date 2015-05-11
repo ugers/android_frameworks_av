@@ -214,6 +214,8 @@ sp<MetaData> AACEncoder::getFormat() {
 
 status_t AACEncoder::read(
         MediaBuffer **out, const ReadOptions *options) {
+    status_t err;
+
     *out = NULL;
 
     int64_t seekTimeUs;

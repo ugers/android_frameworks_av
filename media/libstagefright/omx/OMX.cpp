@@ -14,8 +14,6 @@
  * limitations under the License.
  */
 
-#include <inttypes.h>
-
 //#define LOG_NDEBUG 0
 #define LOG_TAG "OMX"
 #include <utils/Log.h>
@@ -187,7 +185,7 @@ void OMX::binderDied(const wp<IBinder> &the_late_who) {
     instance->onObserverDied(mMaster);
 }
 
-bool OMX::livesLocally(node_id /* node */, pid_t pid) {
+bool OMX::livesLocally(node_id node, pid_t pid) {
     return pid == getpid();
 }
 
@@ -233,7 +231,7 @@ status_t OMX::allocateNode(
             instance, &handle);
 
     if (err != OMX_ErrorNone) {
-        ALOGE("FAILED to allocate omx component '%s'", name);
+        ALOGV("FAILED to allocate omx component '%s'", name);
 
         instance->onGetHandleFailed();
 
@@ -287,7 +285,6 @@ status_t OMX::sendCommand(
 status_t OMX::getParameter(
         node_id node, OMX_INDEXTYPE index,
         void *params, size_t size) {
-    ALOGV("getParameter(%u %#x %p %zd)", node, index, params, size);
     return findInstance(node)->getParameter(
             index, params, size);
 }
@@ -295,7 +292,6 @@ status_t OMX::getParameter(
 status_t OMX::setParameter(
         node_id node, OMX_INDEXTYPE index,
         const void *params, size_t size) {
-    ALOGV("setParameter(%u %#x %p %zd)", node, index, params, size);
     return findInstance(node)->setParameter(
             index, params, size);
 }
@@ -340,13 +336,6 @@ status_t OMX::prepareForAdaptivePlayback(
         OMX_U32 maxFrameWidth, OMX_U32 maxFrameHeight) {
     return findInstance(node)->prepareForAdaptivePlayback(
             portIndex, enable, maxFrameWidth, maxFrameHeight);
-}
-
-status_t OMX::configureVideoTunnelMode(
-        node_id node, OMX_U32 portIndex, OMX_BOOL tunneled,
-        OMX_U32 audioHwSync, native_handle_t **sidebandHandle) {
-    return findInstance(node)->configureVideoTunnelMode(
-            portIndex, tunneled, audioHwSync, sidebandHandle);
 }
 
 status_t OMX::useBuffer(
@@ -435,8 +424,8 @@ OMX_ERRORTYPE OMX::OnEvent(
         OMX_IN OMX_EVENTTYPE eEvent,
         OMX_IN OMX_U32 nData1,
         OMX_IN OMX_U32 nData2,
-        OMX_IN OMX_PTR /* pEventData */) {
-    ALOGV("OnEvent(%d, %" PRIu32", %" PRIu32 ")", eEvent, nData1, nData2);
+        OMX_IN OMX_PTR pEventData) {
+    ALOGV("OnEvent(%d, %ld, %ld)", eEvent, nData1, nData2);
 
     // Forward to OMXNodeInstance.
     findInstance(node)->onEvent(eEvent, nData1, nData2);
@@ -459,13 +448,13 @@ OMX_ERRORTYPE OMX::OnEvent(
 }
 
 OMX_ERRORTYPE OMX::OnEmptyBufferDone(
-        node_id node, buffer_id buffer, OMX_IN OMX_BUFFERHEADERTYPE *pBuffer) {
+        node_id node, OMX_IN OMX_BUFFERHEADERTYPE *pBuffer) {
     ALOGV("OnEmptyBufferDone buffer=%p", pBuffer);
 
     omx_message msg;
     msg.type = omx_message::EMPTY_BUFFER_DONE;
     msg.node = node;
-    msg.u.buffer_data.buffer = buffer;
+    msg.u.buffer_data.buffer = pBuffer;
 
     sp<OMX::CallbackDispatcher> callbackDispatcher = findDispatcher(node);
     if (callbackDispatcher != NULL) {
@@ -478,17 +467,19 @@ OMX_ERRORTYPE OMX::OnEmptyBufferDone(
 }
 
 OMX_ERRORTYPE OMX::OnFillBufferDone(
-        node_id node, buffer_id buffer, OMX_IN OMX_BUFFERHEADERTYPE *pBuffer) {
+        node_id node, OMX_IN OMX_BUFFERHEADERTYPE *pBuffer) {
     ALOGV("OnFillBufferDone buffer=%p", pBuffer);
 
     omx_message msg;
     msg.type = omx_message::FILL_BUFFER_DONE;
     msg.node = node;
-    msg.u.extended_buffer_data.buffer = buffer;
+    msg.u.extended_buffer_data.buffer = pBuffer;
     msg.u.extended_buffer_data.range_offset = pBuffer->nOffset;
     msg.u.extended_buffer_data.range_length = pBuffer->nFilledLen;
     msg.u.extended_buffer_data.flags = pBuffer->nFlags;
     msg.u.extended_buffer_data.timestamp = pBuffer->nTimeStamp;
+    msg.u.extended_buffer_data.platform_private = pBuffer->pPlatformPrivate;
+    msg.u.extended_buffer_data.data_ptr = pBuffer->pBuffer;
 
     sp<OMX::CallbackDispatcher> callbackDispatcher = findDispatcher(node);
     if (callbackDispatcher != NULL) {

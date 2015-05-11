@@ -43,7 +43,7 @@ public:
 
     // This is an over-estimate, and could dupe the caller into making a blocking write()
     // FIXME Use an audio HAL API to query the buffer emptying status when it's available.
-    virtual ssize_t availableToWrite() const { return mStreamBufferSizeBytes / mFrameSize; }
+    virtual ssize_t availableToWrite() const { return mStreamBufferSizeBytes >> mBitShift; }
 
     virtual ssize_t write(const void *buffer, size_t count);
 
@@ -52,9 +52,7 @@ public:
     // implementation of GNWT (if any)
     virtual status_t getNextWriteTimestamp(int64_t *timestamp);
 
-#ifndef HAVE_PRE_KITKAT_AUDIO_BLOB
     virtual status_t getTimestamp(AudioTimestamp& timestamp);
-#endif
 
     // NBAIO_Sink end
 

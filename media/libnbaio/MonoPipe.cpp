@@ -14,8 +14,6 @@
  * limitations under the License.
  */
 
-#include <inttypes.h>
-
 #define LOG_TAG "MonoPipe"
 //#define LOG_NDEBUG 0
 
@@ -32,24 +30,7 @@
 
 namespace android {
 
-static uint64_t cacheN; // output of CCHelper::getLocalFreq()
-static bool cacheValid; // whether cacheN is valid
-static pthread_once_t cacheOnceControl = PTHREAD_ONCE_INIT;
-
-static void cacheOnceInit()
-{
-    CCHelper tmpHelper;
-    status_t res;
-    if (OK != (res = tmpHelper.getLocalFreq(&cacheN))) {
-        ALOGE("Failed to fetch local time frequency when constructing a"
-              " MonoPipe (res = %d).  getNextWriteTimestamp calls will be"
-              " non-functional", res);
-        return;
-    }
-    cacheValid = true;
-}
-
-MonoPipe::MonoPipe(size_t reqFrames, const NBAIO_Format& format, bool writeCanBlock) :
+MonoPipe::MonoPipe(size_t reqFrames, NBAIO_Format format, bool writeCanBlock) :
         NBAIO_Sink(format),
         mUpdateSeq(0),
         mReqFrames(reqFrames),
@@ -66,6 +47,8 @@ MonoPipe::MonoPipe(size_t reqFrames, const NBAIO_Format& format, bool writeCanBl
         mTimestampMutator(&mTimestampShared),
         mTimestampObserver(&mTimestampShared)
 {
+    CCHelper tmpHelper;
+    status_t res;
     uint64_t N, D;
 
     mNextRdPTS = AudioBufferProvider::kInvalidPTS;
@@ -76,20 +59,19 @@ MonoPipe::MonoPipe(size_t reqFrames, const NBAIO_Format& format, bool writeCanBl
     mSamplesToLocalTime.a_to_b_denom = 0;
 
     D = Format_sampleRate(format);
-
-    (void) pthread_once(&cacheOnceControl, cacheOnceInit);
-    if (!cacheValid) {
-        // log has already been done
+    if (OK != (res = tmpHelper.getLocalFreq(&N))) {
+        ALOGE("Failed to fetch local time frequency when constructing a"
+              " MonoPipe (res = %d).  getNextWriteTimestamp calls will be"
+              " non-functional", res);
         return;
     }
-    N = cacheN;
 
     LinearTransform::reduce(&N, &D);
     static const uint64_t kSignedHiBitsMask   = ~(0x7FFFFFFFull);
     static const uint64_t kUnsignedHiBitsMask = ~(0xFFFFFFFFull);
     if ((N & kSignedHiBitsMask) || (D & kUnsignedHiBitsMask)) {
         ALOGE("Cannot reduce sample rate to local clock frequency ratio to fit"
-              " in a 32/32 bit rational.  (max reduction is 0x%016" PRIx64 "/0x%016" PRIx64
+              " in a 32/32 bit rational.  (max reduction is 0x%016llx/0x%016llx"
               ").  getNextWriteTimestamp calls will be non-functional", N, D);
         return;
     }
@@ -133,11 +115,11 @@ ssize_t MonoPipe::write(const void *buffer, size_t count)
             part1 = written;
         }
         if (CC_LIKELY(part1 > 0)) {
-            memcpy((char *) mBuffer + (rear * mFrameSize), buffer, part1 * mFrameSize);
+            memcpy((char *) mBuffer + (rear << mBitShift), buffer, part1 << mBitShift);
             if (CC_UNLIKELY(rear + part1 == mMaxFrames)) {
                 size_t part2 = written - part1;
                 if (CC_LIKELY(part2 > 0)) {
-                    memcpy(mBuffer, (char *) buffer + (part1 * mFrameSize), part2 * mFrameSize);
+                    memcpy(mBuffer, (char *) buffer + (part1 << mBitShift), part2 << mBitShift);
                 }
             }
             android_atomic_release_store(written + mRear, &mRear);
@@ -147,7 +129,7 @@ ssize_t MonoPipe::write(const void *buffer, size_t count)
             break;
         }
         count -= written;
-        buffer = (char *) buffer + (written * mFrameSize);
+        buffer = (char *) buffer + (written << mBitShift);
         // Simulate blocking I/O by sleeping at different rates, depending on a throttle.
         // The throttle tries to keep the mean pipe depth near the setpoint, with a slight jitter.
         uint32_t ns;
@@ -201,7 +183,7 @@ ssize_t MonoPipe::write(const void *buffer, size_t count)
             }
         }
         if (ns > 0) {
-            const struct timespec req = {0, static_cast<long>(ns)};
+            const struct timespec req = {0, ns};
             nanosleep(&req, NULL);
         }
         // record the time that this write() completed
@@ -310,7 +292,7 @@ int64_t MonoPipe::offsetTimestampByAudioFrames(int64_t ts, size_t audFrames)
         // error, but then zero out the ratio in the linear transform so
         // that we don't try to do any conversions from now on.  This
         // MonoPipe's getNextWriteTimestamp is now broken for good.
-        ALOGE("Overflow when attempting to convert %zu audio frames to"
+        ALOGE("Overflow when attempting to convert %d audio frames to"
               " duration in local time.  getNextWriteTimestamp will fail from"
               " now on.", audFrames);
         mSamplesToLocalTime.a_to_b_numer = 0;

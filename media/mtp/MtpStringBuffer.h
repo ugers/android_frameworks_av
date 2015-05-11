@@ -46,7 +46,7 @@ public:
     void            set(const char* src);
     void            set(const uint16_t* src);
 
-    bool            readFromPacket(MtpDataPacket* packet);
+    void            readFromPacket(MtpDataPacket* packet);
     void            writeToPacket(MtpDataPacket* packet) const;
 
     inline int      getCharCount() const { return mCharCount; }

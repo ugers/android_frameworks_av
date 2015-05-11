@@ -16,14 +16,9 @@
 
 //#define LOG_NDEBUG 0
 #define LOG_TAG "sf2"
-#include <inttypes.h>
 #include <utils/Log.h>
 
-#include <signal.h>
-
 #include <binder/ProcessState.h>
-
-#include <media/IMediaHTTPService.h>
 
 #include <media/stagefright/foundation/hexdump.h>
 #include <media/stagefright/foundation/ABuffer.h>
@@ -47,18 +42,6 @@
 
 using namespace android;
 
-volatile static bool ctrlc = false;
-
-static sighandler_t oldhandler = NULL;
-
-static void mysighandler(int signum) {
-    if (signum == SIGINT) {
-        ctrlc = true;
-        return;
-    }
-    oldhandler(signum);
-}
-
 struct Controller : public AHandler {
     Controller(const char *uri, bool decodeAudio,
                const sp<Surface> &surface, bool renderToSurface)
@@ -79,30 +62,7 @@ protected:
     virtual ~Controller() {
     }
 
-    virtual void printStatistics() {
-        int64_t delayUs = ALooper::GetNowUs() - mStartTimeUs;
-
-        if (mDecodeAudio) {
-            printf("%" PRId64 " bytes received. %.2f KB/sec\n",
-            mTotalBytesReceived,
-            mTotalBytesReceived * 1E6 / 1024 / delayUs);
-        } else {
-            printf("%d frames decoded, %.2f fps. %" PRId64 " bytes "
-                    "received. %.2f KB/sec\n",
-            mNumOutputBuffersReceived,
-            mNumOutputBuffersReceived * 1E6 / delayUs,
-            mTotalBytesReceived,
-            mTotalBytesReceived * 1E6 / 1024 / delayUs);
-        }
-    }
-
     virtual void onMessageReceived(const sp<AMessage> &msg) {
-        if (ctrlc) {
-            printf("\n");
-            printStatistics();
-            (new AMessage(kWhatStop, id()))->post();
-            ctrlc = false;
-        }
         switch (msg->what()) {
             case kWhatStart:
             {
@@ -115,8 +75,7 @@ protected:
 #endif
 
                 sp<DataSource> dataSource =
-                    DataSource::CreateFromURI(
-                            NULL /* httpService */, mURI.c_str());
+                    DataSource::CreateFromURI(mURI.c_str());
 
                 sp<MediaExtractor> extractor =
                     MediaExtractor::Create(dataSource);
@@ -139,10 +98,7 @@ protected:
                         break;
                     }
                 }
-                if (mSource == NULL) {
-                    printf("no %s track found\n", mDecodeAudio ? "audio" : "video");
-                    exit (1);
-                }
+                CHECK(mSource != NULL);
 
                 CHECK_EQ(mSource->start(), (status_t)OK);
 
@@ -211,28 +167,42 @@ protected:
                 int32_t what;
                 CHECK(msg->findInt32("what", &what));
 
-                if (what == CodecBase::kWhatFillThisBuffer) {
+                if (what == ACodec::kWhatFillThisBuffer) {
                     onFillThisBuffer(msg);
-                } else if (what == CodecBase::kWhatDrainThisBuffer) {
+                } else if (what == ACodec::kWhatDrainThisBuffer) {
                     if ((mNumOutputBuffersReceived++ % 16) == 0) {
                         printf(".");
                         fflush(stdout);
                     }
 
                     onDrainThisBuffer(msg);
-                } else if (what == CodecBase::kWhatEOS
-                        || what == CodecBase::kWhatError) {
-                    printf((what == CodecBase::kWhatEOS) ? "$\n" : "E\n");
+                } else if (what == ACodec::kWhatEOS
+                        || what == ACodec::kWhatError) {
+                    printf((what == ACodec::kWhatEOS) ? "$\n" : "E\n");
 
-                    printStatistics();
+                    int64_t delayUs = ALooper::GetNowUs() - mStartTimeUs;
+
+                    if (mDecodeAudio) {
+                        printf("%lld bytes received. %.2f KB/sec\n",
+                               mTotalBytesReceived,
+                               mTotalBytesReceived * 1E6 / 1024 / delayUs);
+                    } else {
+                        printf("%d frames decoded, %.2f fps. %lld bytes "
+                               "received. %.2f KB/sec\n",
+                               mNumOutputBuffersReceived,
+                               mNumOutputBuffersReceived * 1E6 / delayUs,
+                               mTotalBytesReceived,
+                               mTotalBytesReceived * 1E6 / 1024 / delayUs);
+                    }
+
                     (new AMessage(kWhatStop, id()))->post();
-                } else if (what == CodecBase::kWhatFlushCompleted) {
+                } else if (what == ACodec::kWhatFlushCompleted) {
                     mSeekState = SEEK_FLUSH_COMPLETED;
                     mCodec->signalResume();
 
                     (new AMessage(kWhatSeek, id()))->post(5000000ll);
-                } else if (what == CodecBase::kWhatOutputFormatChanged) {
-                } else if (what == CodecBase::kWhatShutdownCompleted) {
+                } else if (what == ACodec::kWhatOutputFormatChanged) {
+                } else if (what == ACodec::kWhatShutdownCompleted) {
                     mDecodeLooper->unregisterHandler(mCodec->id());
 
                     if (mDecodeLooper != looper()) {
@@ -240,6 +210,12 @@ protected:
                     }
 
                     looper()->stop();
+                } else if (what == ACodec::kWhatError) {
+                    ALOGE("something went wrong, codec reported an error.");
+
+                    printf("E\n");
+
+                    (new AMessage(kWhatStop, id()))->post();
                 }
                 break;
             }
@@ -661,8 +637,6 @@ int main(int argc, char **argv) {
         new Controller(argv[0], decodeAudio, surface, renderToSurface);
 
     looper->registerHandler(controller);
-
-    signal(SIGINT, mysighandler);
 
     controller->startAsync();
 

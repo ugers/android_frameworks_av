@@ -33,7 +33,6 @@ struct StagefrightMetadataRetriever : public MediaMetadataRetrieverInterface {
     virtual ~StagefrightMetadataRetriever();
 
     virtual status_t setDataSource(
-            const sp<IMediaHTTPService> &httpService,
             const char *url,
             const KeyedVector<String8, String8> *headers);
 

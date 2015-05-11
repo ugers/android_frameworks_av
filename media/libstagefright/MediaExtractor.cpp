@@ -1,6 +1,5 @@
 /*
  * Copyright (C) 2009 The Android Open Source Project
- * Copyright (c) 2012-2013, The Linux Foundation. All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,24 +17,18 @@
 //#define LOG_NDEBUG 0
 #define LOG_TAG "MediaExtractor"
 #include <utils/Log.h>
-#include <cutils/properties.h>
 
 #include "include/AMRExtractor.h"
 #include "include/MP3Extractor.h"
 #include "include/MPEG4Extractor.h"
 #include "include/WAVExtractor.h"
 #include "include/OggExtractor.h"
-#include "include/PCMExtractor.h"
 #include "include/MPEG2PSExtractor.h"
 #include "include/MPEG2TSExtractor.h"
 #include "include/DRMExtractor.h"
 #include "include/WVMExtractor.h"
 #include "include/FLACExtractor.h"
 #include "include/AACExtractor.h"
-#ifdef QCOM_HARDWARE
-#include "include/ExtendedExtractor.h"
-#include "include/QCUtilityClass.h"
-#endif
 
 #include "matroska/MatroskaExtractor.h"
 
@@ -45,8 +38,6 @@
 #include <media/stagefright/MediaExtractor.h>
 #include <media/stagefright/MetaData.h>
 #include <utils/String8.h>
-
-#include "include/ExtendedUtils.h"
 
 namespace android {
 
@@ -138,15 +129,8 @@ retry:
         ret = new AACExtractor(source, meta);
     } else if (!strcasecmp(mime, MEDIA_MIMETYPE_CONTAINER_MPEG2PS)) {
         ret = new MPEG2PSExtractor(source);
-<<<<<<< HEAD
-#ifdef STE_FM
-    } else if (!strcasecmp(mime, MEDIA_MIMETYPE_AUDIO_RAW)) {
-        ret = new PCMExtractor(source);
-#endif
-=======
-    } else if (!isDrm && sPlugin.create) {
+    } else if (sPlugin.create) {
         ret = sPlugin.create(source, mime, meta);
->>>>>>> 8b8d02886bd9fb8d5ad451c03e486cfad74aa74e
     }
 
     if (ret != NULL) {
@@ -156,18 +140,7 @@ retry:
            ret->setDrmFlag(false);
        }
     }
-
-#ifdef QCOM_HARDWARE
-<<<<<<< HEAD
-    //ret will get deleted within if replaced
-    return QCUtilityClass::helper_MediaExtractor_CreateIfNeeded(ret,
-                                                                 source,
-                                                                   mime);
-#else
-=======
-    ret = ExtendedUtils::MediaExtractor_CreateIfNeeded(ret, source, mime);
-#endif
-
+	
     if (ret != NULL) {
 
         if (!(!strcasecmp(mime, MEDIA_MIMETYPE_CONTAINER_MPEG4) &&
@@ -179,9 +152,7 @@ retry:
         }
     }
 
->>>>>>> 8b8d02886bd9fb8d5ad451c03e486cfad74aa74e
     return ret;
-#endif
 }
 
 }  // namespace android

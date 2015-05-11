@@ -139,6 +139,18 @@ MediaScanResult MediaScanner::doProcessDirectory(
         return MEDIA_SCAN_RESULT_OK;
     }
 
+    // Completely skip all directories containing a ".noscanandnomtp" file
+    if (pathRemaining >= 15 /* strlen(".noscanandnomtp") */ ) {
+        strcpy(fileSpot, ".noscanandnomtp");
+        if (access(path, F_OK) == 0) {
+            ALOGV("found .noscanandnomtp, completely skipping");
+            return MEDIA_SCAN_RESULT_SKIPPED;
+        }
+
+        // restore path
+        fileSpot[0] = 0;
+    }
+
     // Treat all files as non-media in directories that contain a  ".nomedia" file
     if (pathRemaining >= 8 /* strlen(".nomedia") */ ) {
         strcpy(fileSpot, ".nomedia");
@@ -235,26 +247,6 @@ MediaScanResult MediaScanner::doProcessDirectoryEntry(
     }
 
     return MEDIA_SCAN_RESULT_OK;
-}
-
-MediaAlbumArt *MediaAlbumArt::clone() {
-    size_t byte_size = this->size() + sizeof(MediaAlbumArt);
-    MediaAlbumArt *result = reinterpret_cast<MediaAlbumArt *>(malloc(byte_size));
-    result->mSize = this->size();
-    memcpy(&result->mData[0], &this->mData[0], this->size());
-    return result;
-}
-
-void MediaAlbumArt::init(MediaAlbumArt *instance, int32_t dataSize, const void *data) {
-    instance->mSize = dataSize;
-    memcpy(&instance->mData[0], data, dataSize);
-}
-
-MediaAlbumArt *MediaAlbumArt::fromData(int32_t dataSize, const void* data) {
-    size_t byte_size = sizeof(MediaAlbumArt) + dataSize;
-    MediaAlbumArt *result = reinterpret_cast<MediaAlbumArt *>(malloc(byte_size));
-    init(result, dataSize, data);
-    return result;
 }
 
 }  // namespace android

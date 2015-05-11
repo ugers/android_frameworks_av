@@ -20,13 +20,17 @@
 
 #include "include/HTTPBase.h"
 
+#if CHROMIUM_AVAILABLE
+#include "include/chromium_http_stub.h"
+#endif
+
 #include <media/stagefright/foundation/ADebug.h>
 #include <media/stagefright/foundation/ALooper.h>
 
 #include <cutils/properties.h>
 #include <cutils/qtaguid.h>
 
-#include <NetdClient.h>
+#include <ConnectivityManager.h>
 
 namespace android {
 
@@ -37,7 +41,33 @@ HTTPBase::HTTPBase()
       mPrevBandwidthMeasureTimeUs(0),
       mPrevEstimatedBandWidthKbps(0),
       mBandWidthCollectFreqMs(5000),
-      mMaxBandwidthHistoryItems(100) {
+      mUIDValid(false),
+      mUID(0) {
+}
+
+// static
+sp<HTTPBase> HTTPBase::Create(uint32_t flags) {
+#if CHROMIUM_AVAILABLE
+        HTTPBase *dataSource = createChromiumHTTPDataSource(flags);
+        if (dataSource) {
+           return dataSource;
+        }
+#endif
+    {
+        TRESPASS();
+
+        return NULL;
+    }
+}
+
+// static
+status_t HTTPBase::UpdateProxyConfig(
+        const char *host, int32_t port, const char *exclusionList) {
+#if CHROMIUM_AVAILABLE
+    return UpdateChromiumHTTPDataSourceProxyConfig(host, port, exclusionList);
+#else
+    return INVALID_OPERATION;
+#endif
 }
 
 void HTTPBase::addBandwidthMeasurement(
@@ -51,7 +81,7 @@ void HTTPBase::addBandwidthMeasurement(
     mTotalTransferBytes += numBytes;
 
     mBandwidthHistory.push_back(entry);
-    if (++mNumBandwidthHistoryItems > mMaxBandwidthHistoryItems) {
+    if (++mNumBandwidthHistoryItems > 100) {
         BandwidthEntry *entry = &*mBandwidthHistory.begin();
         mTotalTransferTimeUs -= entry->mDelayUs;
         mTotalTransferBytes -= entry->mNumBytes;
@@ -105,8 +135,19 @@ status_t HTTPBase::setBandwidthStatCollectFreq(int32_t freqMs) {
     return OK;
 }
 
-void HTTPBase::setBandwidthHistorySize(size_t numHistoryItems) {
-    mMaxBandwidthHistoryItems = numHistoryItems;
+void HTTPBase::setUID(uid_t uid) {
+    mUIDValid = true;
+    mUID = uid;
+}
+
+bool HTTPBase::getUID(uid_t *uid) const {
+    if (!mUIDValid) {
+        return false;
+    }
+
+    *uid = mUID;
+
+    return true;
 }
 
 // static
@@ -127,7 +168,7 @@ void HTTPBase::UnRegisterSocketUserTag(int sockfd) {
 
 // static
 void HTTPBase::RegisterSocketUserMark(int sockfd, uid_t uid) {
-    setNetworkForUser(uid, sockfd);
+    ConnectivityManager::markSocketAsUser(sockfd, uid);
 }
 
 // static

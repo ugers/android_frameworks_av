@@ -25,8 +25,6 @@
 #define ALOGVV(...) ((void)0)
 #endif
 
-#include <inttypes.h>
-
 #include <utils/Log.h>
 #include <utils/Trace.h>
 #include <gui/Surface.h>
@@ -48,7 +46,6 @@ ZslProcessor::ZslProcessor(
         mDevice(client->getCameraDevice()),
         mSequencer(sequencer),
         mId(client->getCameraId()),
-        mDeleted(false),
         mZslBufferAvailable(false),
         mZslStreamId(NO_STREAM),
         mZslReprocessStreamId(NO_STREAM),
@@ -63,7 +60,7 @@ ZslProcessor::ZslProcessor(
 
 ZslProcessor::~ZslProcessor() {
     ALOGV("%s: Exit", __FUNCTION__);
-    disconnect();
+    deleteStream();
 }
 
 void ZslProcessor::onFrameAvailable() {
@@ -74,19 +71,18 @@ void ZslProcessor::onFrameAvailable() {
     }
 }
 
-void ZslProcessor::onResultAvailable(const CaptureResult &result) {
-    ATRACE_CALL();
-    ALOGV("%s:", __FUNCTION__);
+void ZslProcessor::onFrameAvailable(int32_t /*requestId*/,
+        const CameraMetadata &frame) {
     Mutex::Autolock l(mInputMutex);
     camera_metadata_ro_entry_t entry;
-    entry = result.mMetadata.find(ANDROID_SENSOR_TIMESTAMP);
+    entry = frame.find(ANDROID_SENSOR_TIMESTAMP);
     nsecs_t timestamp = entry.data.i64[0];
     (void)timestamp;
-    ALOGVV("Got preview frame for timestamp %" PRId64, timestamp);
+    ALOGVV("Got preview frame for timestamp %lld", timestamp);
 
     if (mState != RUNNING) return;
 
-    mFrameList.editItemAt(mFrameListHead) = result.mMetadata;
+    mFrameList.editItemAt(mFrameListHead) = frame;
     mFrameListHead = (mFrameListHead + 1) % kFrameListDepth;
 
     findMatchesLocked();
@@ -132,15 +128,13 @@ status_t ZslProcessor::updateStream(const Parameters &params) {
 
     if (mZslConsumer == 0) {
         // Create CPU buffer queue endpoint
-        sp<IGraphicBufferProducer> producer;
-        sp<IGraphicBufferConsumer> consumer;
-        BufferQueue::createBufferQueue(&producer, &consumer);
-        mZslConsumer = new BufferItemConsumer(consumer,
+        sp<BufferQueue> bq = new BufferQueue();
+        mZslConsumer = new BufferItemConsumer(bq,
             GRALLOC_USAGE_HW_CAMERA_ZSL,
             kZslBufferDepth);
         mZslConsumer->setFrameAvailableListener(this);
         mZslConsumer->setName(String8("Camera2Client::ZslConsumer"));
-        mZslWindow = new Surface(producer);
+        mZslWindow = new Surface(bq);
     }
 
     if (mZslStreamId != NO_STREAM) {
@@ -176,8 +170,6 @@ status_t ZslProcessor::updateStream(const Parameters &params) {
         }
     }
 
-    mDeleted = false;
-
     if (mZslStreamId == NO_STREAM) {
         // Create stream for HAL production
         // TODO: Sort out better way to select resolution for ZSL
@@ -186,7 +178,8 @@ status_t ZslProcessor::updateStream(const Parameters &params) {
                 (int)HAL_PIXEL_FORMAT_IMPLEMENTATION_DEFINED;
         res = device->createStream(mZslWindow,
                 params.fastInfo.arrayWidth, params.fastInfo.arrayHeight,
-                streamType, &mZslStreamId);
+                streamType, 0,
+                &mZslStreamId);
         if (res != OK) {
             ALOGE("%s: Camera %d: Can't create output stream for ZSL: "
                     "%s (%d)", __FUNCTION__, mId,
@@ -204,21 +197,12 @@ status_t ZslProcessor::updateStream(const Parameters &params) {
     }
     client->registerFrameListener(Camera2Client::kPreviewRequestIdStart,
             Camera2Client::kPreviewRequestIdEnd,
-            this,
-            /*sendPartials*/false);
+            this);
 
     return OK;
 }
 
 status_t ZslProcessor::deleteStream() {
-    ATRACE_CALL();
-    Mutex::Autolock l(mInputMutex);
-    // WAR(b/15408128): do not delete stream unless client is being disconnected.
-    mDeleted = true;
-    return OK;
-}
-
-status_t ZslProcessor::disconnect() {
     ATRACE_CALL();
     status_t res;
 
@@ -477,7 +461,7 @@ status_t ZslProcessor::processNewZslBuffer() {
 
     mZslQueueHead = (mZslQueueHead + 1) % kZslBufferDepth;
 
-    ALOGVV("  Acquired buffer, timestamp %" PRId64, queueHead.buffer.mTimestamp);
+    ALOGVV("  Acquired buffer, timestamp %lld", queueHead.buffer.mTimestamp);
 
     findMatchesLocked();
 
@@ -496,7 +480,7 @@ void ZslProcessor::findMatchesLocked() {
                 entry = queueEntry.frame.find(ANDROID_SENSOR_TIMESTAMP);
                 frameTimestamp = entry.data.i64[0];
             }
-            ALOGVV("   %d: b: %" PRId64 "\tf: %" PRId64, i,
+            ALOGVV("   %d: b: %lld\tf: %lld", i,
                     bufferTimestamp, frameTimestamp );
         }
         if (queueEntry.frame.isEmpty() && bufferTimestamp != 0) {
@@ -514,13 +498,13 @@ void ZslProcessor::findMatchesLocked() {
                     }
                     nsecs_t frameTimestamp = entry.data.i64[0];
                     if (bufferTimestamp == frameTimestamp) {
-                        ALOGVV("%s: Found match %" PRId64, __FUNCTION__,
+                        ALOGVV("%s: Found match %lld", __FUNCTION__,
                                 frameTimestamp);
                         match = true;
                     } else {
                         int64_t delta = abs(bufferTimestamp - frameTimestamp);
                         if ( delta < 1000000) {
-                            ALOGVV("%s: Found close match %" PRId64 " (delta %" PRId64 ")",
+                            ALOGVV("%s: Found close match %lld (delta %lld)",
                                     __FUNCTION__, bufferTimestamp, delta);
                             match = true;
                         }
@@ -556,7 +540,7 @@ void ZslProcessor::dumpZslQueue(int fd) const {
             if (entry.count > 0) frameAeState = entry.data.u8[0];
         }
         String8 result =
-                String8::format("   %zu: b: %" PRId64 "\tf: %" PRId64 ", AE state: %d", i,
+                String8::format("   %d: b: %lld\tf: %lld, AE state: %d", i,
                         bufferTimestamp, frameTimestamp, frameAeState);
         ALOGV("%s", result.string());
         if (fd != -1) {

@@ -820,12 +820,6 @@ ToneGenerator::ToneGenerator(audio_stream_type_t streamType, float volume, bool 
         ALOGE("Unable to marshal AudioFlinger");
         return;
     }
-
-    if (mSamplingRate > 48000) {
-        ALOGW("mSamplingRate %d . limit to 48k", mSamplingRate);
-        mSamplingRate = 48000;
-    }
-
     mThreadCanCallJava = threadCanCallJava;
     mStreamType = streamType;
     mVolume = volume;
@@ -1064,30 +1058,22 @@ void ToneGenerator::stopTone() {
 ////////////////////////////////////////////////////////////////////////////////
 bool ToneGenerator::initAudioTrack() {
 
-    audio_output_flags_t flags = AUDIO_OUTPUT_FLAG_FAST;
-#ifdef QCOM_HARDWARE
-    // Set AUDIO_OUTPUT_FLAG_DIRECT and AUDIO_OUTPUT_FLAG_INCALL_MUSIC for incall music delivery
-    if (mStreamType == AUDIO_STREAM_INCALL_MUSIC) {
-        flags = (audio_output_flags_t)(AUDIO_OUTPUT_FLAG_DIRECT | AUDIO_OUTPUT_FLAG_INCALL_MUSIC);
-    }
-#endif
-
     // Open audio track in mono, PCM 16bit, default sampling rate, default buffer size
     mpAudioTrack = new AudioTrack();
     ALOGV("Create Track: %p", mpAudioTrack.get());
 
     mpAudioTrack->set(mStreamType,
-                      mSamplingRate,
+                      0,    // sampleRate
                       AUDIO_FORMAT_PCM_16_BIT,
                       AUDIO_CHANNEL_OUT_MONO,
                       0,    // frameCount
-                      flags,
+                      AUDIO_OUTPUT_FLAG_FAST,
                       audioCallback,
                       this, // user
                       0,    // notificationFrames
                       0,    // sharedBuffer
                       mThreadCanCallJava,
-                      AUDIO_SESSION_ALLOCATE,
+                      0,    // sessionId
                       AudioTrack::TRANSFER_CALLBACK);
 
     if (mpAudioTrack->initCheck() != NO_ERROR) {

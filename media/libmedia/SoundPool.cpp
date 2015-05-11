@@ -16,19 +16,14 @@
 
 //#define LOG_NDEBUG 0
 #define LOG_TAG "SoundPool"
-
-#include <inttypes.h>
-
 #include <utils/Log.h>
 
-#define USE_SHARED_MEM_BUFFER
+//#define USE_SHARED_MEM_BUFFER
 
 #include <media/AudioTrack.h>
-#include <media/IMediaHTTPService.h>
 #include <media/mediaplayer.h>
 #include <media/SoundPool.h>
 #include "SoundPoolThread.h"
-#include <media/AudioPolicyHelper.h>
 
 namespace android
 {
@@ -40,10 +35,10 @@ uint32_t kDefaultFrameCount = 1200;
 size_t kDefaultHeapSize = 1024 * 1024; // 1MB
 
 
-SoundPool::SoundPool(int maxChannels, const audio_attributes_t* pAttributes)
+SoundPool::SoundPool(int maxChannels, audio_stream_type_t streamType, int srcQuality)
 {
-    ALOGV("SoundPool constructor: maxChannels=%d, attr.usage=%d, attr.flags=0x%x, attr.tags=%s",
-            maxChannels, pAttributes->usage, pAttributes->flags, pAttributes->tags);
+    ALOGV("SoundPool constructor: maxChannels=%d, streamType=%d, srcQuality=%d",
+            maxChannels, streamType, srcQuality);
 
     // check limits
     mMaxChannels = maxChannels;
@@ -57,7 +52,8 @@ SoundPool::SoundPool(int maxChannels, const audio_attributes_t* pAttributes)
 
     mQuit = false;
     mDecodeThread = 0;
-    memcpy(&mAttributes, pAttributes, sizeof(audio_attributes_t));
+    mStreamType = streamType;
+    mSrcQuality = srcQuality;
     mAllocated = 0;
     mNextSampleID = 0;
     mNextChannelID = 0;
@@ -203,7 +199,7 @@ SoundChannel* SoundPool::findNextChannel(int channelID)
     return NULL;
 }
 
-int SoundPool::load(const char* path, int priority __unused)
+int SoundPool::load(const char* path, int priority)
 {
     ALOGV("load: path=%s, priority=%d", path, priority);
     Mutex::Autolock lock(&mLock);
@@ -213,9 +209,9 @@ int SoundPool::load(const char* path, int priority __unused)
     return sample->sampleID();
 }
 
-int SoundPool::load(int fd, int64_t offset, int64_t length, int priority __unused)
+int SoundPool::load(int fd, int64_t offset, int64_t length, int priority)
 {
-    ALOGV("load: fd=%d, offset=%" PRId64 ", length=%" PRId64 ", priority=%d",
+    ALOGV("load: fd=%d, offset=%lld, length=%lld, priority=%d",
             fd, offset, length, priority);
     Mutex::Autolock lock(&mLock);
     sp<Sample> sample = new Sample(++mNextSampleID, fd, offset, length);
@@ -465,8 +461,7 @@ Sample::Sample(int sampleID, int fd, int64_t offset, int64_t length)
     mFd = dup(fd);
     mOffset = offset;
     mLength = length;
-    ALOGV("create sampleID=%d, fd=%d, offset=%" PRId64 " length=%" PRId64,
-        mSampleID, mFd, mLength, mOffset);
+    ALOGV("create sampleID=%d, fd=%d, offset=%lld, length=%lld", mSampleID, mFd, mLength, mOffset);
 }
 
 void Sample::init()
@@ -501,14 +496,7 @@ status_t Sample::doLoad()
 
     ALOGV("Start decode");
     if (mUrl) {
-        status = MediaPlayer::decode(
-                NULL /* httpService */,
-                mUrl,
-                &sampleRate,
-                &numChannels,
-                &format,
-                mHeap,
-                &mSize);
+        status = MediaPlayer::decode(mUrl, &sampleRate, &numChannels, &format, mHeap, &mSize);
     } else {
         status = MediaPlayer::decode(mFd, mOffset, mLength, &sampleRate, &numChannels, &format,
                                      mHeap, &mSize);
@@ -520,7 +508,7 @@ status_t Sample::doLoad()
         ALOGE("Unable to load sample: %s", mUrl);
         goto error;
     }
-    ALOGV("pointer = %p, size = %zu, sampleRate = %u, numChannels = %d",
+    ALOGV("pointer = %p, size = %u, sampleRate = %u, numChannels = %d",
           mHeap->getBase(), mSize, sampleRate, numChannels);
 
     if (sampleRate > kMaxSampleRate) {
@@ -580,7 +568,7 @@ void SoundChannel::play(const sp<Sample>& sample, int nextChannelID, float leftV
         // initialize track
         size_t afFrameCount;
         uint32_t afSampleRate;
-        audio_stream_type_t streamType = audio_attributes_to_stream_type(mSoundPool->attributes());
+        audio_stream_type_t streamType = mSoundPool->streamType();
         if (AudioSystem::getOutputFrameCount(&afFrameCount, streamType) != NO_ERROR) {
             afFrameCount = kDefaultFrameCount;
         }
@@ -591,7 +579,7 @@ void SoundChannel::play(const sp<Sample>& sample, int nextChannelID, float leftV
         uint32_t sampleRate = uint32_t(float(sample->sampleRate()) * rate + 0.5);
         uint32_t totalFrames = (kDefaultBufferCount * afFrameCount * sampleRate) / afSampleRate;
         uint32_t bufferFrames = (totalFrames + (kDefaultBufferCount - 1)) / kDefaultBufferCount;
-        size_t frameCount = 0;
+        uint32_t frameCount = 0;
 
         if (loop) {
             frameCount = sample->size()/numChannels/
@@ -612,15 +600,16 @@ void SoundChannel::play(const sp<Sample>& sample, int nextChannelID, float leftV
         // wrong audio audio buffer size  (mAudioBufferSize)
         unsigned long toggle = mToggle ^ 1;
         void *userData = (void *)((unsigned long)this | toggle);
-        audio_channel_mask_t channelMask = audio_channel_out_mask_from_count(numChannels);
+        uint32_t channels = (numChannels == 2) ?
+                AUDIO_CHANNEL_OUT_STEREO : AUDIO_CHANNEL_OUT_MONO;
 
         // do not create a new audio track if current track is compatible with sample parameters
 #ifdef USE_SHARED_MEM_BUFFER
         newTrack = new AudioTrack(streamType, sampleRate, sample->format(),
-                channelMask, sample->getIMemory(), AUDIO_OUTPUT_FLAG_FAST, callback, userData);
+                channels, sample->getIMemory(), AUDIO_OUTPUT_FLAG_FAST, callback, userData);
 #else
         newTrack = new AudioTrack(streamType, sampleRate, sample->format(),
-                channelMask, frameCount, AUDIO_OUTPUT_FLAG_FAST, callback, userData,
+                channels, frameCount, AUDIO_OUTPUT_FLAG_FAST, callback, userData,
                 bufferFrames);
 #endif
         oldTrack = mAudioTrack;
@@ -741,8 +730,7 @@ void SoundChannel::process(int event, void *info, unsigned long toggle)
                     count = b->size;
                 }
                 memcpy(q, p, count);
-//              ALOGV("fill: q=%p, p=%p, mPos=%u, b->size=%u, count=%d", q, p, mPos, b->size,
-//                      count);
+//              ALOGV("fill: q=%p, p=%p, mPos=%u, b->size=%u, count=%d", q, p, mPos, b->size, count);
             } else if (mPos < mAudioBufferSize) {
                 count = mAudioBufferSize - mPos;
                 if (count > b->size) {

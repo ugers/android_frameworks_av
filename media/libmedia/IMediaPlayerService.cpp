@@ -23,8 +23,6 @@
 #include <media/ICrypto.h>
 #include <media/IDrm.h>
 #include <media/IHDCP.h>
-#include <media/IMediaCodecList.h>
-#include <media/IMediaHTTPService.h>
 #include <media/IMediaPlayerService.h>
 #include <media/IMediaRecorder.h>
 #include <media/IOMX.h>
@@ -50,7 +48,6 @@ enum {
     ADD_BATTERY_DATA,
     PULL_BATTERY_DATA,
     LISTEN_FOR_REMOTE_DISPLAY,
-<<<<<<< HEAD
     /* add by Gary. start {{----------------------------------- */
     SET_SCREEN,
     GET_SCREEN,
@@ -78,15 +75,13 @@ enum {
     ,
     SET_GLOBAL_SUB_GATE,
     GET_GLOBAL_SUB_GATE,
-    /* add by Gary. end   -----------------------------------}} */
-    /* add by Gary. start {{----------------------------------- */
-    /* 2012-4-24 */
-    /* add two general interfaces for expansibility */
+ 	UPDATE_PROXY_CONFIG,
+    //* add general interfaces for expansibility 
     GENERAL_GLOBAL_INTERFACE,
-    /* add by Gary. end   -----------------------------------}} */
-=======
-    GET_CODEC_LIST,
->>>>>>> 8b8d02886bd9fb8d5ad451c03e486cfad74aa74e
+	/*Begin (Modified by Michael. 2014.05.22)*/
+	GET_MEDIAPLAYER_LIST,
+	GET_MEDIAPLAYER_INFO,
+	/*End (Modified by Michael. 2014.05.22)*/
 };
 
 class BpMediaPlayerService: public BpInterface<IMediaPlayerService>
@@ -124,21 +119,12 @@ public:
         return interface_cast<IMediaRecorder>(reply.readStrongBinder());
     }
 
-    virtual status_t decode(
-            const sp<IMediaHTTPService> &httpService,
-            const char* url,
-            uint32_t *pSampleRate,
-            int* pNumChannels,
-            audio_format_t* pFormat,
-            const sp<IMemoryHeap>& heap,
-            size_t *pSize)
+    virtual status_t decode(const char* url, uint32_t *pSampleRate, int* pNumChannels,
+                               audio_format_t* pFormat,
+                               const sp<IMemoryHeap>& heap, size_t *pSize)
     {
         Parcel data, reply;
         data.writeInterfaceToken(IMediaPlayerService::getInterfaceDescriptor());
-        data.writeInt32(httpService != NULL);
-        if (httpService != NULL) {
-            data.writeStrongBinder(httpService->asBinder());
-        }
         data.writeCString(url);
         data.writeStrongBinder(heap->asBinder());
         status_t status = remote()->transact(DECODE_URL, data, &reply);
@@ -229,8 +215,31 @@ public:
         remote()->transact(LISTEN_FOR_REMOTE_DISPLAY, data, &reply);
         return interface_cast<IRemoteDisplay>(reply.readStrongBinder());
     }
+	
+	/*Begin (Modified by Michael. 2014.05.22)*/
+	// get mediaplayer list about mediaplayer
+    status_t getMediaPlayerList()
+    {
+         Parcel data, reply;
+        data.writeInterfaceToken(IMediaPlayerService::getInterfaceDescriptor());
+        remote()->transact(GET_MEDIAPLAYER_LIST, data, &reply);
+        return reply.readInt32();
+    }
+    // get information about a mediaplayer
+    status_t getMediaPlayerInfo(int mediaPlayerId, 
+                                   struct MediaPlayerInfo* mediaPlayerInfo) {
+        Parcel data, reply;
+        data.writeInterfaceToken(IMediaPlayerService::getInterfaceDescriptor());
+        data.writeInt32(mediaPlayerId);
+        remote()->transact(GET_MEDIAPLAYER_INFO, data, &reply);
+        mediaPlayerInfo->width = reply.readInt32();
+        mediaPlayerInfo->height = reply.readInt32();
+               mediaPlayerInfo->codecType = reply.readInt32();
+        mediaPlayerInfo->playState = reply.readInt32();
+        return reply.readInt32();
+    }
+	/*End (Modified by Michael. 2014.05.22)*/
 
-<<<<<<< HEAD
     /* add by Gary. start {{----------------------------------- */
     status_t setScreen(int screen)
     {
@@ -349,10 +358,25 @@ public:
     }
     
     /* add by Gary. end   -----------------------------------}} */
+    virtual status_t updateProxyConfig(
+            const char *host, int32_t port, const char *exclusionList) {
+        Parcel data, reply;
 
-    /* add by Gary. start {{----------------------------------- */
-    /* 2012-03-12 */
-    /* add the global interfaces to control the subtitle gate  */
+        data.writeInterfaceToken(IMediaPlayerService::getInterfaceDescriptor());
+        if (host == NULL) {
+            data.writeInt32(0);
+        } else {
+            data.writeInt32(1);
+            data.writeCString(host);
+            data.writeInt32(port);
+            data.writeCString(exclusionList);
+        }
+
+        remote()->transact(UPDATE_PROXY_CONFIG, data, &reply);
+
+        return reply.readInt32();
+    }
+    //* add the global interfaces to control the subtitle gate
     status_t setGlobalSubGate(bool showSub)
     {
         Parcel data, reply;
@@ -369,11 +393,8 @@ public:
         remote()->transact(GET_GLOBAL_SUB_GATE, data, &reply);
         return reply.readInt32();
     }    
-    /* add by Gary. end   -----------------------------------}} */
 
-    /* add by Gary. start {{----------------------------------- */
-    /* 2012-4-24 */
-    /* add two general interfaces for expansibility */
+    //* add general interfaces for expansibility
     status_t generalGlobalInterface(int cmd, int int1, int int2, int int3, void *p)
     {
         Parcel data, reply;
@@ -408,15 +429,6 @@ public:
         }
         return ret;
     }
-    /* add by Gary. end   -----------------------------------}} */ 
-=======
-    virtual sp<IMediaCodecList> getCodecList() const {
-        Parcel data, reply;
-        data.writeInterfaceToken(IMediaPlayerService::getInterfaceDescriptor());
-        remote()->transact(GET_CODEC_LIST, data, &reply);
-        return interface_cast<IMediaCodecList>(reply.readStrongBinder());
-    }
->>>>>>> 8b8d02886bd9fb8d5ad451c03e486cfad74aa74e
 };
 
 IMPLEMENT_META_INTERFACE(MediaPlayerService, "android.media.IMediaPlayerService");
@@ -438,25 +450,13 @@ status_t BnMediaPlayerService::onTransact(
         } break;
         case DECODE_URL: {
             CHECK_INTERFACE(IMediaPlayerService, data, reply);
-            sp<IMediaHTTPService> httpService;
-            if (data.readInt32()) {
-                httpService =
-                    interface_cast<IMediaHTTPService>(data.readStrongBinder());
-            }
             const char* url = data.readCString();
             sp<IMemoryHeap> heap = interface_cast<IMemoryHeap>(data.readStrongBinder());
             uint32_t sampleRate;
             int numChannels;
             audio_format_t format;
             size_t size;
-            status_t status =
-                decode(httpService,
-                       url,
-                       &sampleRate,
-                       &numChannels,
-                       &format,
-                       heap,
-                       &size);
+            status_t status = decode(url, &sampleRate, &numChannels, &format, heap, &size);
             reply->writeInt32(status);
             if (status == NO_ERROR) {
                 reply->writeInt32(sampleRate);
@@ -544,7 +544,26 @@ status_t BnMediaPlayerService::onTransact(
             reply->writeStrongBinder(display->asBinder());
             return NO_ERROR;
         } break;
-<<<<<<< HEAD
+		/*Begin (Modified by Michael. 2014.05.22)*/
+	    case GET_MEDIAPLAYER_LIST: {
+            CHECK_INTERFACE(IMediaPlayer, data, reply);
+            reply->writeInt32(getMediaPlayerList());
+            return NO_ERROR;
+        } break;
+        case GET_MEDIAPLAYER_INFO: {
+            CHECK_INTERFACE(IMediaPlayer, data, reply);
+            struct MediaPlayerInfo mediaPlayerInfo;
+            memset(&mediaPlayerInfo, 0, sizeof(mediaPlayerInfo));
+            status_t result = getMediaPlayerInfo(data.readInt32(), &mediaPlayerInfo);
+            reply->writeInt32(mediaPlayerInfo.width);
+            reply->writeInt32(mediaPlayerInfo.height);
+            reply->writeInt32(mediaPlayerInfo.codecType);
+            reply->writeInt32(mediaPlayerInfo.playState);
+            reply->writeInt32(result);
+            return NO_ERROR;
+        } break;
+		/*End (Modified by Michael. 2014.05.22)*/
+		
         /* add by Gary. start {{----------------------------------- */
         case SET_SCREEN: {
             CHECK_INTERFACE(IMediaPlayer, data, reply);
@@ -636,11 +655,25 @@ status_t BnMediaPlayerService::onTransact(
             reply->writeInt32(getGlobalSubGate());
             return NO_ERROR;
         } break;
-        /* add by Gary. end   -----------------------------------}} */
-        /* add by Gary. end   -----------------------------------}} */
-        /* add by Gary. start {{----------------------------------- */
-        /* 2012-4-24 */
-        /* add two general interfaces for expansibility */
+        case UPDATE_PROXY_CONFIG:
+        {
+            CHECK_INTERFACE(IMediaPlayerService, data, reply);
+
+            const char *host = NULL;
+            int32_t port = 0;
+            const char *exclusionList = NULL;
+
+            if (data.readInt32()) {
+                host = data.readCString();
+                port = data.readInt32();
+                exclusionList = data.readCString();
+            }
+
+            reply->writeInt32(updateProxyConfig(host, port, exclusionList));
+
+            return OK;
+        }
+        //* add general interfaces for expansibility 
         case GENERAL_GLOBAL_INTERFACE: {      
             CHECK_INTERFACE(IMediaPlayer, data, reply);
             int cmd;
@@ -682,15 +715,6 @@ status_t BnMediaPlayerService::onTransact(
             }
             return NO_ERROR;
         } break;
-        /* add by Gary. end   -----------------------------------}} */
-=======
-        case GET_CODEC_LIST: {
-            CHECK_INTERFACE(IMediaPlayerService, data, reply);
-            sp<IMediaCodecList> mcl = getCodecList();
-            reply->writeStrongBinder(mcl->asBinder());
-            return NO_ERROR;
-        } break;
->>>>>>> 8b8d02886bd9fb8d5ad451c03e486cfad74aa74e
         default:
             return BBinder::onTransact(code, data, reply, flags);
     }

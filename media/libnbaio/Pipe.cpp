@@ -25,22 +25,19 @@
 
 namespace android {
 
-Pipe::Pipe(size_t maxFrames, const NBAIO_Format& format, void *buffer) :
+Pipe::Pipe(size_t maxFrames, NBAIO_Format format) :
         NBAIO_Sink(format),
         mMaxFrames(roundup(maxFrames)),
-        mBuffer(buffer == NULL ? malloc(mMaxFrames * Format_frameSize(format)) : buffer),
+        mBuffer(malloc(mMaxFrames * Format_frameSize(format))),
         mRear(0),
-        mReaders(0),
-        mFreeBufferInDestructor(buffer == NULL)
+        mReaders(0)
 {
 }
 
 Pipe::~Pipe()
 {
     ALOG_ASSERT(android_atomic_acquire_load(&mReaders) == 0);
-    if (mFreeBufferInDestructor) {
-        free(mBuffer);
-    }
+    free(mBuffer);
 }
 
 ssize_t Pipe::write(const void *buffer, size_t count)
@@ -55,13 +52,13 @@ ssize_t Pipe::write(const void *buffer, size_t count)
     if (CC_LIKELY(written > count)) {
         written = count;
     }
-    memcpy((char *) mBuffer + (rear * mFrameSize), buffer, written * mFrameSize);
+    memcpy((char *) mBuffer + (rear << mBitShift), buffer, written << mBitShift);
     if (CC_UNLIKELY(rear + written == mMaxFrames)) {
         if (CC_UNLIKELY((count -= written) > rear)) {
             count = rear;
         }
         if (CC_LIKELY(count > 0)) {
-            memcpy(mBuffer, (char *) buffer + (written * mFrameSize), count * mFrameSize);
+            memcpy(mBuffer, (char *) buffer + (written << mBitShift), count << mBitShift);
             written += count;
         }
     }

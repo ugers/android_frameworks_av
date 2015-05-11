@@ -78,7 +78,7 @@ void SoftAMRWBEncoder::initPorts() {
     def.eDir = OMX_DirInput;
     def.nBufferCountMin = kNumBuffers;
     def.nBufferCountActual = def.nBufferCountMin;
-    def.nBufferSize = kNumSamplesPerFrame * sizeof(int16_t) * 4;
+    def.nBufferSize = kNumSamplesPerFrame * sizeof(int16_t);
     def.bEnabled = OMX_TRUE;
     def.bPopulated = OMX_FALSE;
     def.eDomain = OMX_PortDomainAudio;
@@ -317,7 +317,7 @@ OMX_ERRORTYPE SoftAMRWBEncoder::internalSetParameter(
     }
 }
 
-void SoftAMRWBEncoder::onQueueFilled(OMX_U32 /* portIndex */) {
+void SoftAMRWBEncoder::onQueueFilled(OMX_U32 portIndex) {
     if (mSignalledError) {
         return;
     }

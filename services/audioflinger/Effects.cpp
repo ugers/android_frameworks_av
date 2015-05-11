@@ -45,8 +45,6 @@
 #define ALOGVV(a...) do { } while(0)
 #endif
 
-#define min(a, b) ((a) < (b) ? (a) : (b))
-
 namespace android {
 
 // ----------------------------------------------------------------------------
@@ -69,12 +67,10 @@ AudioFlinger::EffectModule::EffectModule(ThreadBase *thread,
       mStatus(NO_INIT), mState(IDLE),
       // mMaxDisableWaitCnt is set by configure() and not used before then
       // mDisableWaitCnt is set by process() and updateState() and not used before then
-      mSuspended(false),
 #ifdef QCOM_DIRECTTRACK
-      mAudioFlinger(thread->mAudioFlinger),
-      mIsForLPA(false)
+      mSuspended(false), mIsForLPA(false)
 #else
-      mAudioFlinger(thread->mAudioFlinger)
+      mSuspended(false)
 #endif
 {
     ALOGV("Constructor %p", this);
@@ -125,9 +121,8 @@ status_t AudioFlinger::EffectModule::addHandle(EffectHandle *handle)
             continue;
         }
         // first non destroyed handle is considered in control
-        if (controlHandle == NULL) {
+        if (controlHandle == NULL)
             controlHandle = h;
-        }
         if (h->priority() <= priority) {
             break;
         }
@@ -204,19 +199,9 @@ size_t AudioFlinger::EffectModule::disconnect(EffectHandle *handle, bool unpinIf
     // destructor before we exit
     sp<EffectModule> keep(this);
     {
-        if (removeHandle(handle) == 0) {
-            if (!isPinned() || unpinIfLast) {
-                sp<ThreadBase> thread = mThread.promote();
-                if (thread != 0) {
-                    Mutex::Autolock _l(thread->mLock);
-                    thread->removeEffect_l(this);
-                }
-                sp<AudioFlinger> af = mAudioFlinger.promote();
-                if (af != 0) {
-                    af->updateOrphanEffectChains(this);
-                }
-                AudioSystem::unregisterEffect(mId);
-            }
+        sp<ThreadBase> thread = mThread.promote();
+        if (thread != 0) {
+            thread->disconnectEffect(keep, handle, unpinIfLast);
         }
     }
     return mHandles.size();
@@ -350,11 +335,23 @@ status_t AudioFlinger::EffectModule::configure()
     // TODO: handle configuration of effects replacing track process
     channelMask = thread->channelMask();
 #ifdef QCOM_DIRECTTRACK
-    mIsForLPA = isForLPA;
-
     if(popcount(channelMask) > 2) {
         ALOGE("Error: Trying to apply effect on  %d channel content",popcount(channelMask));
         return INVALID_OPERATION;
+    }
+    mIsForLPA = isForLPA;
+    if(isForLPA) {
+        if (channelCount == 1) {
+            channels = AUDIO_CHANNEL_OUT_MONO;
+        } else {
+            channels = AUDIO_CHANNEL_OUT_STEREO;
+        }
+    } else {
+        if (thread->channelCount() == 1) {
+            channels = AUDIO_CHANNEL_OUT_MONO;
+        } else {
+            channels = AUDIO_CHANNEL_OUT_STEREO;
+        }
     }
 #endif
 
@@ -477,20 +474,6 @@ status_t AudioFlinger::EffectModule::init()
     return status;
 }
 
-void AudioFlinger::EffectModule::addEffectToHal_l()
-{
-    if ((mDescriptor.flags & EFFECT_FLAG_TYPE_MASK) == EFFECT_FLAG_TYPE_PRE_PROC ||
-         (mDescriptor.flags & EFFECT_FLAG_TYPE_MASK) == EFFECT_FLAG_TYPE_POST_PROC) {
-        sp<ThreadBase> thread = mThread.promote();
-        if (thread != 0) {
-            audio_stream_t *stream = thread->stream();
-            if (stream != NULL) {
-                stream->add_audio_effect(stream, mEffectInterface);
-            }
-        }
-    }
-}
-
 status_t AudioFlinger::EffectModule::start()
 {
     Mutex::Autolock _l(mLock);
@@ -516,11 +499,15 @@ status_t AudioFlinger::EffectModule::start_l()
     if (status == 0) {
         status = cmdStatus;
     }
-    if (status == 0) {
-        addEffectToHal_l();
-        sp<EffectChain> chain = mChain.promote();
-        if (chain != 0) {
-            chain->forceVolume();
+    if (status == 0 &&
+            ((mDescriptor.flags & EFFECT_FLAG_TYPE_MASK) == EFFECT_FLAG_TYPE_PRE_PROC ||
+             (mDescriptor.flags & EFFECT_FLAG_TYPE_MASK) == EFFECT_FLAG_TYPE_POST_PROC)) {
+        sp<ThreadBase> thread = mThread.promote();
+        if (thread != 0) {
+            audio_stream_t *stream = thread->stream();
+            if (stream != NULL) {
+                stream->add_audio_effect(stream, mEffectInterface);
+            }
         }
     }
     return status;
@@ -887,112 +874,7 @@ bool AudioFlinger::EffectModule::isOffloaded() const
     return mOffloaded;
 }
 
-String8 effectFlagsToString(uint32_t flags) {
-    String8 s;
-
-    s.append("conn. mode: ");
-    switch (flags & EFFECT_FLAG_TYPE_MASK) {
-    case EFFECT_FLAG_TYPE_INSERT: s.append("insert"); break;
-    case EFFECT_FLAG_TYPE_AUXILIARY: s.append("auxiliary"); break;
-    case EFFECT_FLAG_TYPE_REPLACE: s.append("replace"); break;
-    case EFFECT_FLAG_TYPE_PRE_PROC: s.append("preproc"); break;
-    case EFFECT_FLAG_TYPE_POST_PROC: s.append("postproc"); break;
-    default: s.append("unknown/reserved"); break;
-    }
-    s.append(", ");
-
-    s.append("insert pref: ");
-    switch (flags & EFFECT_FLAG_INSERT_MASK) {
-    case EFFECT_FLAG_INSERT_ANY: s.append("any"); break;
-    case EFFECT_FLAG_INSERT_FIRST: s.append("first"); break;
-    case EFFECT_FLAG_INSERT_LAST: s.append("last"); break;
-    case EFFECT_FLAG_INSERT_EXCLUSIVE: s.append("exclusive"); break;
-    default: s.append("unknown/reserved"); break;
-    }
-    s.append(", ");
-
-    s.append("volume mgmt: ");
-    switch (flags & EFFECT_FLAG_VOLUME_MASK) {
-    case EFFECT_FLAG_VOLUME_NONE: s.append("none"); break;
-    case EFFECT_FLAG_VOLUME_CTRL: s.append("implements control"); break;
-    case EFFECT_FLAG_VOLUME_IND: s.append("requires indication"); break;
-    default: s.append("unknown/reserved"); break;
-    }
-    s.append(", ");
-
-    uint32_t devind = flags & EFFECT_FLAG_DEVICE_MASK;
-    if (devind) {
-        s.append("device indication: ");
-        switch (devind) {
-        case EFFECT_FLAG_DEVICE_IND: s.append("requires updates"); break;
-        default: s.append("unknown/reserved"); break;
-        }
-        s.append(", ");
-    }
-
-    s.append("input mode: ");
-    switch (flags & EFFECT_FLAG_INPUT_MASK) {
-    case EFFECT_FLAG_INPUT_DIRECT: s.append("direct"); break;
-    case EFFECT_FLAG_INPUT_PROVIDER: s.append("provider"); break;
-    case EFFECT_FLAG_INPUT_BOTH: s.append("direct+provider"); break;
-    default: s.append("not set"); break;
-    }
-    s.append(", ");
-
-    s.append("output mode: ");
-    switch (flags & EFFECT_FLAG_OUTPUT_MASK) {
-    case EFFECT_FLAG_OUTPUT_DIRECT: s.append("direct"); break;
-    case EFFECT_FLAG_OUTPUT_PROVIDER: s.append("provider"); break;
-    case EFFECT_FLAG_OUTPUT_BOTH: s.append("direct+provider"); break;
-    default: s.append("not set"); break;
-    }
-    s.append(", ");
-
-    uint32_t accel = flags & EFFECT_FLAG_HW_ACC_MASK;
-    if (accel) {
-        s.append("hardware acceleration: ");
-        switch (accel) {
-        case EFFECT_FLAG_HW_ACC_SIMPLE: s.append("non-tunneled"); break;
-        case EFFECT_FLAG_HW_ACC_TUNNEL: s.append("tunneled"); break;
-        default: s.append("unknown/reserved"); break;
-        }
-        s.append(", ");
-    }
-
-    uint32_t modeind = flags & EFFECT_FLAG_AUDIO_MODE_MASK;
-    if (modeind) {
-        s.append("mode indication: ");
-        switch (modeind) {
-        case EFFECT_FLAG_AUDIO_MODE_IND: s.append("required"); break;
-        default: s.append("unknown/reserved"); break;
-        }
-        s.append(", ");
-    }
-
-    uint32_t srcind = flags & EFFECT_FLAG_AUDIO_SOURCE_MASK;
-    if (srcind) {
-        s.append("source indication: ");
-        switch (srcind) {
-        case EFFECT_FLAG_AUDIO_SOURCE_IND: s.append("required"); break;
-        default: s.append("unknown/reserved"); break;
-        }
-        s.append(", ");
-    }
-
-    if (flags & EFFECT_FLAG_OFFLOAD_MASK) {
-        s.append("offloadable, ");
-    }
-
-    int len = s.length();
-    if (s.length() > 2) {
-        char *str = s.lockBuffer(len);
-        s.unlockBuffer(len - 2);
-    }
-    return s;
-}
-
-
-void AudioFlinger::EffectModule::dump(int fd, const Vector<String16>& args __unused)
+void AudioFlinger::EffectModule::dump(int fd, const Vector<String16>& args)
 {
     const size_t SIZE = 256;
     char buffer[SIZE];
@@ -1008,8 +890,8 @@ void AudioFlinger::EffectModule::dump(int fd, const Vector<String16>& args __unu
     }
 
     result.append("\t\tSession Status State Engine:\n");
-    snprintf(buffer, SIZE, "\t\t%05d   %03d    %03d   %p\n",
-            mSessionId, mStatus, mState, mEffectInterface);
+    snprintf(buffer, SIZE, "\t\t%05d   %03d    %03d   0x%08x\n",
+            mSessionId, mStatus, mState, (uint32_t)mEffectInterface);
     result.append(buffer);
 
     result.append("\t\tDescriptor:\n");
@@ -1026,10 +908,9 @@ void AudioFlinger::EffectModule::dump(int fd, const Vector<String16>& args __unu
                     mDescriptor.type.node[2],
                 mDescriptor.type.node[3],mDescriptor.type.node[4],mDescriptor.type.node[5]);
     result.append(buffer);
-    snprintf(buffer, SIZE, "\t\t- apiVersion: %08X\n\t\t- flags: %08X (%s)\n",
+    snprintf(buffer, SIZE, "\t\t- apiVersion: %08X\n\t\t- flags: %08X\n",
             mDescriptor.apiVersion,
-            mDescriptor.flags,
-            effectFlagsToString(mDescriptor.flags).string());
+            mDescriptor.flags);
     result.append(buffer);
     snprintf(buffer, SIZE, "\t\t- name: %s\n",
             mDescriptor.name);
@@ -1039,37 +920,37 @@ void AudioFlinger::EffectModule::dump(int fd, const Vector<String16>& args __unu
     result.append(buffer);
 
     result.append("\t\t- Input configuration:\n");
-    result.append("\t\t\tFrames  Smp rate Channels Format Buffer\n");
-    snprintf(buffer, SIZE, "\t\t\t%05zu   %05d    %08x %6d (%s) %p\n",
+    result.append("\t\t\tBuffer     Frames  Smp rate Channels Format\n");
+    snprintf(buffer, SIZE, "\t\t\t0x%08x %05d   %05d    %08x %d\n",
+            (uint32_t)mConfig.inputCfg.buffer.raw,
             mConfig.inputCfg.buffer.frameCount,
             mConfig.inputCfg.samplingRate,
             mConfig.inputCfg.channels,
-            mConfig.inputCfg.format,
-            formatToString((audio_format_t)mConfig.inputCfg.format),
-            mConfig.inputCfg.buffer.raw);
+            mConfig.inputCfg.format);
     result.append(buffer);
 
     result.append("\t\t- Output configuration:\n");
     result.append("\t\t\tBuffer     Frames  Smp rate Channels Format\n");
-    snprintf(buffer, SIZE, "\t\t\t%p %05zu   %05d    %08x %d (%s)\n",
-            mConfig.outputCfg.buffer.raw,
+    snprintf(buffer, SIZE, "\t\t\t0x%08x %05d   %05d    %08x %d\n",
+            (uint32_t)mConfig.outputCfg.buffer.raw,
             mConfig.outputCfg.buffer.frameCount,
             mConfig.outputCfg.samplingRate,
             mConfig.outputCfg.channels,
-            mConfig.outputCfg.format,
-            formatToString((audio_format_t)mConfig.outputCfg.format));
+            mConfig.outputCfg.format);
     result.append(buffer);
 
-    snprintf(buffer, SIZE, "\t\t%zu Clients:\n", mHandles.size());
+    snprintf(buffer, SIZE, "\t\t%d Clients:\n", mHandles.size());
     result.append(buffer);
-    result.append("\t\t\t  Pid Priority Ctrl Locked client server\n");
+    result.append("\t\t\tPid   Priority Ctrl Locked client server\n");
     for (size_t i = 0; i < mHandles.size(); ++i) {
         EffectHandle *handle = mHandles[i];
         if (handle != NULL && !handle->destroyed_l()) {
-            handle->dumpToBuffer(buffer, SIZE);
+            handle->dump(buffer, SIZE);
             result.append(buffer);
         }
     }
+
+    result.append("\n");
 
     write(fd, result.string(), result.length());
 
@@ -1100,15 +981,18 @@ AudioFlinger::EffectHandle::EffectHandle(const sp<EffectModule>& effect,
     }
     int bufOffset = ((sizeof(effect_param_cblk_t) - 1) / sizeof(int) + 1) * sizeof(int);
     mCblkMemory = client->heap()->allocate(EFFECT_PARAM_BUFFER_SIZE + bufOffset);
-    if (mCblkMemory == 0 ||
-            (mCblk = static_cast<effect_param_cblk_t *>(mCblkMemory->pointer())) == NULL) {
+    if (mCblkMemory != 0) {
+        mCblk = static_cast<effect_param_cblk_t *>(mCblkMemory->pointer());
+
+        if (mCblk != NULL) {
+            new(mCblk) effect_param_cblk_t();
+            mBuffer = (uint8_t *)mCblk + bufOffset;
+        }
+    } else {
         ALOGE("not enough memory for Effect size=%u", EFFECT_PARAM_BUFFER_SIZE +
                 sizeof(effect_param_cblk_t));
-        mCblkMemory.clear();
         return;
     }
-    new(mCblk) effect_param_cblk_t();
-    mBuffer = (uint8_t *)mCblk + bufOffset;
 }
 
 AudioFlinger::EffectHandle::~EffectHandle()
@@ -1123,11 +1007,6 @@ AudioFlinger::EffectHandle::~EffectHandle()
     mDestroyed = true;
     mEffect->unlock();
     disconnect(false);
-}
-
-status_t AudioFlinger::EffectHandle::initCheck()
-{
-    return mClient == 0 || mCblkMemory != 0 ? OK : NO_MEMORY;
 }
 
 status_t AudioFlinger::EffectHandle::enable()
@@ -1244,8 +1123,8 @@ void AudioFlinger::EffectHandle::disconnect(bool unpinIfLast)
             mCblk->~effect_param_cblk_t();   // destroy our shared-structure.
         }
         mCblkMemory.clear();    // free the shared memory before releasing the heap it belongs to
-        // Client destructor must run with AudioFlinger client mutex locked
-        Mutex::Autolock _l(mClient->audioFlinger()->mClientLock);
+        // Client destructor must run with AudioFlinger mutex locked
+        Mutex::Autolock _l(mClient->audioFlinger()->mLock);
         mClient.clear();
     }
 }
@@ -1336,7 +1215,7 @@ status_t AudioFlinger::EffectHandle::command(uint32_t cmdCode,
         // Notify Direct track for the change in Effect module
         // TODO: check if it is required to send mLPAHandle
         ALOGV("Notifying Direct Track for the change in effect config %d", cmdCode);
-        mClient->audioFlinger()->audioConfigChanged(AudioSystem::EFFECT_CONFIG_CHANGED, 0, NULL);
+        mClient->audioFlinger()->audioConfigChanged_l(AudioSystem::EFFECT_CONFIG_CHANGED, 0, NULL);
     }
 #endif
     return mEffect->command(cmdCode, cmdSize, pCmdData, replySize, pReplyData);
@@ -1381,15 +1260,15 @@ status_t AudioFlinger::EffectHandle::onTransact(
 }
 
 
-void AudioFlinger::EffectHandle::dumpToBuffer(char* buffer, size_t size)
+void AudioFlinger::EffectHandle::dump(char* buffer, size_t size)
 {
     bool locked = mCblk != NULL && AudioFlinger::dumpTryLock(mCblk->lock);
 
-    snprintf(buffer, size, "\t\t\t%5d    %5d  %3s    %3s  %5u  %5u\n",
+    snprintf(buffer, size, "\t\t\t%05d %05d    %01u    %01u      %05u  %05u\n",
             (mClient == 0) ? getpid_cached : mClient->pid(),
             mPriority,
-            mHasControl ? "yes" : "no",
-            locked ? "yes" : "no",
+            mHasControl,
+            !locked,
             mCblk ? mCblk->clientIndex : 0,
             mCblk ? mCblk->serverIndex : 0
             );
@@ -1407,9 +1286,9 @@ AudioFlinger::EffectChain::EffectChain(ThreadBase *thread,
     : mThread(thread), mSessionId(sessionId), mActiveTrackCnt(0), mTrackCnt(0), mTailBufferCount(0),
       mOwnInBuffer(false), mVolumeCtrlIdx(-1), mLeftVolume(UINT_MAX), mRightVolume(UINT_MAX),
 #ifdef QCOM_DIRECTTRACK
-      mNewLeftVolume(UINT_MAX), mNewRightVolume(UINT_MAX), mForceVolume(false), mIsForLPATrack(false)
+      mNewLeftVolume(UINT_MAX), mNewRightVolume(UINT_MAX), mIsForLPATrack(false)
 #else
-      mNewLeftVolume(UINT_MAX), mNewRightVolume(UINT_MAX), mForceVolume(false)
+      mNewLeftVolume(UINT_MAX), mNewRightVolume(UINT_MAX)
 #endif
 {
     mStrategy = AudioSystem::getStrategyForStream(AUDIO_STREAM_MUSIC);
@@ -1498,13 +1377,7 @@ void AudioFlinger::EffectChain::clearInputBuffer()
 // Must be called with EffectChain::mLock locked
 void AudioFlinger::EffectChain::clearInputBuffer_l(sp<ThreadBase> thread)
 {
-    // TODO: This will change in the future, depending on multichannel
-    // and sample format changes for effects.
-    // Currently effects processing is only available for stereo, AUDIO_FORMAT_PCM_16_BIT
-    // (4 bytes frame size)
-    const size_t frameSize =
-            audio_bytes_per_sample(AUDIO_FORMAT_PCM_16_BIT) * min(FCC_2, thread->channelCount());
-    memset(mInBuffer, 0, thread->frameCount() * frameSize);
+    memset(mInBuffer, 0, thread->frameCount() * thread->frameSize());
 }
 
 // Must be called with EffectChain::mLock locked
@@ -1751,8 +1624,7 @@ bool AudioFlinger::EffectChain::setVolume_l(uint32_t *left, uint32_t *right)
         }
     }
 
-    if (!isVolumeForced() && ctrlIdx == mVolumeCtrlIdx &&
-            *left == mLeftVolume && *right == mRightVolume) {
+    if (ctrlIdx == mVolumeCtrlIdx && *left == mLeftVolume && *right == mRightVolume) {
         if (hasControl) {
             *left = mNewLeftVolume;
             *right = mNewRightVolume;
@@ -1793,52 +1665,39 @@ bool AudioFlinger::EffectChain::setVolume_l(uint32_t *left, uint32_t *right)
     return hasControl;
 }
 
-void AudioFlinger::EffectChain::syncHalEffectsState()
-{
-    Mutex::Autolock _l(mLock);
-    for (size_t i = 0; i < mEffects.size(); i++) {
-        if (mEffects[i]->state() == EffectModule::ACTIVE ||
-                mEffects[i]->state() == EffectModule::STOPPING) {
-            mEffects[i]->addEffectToHal_l();
-        }
-    }
-}
-
 void AudioFlinger::EffectChain::dump(int fd, const Vector<String16>& args)
 {
     const size_t SIZE = 256;
     char buffer[SIZE];
     String8 result;
 
-    size_t numEffects = mEffects.size();
-    snprintf(buffer, SIZE, "    %d effects for session %d\n", numEffects, mSessionId);
+    snprintf(buffer, SIZE, "Effects for session %d:\n", mSessionId);
     result.append(buffer);
 
-    if (numEffects) {
-        bool locked = AudioFlinger::dumpTryLock(mLock);
-        // failed to lock - AudioFlinger is probably deadlocked
-        if (!locked) {
-            result.append("\tCould not lock mutex:\n");
-        }
+    bool locked = AudioFlinger::dumpTryLock(mLock);
+    // failed to lock - AudioFlinger is probably deadlocked
+    if (!locked) {
+        result.append("\tCould not lock mutex:\n");
+    }
 
-        result.append("\tIn buffer   Out buffer   Active tracks:\n");
-        snprintf(buffer, SIZE, "\t%p  %p   %d\n",
-                mInBuffer,
-                mOutBuffer,
-                mActiveTrackCnt);
-        result.append(buffer);
-        write(fd, result.string(), result.size());
+    result.append("\tNum fx In buffer   Out buffer   Active tracks:\n");
+    snprintf(buffer, SIZE, "\t%02d     0x%08x  0x%08x   %d\n",
+            mEffects.size(),
+            (uint32_t)mInBuffer,
+            (uint32_t)mOutBuffer,
+            mActiveTrackCnt);
+    result.append(buffer);
+    write(fd, result.string(), result.size());
 
-        for (size_t i = 0; i < numEffects; ++i) {
-            sp<EffectModule> effect = mEffects[i];
-            if (effect != 0) {
-                effect->dump(fd, args);
-            }
+    for (size_t i = 0; i < mEffects.size(); ++i) {
+        sp<EffectModule> effect = mEffects[i];
+        if (effect != 0) {
+            effect->dump(fd, args);
         }
+    }
 
-        if (locked) {
-            mLock.unlock();
-        }
+    if (locked) {
+        mLock.unlock();
     }
 }
 
@@ -2035,15 +1894,6 @@ bool AudioFlinger::EffectChain::isNonOffloadableEnabled()
         }
     }
     return false;
-}
-
-void AudioFlinger::EffectChain::setThread(const sp<ThreadBase>& thread)
-{
-    Mutex::Autolock _l(mLock);
-    mThread = thread;
-    for (size_t i = 0; i < mEffects.size(); i++) {
-        mEffects[i]->setThread(thread);
-    }
 }
 
 #ifdef QCOM_DIRECTTRACK

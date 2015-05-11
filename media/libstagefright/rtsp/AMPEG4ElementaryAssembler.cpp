@@ -249,15 +249,11 @@ ARTPAssembler::AssemblyStatus AMPEG4ElementaryAssembler::addPacket(
         mPackets.push_back(buffer);
     } else {
         // hexdump(buffer->data(), buffer->size());
-        if (buffer->size() < 2) {
-            return MALFORMED_PACKET;
-        }
 
+        CHECK_GE(buffer->size(), 2u);
         unsigned AU_headers_length = U16_AT(buffer->data());  // in bits
 
-        if (buffer->size() < 2 + (AU_headers_length + 7) / 8) {
-            return MALFORMED_PACKET;
-        }
+        CHECK_GE(buffer->size(), 2 + (AU_headers_length + 7) / 8);
 
         List<AUHeader> headers;
 
@@ -346,9 +342,7 @@ ARTPAssembler::AssemblyStatus AMPEG4ElementaryAssembler::addPacket(
              it != headers.end(); ++it) {
             const AUHeader &header = *it;
 
-            if (buffer->size() < offset + header.mSize) {
-                return MALFORMED_PACKET;
-            }
+            CHECK_LE(offset + header.mSize, buffer->size());
 
             sp<ABuffer> accessUnit = new ABuffer(header.mSize);
             memcpy(accessUnit->data(), buffer->data() + offset, header.mSize);
@@ -359,10 +353,7 @@ ARTPAssembler::AssemblyStatus AMPEG4ElementaryAssembler::addPacket(
             mPackets.push_back(accessUnit);
         }
 
-        if (offset != buffer->size()) {
-            ALOGW("potentially malformed packet (offset %d, size %d)",
-                    offset, buffer->size());
-        }
+        CHECK_EQ(offset, buffer->size());
     }
 
     queue->erase(queue->begin());
@@ -374,7 +365,7 @@ ARTPAssembler::AssemblyStatus AMPEG4ElementaryAssembler::addPacket(
 void AMPEG4ElementaryAssembler::submitAccessUnit() {
     CHECK(!mPackets.empty());
 
-    ALOGV("Access unit complete (%zu nal units)", mPackets.size());
+    ALOGV("Access unit complete (%d nal units)", mPackets.size());
 
     sp<ABuffer> accessUnit;
 
@@ -411,7 +402,6 @@ ARTPAssembler::AssemblyStatus AMPEG4ElementaryAssembler::assembleMore(
         const sp<ARTPSource> &source) {
     AssemblyStatus status = addPacket(source);
     if (status == MALFORMED_PACKET) {
-        ALOGI("access unit is damaged");
         mAccessUnitDamaged = true;
     }
     return status;

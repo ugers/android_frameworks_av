@@ -42,8 +42,6 @@ struct NuCachedSource2 : public DataSource {
 
     virtual ssize_t readAt(off64_t offset, void *data, size_t size);
 
-    virtual void disconnect();
-
     virtual status_t getSize(off64_t *size);
     virtual uint32_t flags();
 
@@ -65,16 +63,18 @@ struct NuCachedSource2 : public DataSource {
     // is returned.
     status_t getEstimatedBandwidthKbps(int32_t *kbps);
     status_t setCacheStatCollectFreq(int32_t freqMs);
+
     void forceDisconnect();
     status_t generalInterface(int32_t cmd, int32_t ext1, int32_t ext2);
+
     static void RemoveCacheSpecificHeaders(
             KeyedVector<String8, String8> *headers,
             String8 *cacheConfig,
             bool *disconnectAtHighwatermark);
 
-    virtual status_t disconnectWhileSuspend();
-    virtual status_t connectWhileResume();
+    virtual ssize_t readAtInternal(off64_t offset, void *data, size_t size, int32_t isNonBlocking);
 
+    virtual void enableNonBlockingRead(bool flag);
 protected:
     virtual ~NuCachedSource2();
 
@@ -82,9 +82,9 @@ private:
     friend struct AHandlerReflector<NuCachedSource2>;
 
     enum {
-        kPageSize                       = 32768,   //old is 64k 65536  change to 32k
-        kDefaultHighWaterThreshold      = 24 * 1024 * 1024,
-        kDefaultLowWaterThreshold       = 22* 1024 * 1024,
+        kPageSize                       = 65536,
+        kDefaultHighWaterThreshold      = 20 * 1024 * 1024,
+        kDefaultLowWaterThreshold       = 4 * 1024 * 1024,
 
         // Read data after a 15 sec timeout whether we're actively
         // fetching or not.
@@ -99,6 +99,9 @@ private:
     enum {
         kMaxNumRetries = 10,
     };
+
+    //3 second timeout for readAt function call
+    static const int64_t kReadSourceTimeoutNs = 3000000000LL;
 
     sp<DataSource> mSource;
     sp<AHandlerReflector<NuCachedSource2> > mReflector;
@@ -115,7 +118,6 @@ private:
     off64_t mLastAccessPos;
     sp<AMessage> mAsyncResult;
     bool mFetching;
-    bool mDisconnecting;
     int64_t mLastFetchTimeUs;
 
     int32_t mNumRetriesLeft;
@@ -123,13 +125,15 @@ private:
     size_t mHighwaterThresholdBytes;
     size_t mLowwaterThresholdBytes;
 
-    volatile bool mSuspended;
-
     // If the keep-alive interval is 0, keep-alives are disabled.
     int64_t mKeepAliveIntervalUs;
 
     bool mDisconnectAtHighwatermark;
     bool mForceStop;
+    bool mIsNonBlockingMode;
+
+    int32_t mCheckGeneration;
+
     void onMessageReceived(const sp<AMessage> &msg);
     void onFetch();
     void onRead(const sp<AMessage> &msg);

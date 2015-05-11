@@ -131,7 +131,7 @@ struct BpCrypto : public BpInterface<ICrypto> {
         data.write(subSamples, sizeof(CryptoPlugin::SubSample) * numSubSamples);
 
         if (secure) {
-            data.writeInt64(static_cast<uint64_t>(reinterpret_cast<uintptr_t>(dstPtr)));
+            data.writeIntPtr((intptr_t)dstPtr);
         }
 
         remote()->transact(DECRYPT, data, &reply);
@@ -249,7 +249,7 @@ status_t BnCrypto::onTransact(
 
             void *dstPtr;
             if (secure) {
-                dstPtr = reinterpret_cast<void *>(static_cast<uintptr_t>(data.readInt64()));
+                dstPtr = (void *)data.readIntPtr();
             } else {
                 dstPtr = malloc(totalSize);
             }

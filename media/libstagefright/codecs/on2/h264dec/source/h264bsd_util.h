@@ -42,7 +42,6 @@
 #include <stdio.h>
 #endif
 
-#include <stdint.h>
 #include "basetype.h"
 #include "h264bsd_stream.h"
 #include "h264bsd_image.h"
@@ -151,7 +150,7 @@
 }
 
 #define ALIGN(ptr, bytePos) \
-        (ptr + ( ((bytePos - (uintptr_t)ptr) & (bytePos - 1)) / sizeof(*ptr) ))
+        (ptr + ( ((bytePos - (int)ptr) & (bytePos - 1)) / sizeof(*ptr) ))
 
 extern const u32 h264bsdQpC[52];
 

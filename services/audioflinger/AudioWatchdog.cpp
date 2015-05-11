@@ -34,7 +34,7 @@ void AudioWatchdogDump::dump(int fd)
     } else {
         strcpy(buf, "N/A\n");
     }
-    dprintf(fd, "Watchdog: underruns=%u, logs=%u, most recent underrun log at %s",
+    fdprintf(fd, "Watchdog: underruns=%u, logs=%u, most recent underrun log at %s",
             mUnderruns, mLogs, buf);
 }
 

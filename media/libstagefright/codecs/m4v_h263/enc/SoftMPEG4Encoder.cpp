@@ -33,8 +33,6 @@
 
 #include "SoftMPEG4Encoder.h"
 
-#include <inttypes.h>
-
 namespace android {
 
 template<class T>
@@ -46,12 +44,42 @@ static void InitOMXParams(T *params) {
     params->nVersion.s.nStep = 0;
 }
 
+inline static void ConvertYUV420SemiPlanarToYUV420Planar(
+        uint8_t *inyuv, uint8_t* outyuv,
+        int32_t width, int32_t height) {
+
+    int32_t outYsize = width * height;
+    uint32_t *outy =  (uint32_t *) outyuv;
+    uint16_t *outcb = (uint16_t *) (outyuv + outYsize);
+    uint16_t *outcr = (uint16_t *) (outyuv + outYsize + (outYsize >> 2));
+
+    /* Y copying */
+    memcpy(outy, inyuv, outYsize);
+
+    /* U & V copying */
+    uint32_t *inyuv_4 = (uint32_t *) (inyuv + outYsize);
+    for (int32_t i = height >> 1; i > 0; --i) {
+        for (int32_t j = width >> 2; j > 0; --j) {
+            uint32_t temp = *inyuv_4++;
+            uint32_t tempU = temp & 0xFF;
+            tempU = tempU | ((temp >> 8) & 0xFF00);
+
+            uint32_t tempV = (temp >> 8) & 0xFF;
+            tempV = tempV | ((temp >> 16) & 0xFF00);
+
+            // Flip U and V
+            *outcb++ = tempV;
+            *outcr++ = tempU;
+        }
+    }
+}
+
 SoftMPEG4Encoder::SoftMPEG4Encoder(
             const char *name,
             const OMX_CALLBACKTYPE *callbacks,
             OMX_PTR appData,
             OMX_COMPONENTTYPE **component)
-    : SoftVideoEncoderOMXComponent(name, callbacks, appData, component),
+    : SimpleSoftOMXComponent(name, callbacks, appData, component),
       mEncodeMode(COMBINE_MODE_WITH_ERR_RES),
       mVideoWidth(176),
       mVideoHeight(144),
@@ -119,10 +147,9 @@ OMX_ERRORTYPE SoftMPEG4Encoder::initEncParams() {
     mEncParams->quantType[0] = 0;
     mEncParams->noFrameSkipped = PV_OFF;
 
-    if (mVideoColorFormat != OMX_COLOR_FormatYUV420Planar
-            || mStoreMetaDataInBuffers) {
+    if (mVideoColorFormat == OMX_COLOR_FormatYUV420SemiPlanar) {
         // Color conversion is needed.
-        free(mInputFrameData);
+        CHECK(mInputFrameData == NULL);
         mInputFrameData =
             (uint8_t *) malloc((mVideoWidth * mVideoHeight * 3 ) >> 1);
         CHECK(mInputFrameData != NULL);
@@ -187,7 +214,7 @@ OMX_ERRORTYPE SoftMPEG4Encoder::releaseEncoder() {
 
     PVCleanUpVideoEncoder(mHandle);
 
-    free(mInputFrameData);
+    delete mInputFrameData;
     mInputFrameData = NULL;
 
     delete mEncParams;
@@ -457,17 +484,6 @@ OMX_ERRORTYPE SoftMPEG4Encoder::internalSetParameter(
                 mVideoHeight = def->format.video.nFrameHeight;
                 mVideoFrameRate = def->format.video.xFramerate >> 16;
                 mVideoColorFormat = def->format.video.eColorFormat;
-
-                OMX_PARAM_PORTDEFINITIONTYPE *portDef =
-                    &editPortInfo(0)->mDef;
-                portDef->format.video.nFrameWidth = mVideoWidth;
-                portDef->format.video.nFrameHeight = mVideoHeight;
-                portDef->format.video.xFramerate = def->format.video.xFramerate;
-                portDef->format.video.eColorFormat =
-                    (OMX_COLOR_FORMATTYPE) mVideoColorFormat;
-                portDef = &editPortInfo(1)->mDef;
-                portDef->format.video.nFrameWidth = mVideoWidth;
-                portDef->format.video.nFrameHeight = mVideoHeight;
             } else {
                 mVideoBitRate = def->format.video.nBitrate;
             }
@@ -589,7 +605,11 @@ OMX_ERRORTYPE SoftMPEG4Encoder::internalSetParameter(
                     mStoreMetaDataInBuffers ? " true" : "false");
 
             if (mStoreMetaDataInBuffers) {
-                mVideoColorFormat = OMX_COLOR_FormatAndroidOpaque;
+                mVideoColorFormat == OMX_COLOR_FormatYUV420SemiPlanar;
+                if (mInputFrameData == NULL) {
+                    mInputFrameData =
+                            (uint8_t *) malloc((mVideoWidth * mVideoHeight * 3 ) >> 1);
+                }
             }
 
             return OMX_ErrorNone;
@@ -600,7 +620,7 @@ OMX_ERRORTYPE SoftMPEG4Encoder::internalSetParameter(
     }
 }
 
-void SoftMPEG4Encoder::onQueueFilled(OMX_U32 /* portIndex */) {
+void SoftMPEG4Encoder::onQueueFilled(OMX_U32 portIndex) {
     if (mSignalledError || mSawInputEOS) {
         return;
     }
@@ -657,36 +677,36 @@ void SoftMPEG4Encoder::onQueueFilled(OMX_U32 /* portIndex */) {
             mSawInputEOS = true;
         }
 
+        buffer_handle_t srcBuffer; // for MetaDataMode only
         if (inHeader->nFilledLen > 0) {
-            const uint8_t *inputData = NULL;
+            uint8_t *inputData = NULL;
             if (mStoreMetaDataInBuffers) {
                 if (inHeader->nFilledLen != 8) {
                     ALOGE("MetaData buffer is wrong size! "
-                            "(got %u bytes, expected 8)", inHeader->nFilledLen);
+                            "(got %lu bytes, expected 8)", inHeader->nFilledLen);
                     mSignalledError = true;
                     notify(OMX_EventError, OMX_ErrorUndefined, 0, 0);
                     return;
                 }
                 inputData =
-                    extractGraphicBuffer(
-                            mInputFrameData, (mVideoWidth * mVideoHeight * 3) >> 1,
-                            inHeader->pBuffer + inHeader->nOffset, inHeader->nFilledLen,
-                            mVideoWidth, mVideoHeight);
+                        extractGrallocData(inHeader->pBuffer + inHeader->nOffset,
+                                &srcBuffer);
                 if (inputData == NULL) {
                     ALOGE("Unable to extract gralloc buffer in metadata mode");
                     mSignalledError = true;
                     notify(OMX_EventError, OMX_ErrorUndefined, 0, 0);
                         return;
                 }
+                // TODO: Verify/convert pixel format enum
             } else {
-                inputData = (const uint8_t *)inHeader->pBuffer + inHeader->nOffset;
-                if (mVideoColorFormat != OMX_COLOR_FormatYUV420Planar) {
-                    ConvertYUV420SemiPlanarToYUV420Planar(
-                        inputData, mInputFrameData, mVideoWidth, mVideoHeight);
-                    inputData = mInputFrameData;
-                }
+                inputData = (uint8_t *)inHeader->pBuffer + inHeader->nOffset;
             }
 
+            if (mVideoColorFormat != OMX_COLOR_FormatYUV420Planar) {
+                ConvertYUV420SemiPlanarToYUV420Planar(
+                    inputData, mInputFrameData, mVideoWidth, mVideoHeight);
+                inputData = mInputFrameData;
+            }
             CHECK(inputData != NULL);
 
             VideoEncFrameIO vin, vout;
@@ -695,17 +715,17 @@ void SoftMPEG4Encoder::onQueueFilled(OMX_U32 /* portIndex */) {
             vin.height = ((mVideoHeight  + 15) >> 4) << 4;
             vin.pitch = ((mVideoWidth + 15) >> 4) << 4;
             vin.timestamp = (inHeader->nTimeStamp + 500) / 1000;  // in ms
-            vin.yChan = (uint8_t *)inputData;
+            vin.yChan = inputData;
             vin.uChan = vin.yChan + vin.height * vin.pitch;
             vin.vChan = vin.uChan + ((vin.height * vin.pitch) >> 2);
 
-            ULong modTimeMs = 0;
+            unsigned long modTimeMs = 0;
             int32_t nLayer = 0;
             MP4HintTrack hintTrack;
             if (!PVEncodeVideoFrame(mHandle, &vin, &vout,
                     &modTimeMs, outPtr, &dataLength, &nLayer) ||
                 !PVGetHintTrack(mHandle, &hintTrack)) {
-                ALOGE("Failed to encode frame or get hink track at frame %" PRId64,
+                ALOGE("Failed to encode frame or get hink track at frame %lld",
                     mNumInputFrames);
                 mSignalledError = true;
                 notify(OMX_EventError, OMX_ErrorUndefined, 0, 0);
@@ -722,6 +742,7 @@ void SoftMPEG4Encoder::onQueueFilled(OMX_U32 /* portIndex */) {
 
         inQueue.erase(inQueue.begin());
         inInfo->mOwnedByUs = false;
+        releaseGrallocData(srcBuffer);
         notifyEmptyBufferDone(inHeader);
 
         outQueue.erase(outQueue.begin());
@@ -733,6 +754,47 @@ void SoftMPEG4Encoder::onQueueFilled(OMX_U32 /* portIndex */) {
         mInputBufferInfoVec.erase(mInputBufferInfoVec.begin());
         outInfo->mOwnedByUs = false;
         notifyFillBufferDone(outHeader);
+    }
+}
+
+OMX_ERRORTYPE SoftMPEG4Encoder::getExtensionIndex(
+        const char *name, OMX_INDEXTYPE *index) {
+    if (!strcmp(name, "OMX.google.android.index.storeMetaDataInBuffers")) {
+        *(int32_t*)index = kStoreMetaDataExtensionIndex;
+        return OMX_ErrorNone;
+    }
+    return OMX_ErrorUndefined;
+}
+
+uint8_t *SoftMPEG4Encoder::extractGrallocData(void *data, buffer_handle_t *buffer) {
+    OMX_U32 type = *(OMX_U32*)data;
+    status_t res;
+    if (type != kMetadataBufferTypeGrallocSource) {
+        ALOGE("Data passed in with metadata mode does not have type "
+                "kMetadataBufferTypeGrallocSource (%d), has type %ld instead",
+                kMetadataBufferTypeGrallocSource, type);
+        return NULL;
+    }
+    buffer_handle_t imgBuffer = *(buffer_handle_t*)((uint8_t*)data + 4);
+
+    const Rect rect(mVideoWidth, mVideoHeight);
+    uint8_t *img;
+    res = GraphicBufferMapper::get().lock(imgBuffer,
+            GRALLOC_USAGE_HW_VIDEO_ENCODER,
+            rect, (void**)&img);
+    if (res != OK) {
+        ALOGE("%s: Unable to lock image buffer %p for access", __FUNCTION__,
+                imgBuffer);
+        return NULL;
+    }
+
+    *buffer = imgBuffer;
+    return img;
+}
+
+void SoftMPEG4Encoder::releaseGrallocData(buffer_handle_t buffer) {
+    if (mStoreMetaDataInBuffers) {
+        GraphicBufferMapper::get().unlock(buffer);
     }
 }
 

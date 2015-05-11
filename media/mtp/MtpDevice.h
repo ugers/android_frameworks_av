@@ -98,7 +98,7 @@ public:
     bool                    readObject(MtpObjectHandle handle,
                                     bool (* callback)(void* data, int offset,
                                             int length, void* clientData),
-                                    size_t objectSize, void* clientData);
+                                    int objectSize, void* clientData);
     bool                    readObject(MtpObjectHandle handle, const char* destPath, int group,
                                     int perm);
 

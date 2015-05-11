@@ -27,8 +27,6 @@
 #include "cmnMemory.h"
 #include "memalign.h"
 
-#define UNUSED(x) (void)(x)
-
 /**
 * Init the audio codec module and return codec handle
 * \param phCodec [OUT] Return the video codec handle
@@ -39,20 +37,16 @@
 VO_U32 VO_API voAACEncInit(VO_HANDLE * phCodec,VO_AUDIO_CODINGTYPE vType, VO_CODEC_INIT_USERDATA *pUserData)
 {
 	AAC_ENCODER*hAacEnc;
+	AACENC_CONFIG config;
 	int error;
 
 #ifdef USE_DEAULT_MEM
 	VO_MEM_OPERATOR voMemoprator;
 #endif
 	VO_MEM_OPERATOR *pMemOP;
-
-#ifdef USE_DEAULT_MEM
 	int interMem;
-        interMem = 0;
-#endif
 
-        UNUSED(vType);
-
+	interMem = 0;
 	error = 0;
 
 	/* init the memory operator */
@@ -216,7 +210,7 @@ VO_U32 VO_API voAACEncGetOutputData(VO_HANDLE hCodec, VO_CODECBUFFER * pOutput, 
 	AAC_ENCODER* hAacEnc = (AAC_ENCODER*)hCodec;
 	Word16 numAncDataBytes=0;
 	Word32  inbuflen;
-	int length;
+	int ret, length;
 	if(NULL == hAacEnc)
 		return VO_ERR_INVALID_ARG;
 
@@ -477,10 +471,6 @@ VO_U32 VO_API voAACEncSetParam(VO_HANDLE hCodec, VO_S32 uParamID, VO_PTR pData)
 */
 VO_U32 VO_API voAACEncGetParam(VO_HANDLE hCodec, VO_S32 uParamID, VO_PTR pData)
 {
-        UNUSED(hCodec);
-        UNUSED(uParamID);
-        UNUSED(pData);
-
 	return VO_ERR_NONE;
 }
 

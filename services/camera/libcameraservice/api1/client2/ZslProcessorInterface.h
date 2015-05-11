@@ -19,8 +19,6 @@
 
 #include <utils/Errors.h>
 #include <utils/RefBase.h>
-#include <utils/String16.h>
-#include <utils/Vector.h>
 
 namespace android {
 namespace camera2 {
@@ -38,9 +36,6 @@ public:
 
     // Delete the underlying CameraDevice streams
     virtual status_t deleteStream() = 0;
-
-    // Clear any additional state necessary before the CameraDevice is disconnected
-    virtual status_t disconnect();
 
     /**
      * Submits a ZSL capture request (id = requestId)

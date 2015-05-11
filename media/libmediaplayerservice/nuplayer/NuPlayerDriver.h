@@ -31,9 +31,7 @@ struct NuPlayerDriver : public MediaPlayerInterface {
     virtual status_t setUID(uid_t uid);
 
     virtual status_t setDataSource(
-            const sp<IMediaHTTPService> &httpService,
-            const char *url,
-            const KeyedVector<String8, String8> *headers);
+            const char *url, const KeyedVector<String8, String8> *headers);
 
     virtual status_t setDataSource(int fd, int64_t offset, int64_t length);
 
@@ -69,15 +67,11 @@ struct NuPlayerDriver : public MediaPlayerInterface {
     void notifyResetComplete();
     void notifySetSurfaceComplete();
     void notifyDuration(int64_t durationUs);
+    void notifyPosition(int64_t positionUs);
     void notifySeekComplete();
-    void notifySeekComplete_l();
+    void notifyFrameStats(int64_t numFramesTotal, int64_t numFramesDropped);
     void notifyListener(int msg, int ext1 = 0, int ext2 = 0, const Parcel *in = NULL);
     void notifyFlagsChanged(uint32_t flags);
-    void notifySuspendCompleted(status_t err);
-    void notifyResumeFromSuspendedCompleted(status_t err);
-
-    virtual status_t suspend();
-    virtual status_t resume();
 
 protected:
     virtual ~NuPlayerDriver();
@@ -91,13 +85,7 @@ private:
         STATE_PREPARED,
         STATE_RUNNING,
         STATE_PAUSED,
-        STATE_SUSPEND_IN_PROGRESS,
-        STATE_SUSPENDED,
-        STATE_RESUME_IN_PROGRESS,
         STATE_RESET_IN_PROGRESS,
-        STATE_STOPPED,                  // equivalent to PAUSED
-        STATE_STOPPED_AND_PREPARING,    // equivalent to PAUSED, but seeking
-        STATE_STOPPED_AND_PREPARED,     // equivalent to PAUSED, but seek complete
     };
 
     mutable Mutex mLock;
@@ -113,22 +101,19 @@ private:
     bool mSetSurfaceInProgress;
     int64_t mDurationUs;
     int64_t mPositionUs;
-    bool mSeekInProgress;
+    int64_t mNumFramesTotal;
+    int64_t mNumFramesDropped;
     // <<<
 
     sp<ALooper> mLooper;
     sp<NuPlayer> mPlayer;
-    sp<AudioSink> mAudioSink;
     uint32_t mPlayerFlags;
 
     bool mAtEOS;
-    bool mLooping;
-    bool mAutoLoop;
 
     int64_t mStartupSeekTimeUs;
 
     status_t prepare_l();
-    void notifyListener_l(int msg, int ext1 = 0, int ext2 = 0, const Parcel *in = NULL);
 
     DISALLOW_EVIL_CONSTRUCTORS(NuPlayerDriver);
 };

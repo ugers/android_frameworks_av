@@ -1,8 +1,4 @@
-<<<<<<< HEAD
-/*Copyright (c) 2012, The Linux Foundation. All rights reserved.
-=======
-/*Copyright (c) 2012 - 2014, The Linux Foundation. All rights reserved.
->>>>>>> 8b8d02886bd9fb8d5ad451c03e486cfad74aa74e
+/*Copyright (c) 2012-2013, The Linux Foundation. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
@@ -34,59 +30,7 @@
 #define LOG_TAG "ExtendedExtractor"
 #include <utils/Log.h>
 #include <dlfcn.h>  // for dlopen/dlclose
-<<<<<<< HEAD
-
 #include "include/ExtendedExtractor.h"
-
-static const char* EXTENDED_PARSER_LIB = "libExtendedExtractor.so";
-
-namespace android {
-
-void* ExtendedParserLib() {
-    static void* extendedParserLib = NULL;
-    static bool alreadyTriedToOpenParsers = false;
-
-    if(!alreadyTriedToOpenParsers) {
-        alreadyTriedToOpenParsers = true;
-
-        extendedParserLib = ::dlopen(EXTENDED_PARSER_LIB, RTLD_LAZY);
-
-        if(extendedParserLib == NULL) {
-            ALOGV("Failed to open EXTENDED_PARSER_LIB, dlerror = %s \n", dlerror());
-        }
-    }
-
-    return extendedParserLib;
-}
-
-MediaExtractor* ExtendedExtractor::CreateExtractor(const sp<DataSource> &source, const char *mime) {
-    static MediaExtractorFactory mediaFactoryFunction = NULL;
-    static bool alreadyTriedToFindFactoryFunction = false;
-
-    MediaExtractor* extractor = NULL;
-
-    if(!alreadyTriedToFindFactoryFunction) {
-
-        void *extendedParserLib = ExtendedParserLib();
-        if (extendedParserLib != NULL) {
-
-            mediaFactoryFunction = (MediaExtractorFactory) dlsym(extendedParserLib, MEDIA_CREATE_EXTRACTOR);
-            alreadyTriedToFindFactoryFunction = true;
-        }
-    }
-
-    if(mediaFactoryFunction==NULL) {
-        ALOGE(" dlsym for ExtendedExtractor factory function failed, dlerror = %s \n", dlerror());
-        return NULL;
-    }
-
-    extractor = mediaFactoryFunction(source, mime);
-    if(extractor==NULL) {
-        ALOGE(" ExtendedExtractor failed to instantiate extractor \n");
-=======
-#include "include/ExtendedExtractor.h"
-
-#define ARG_TOUCH(x) (void)x
 
 #ifdef ENABLE_AV_ENHANCEMENTS
 
@@ -146,31 +90,11 @@ MediaExtractor* ExtendedExtractor::Create (
     extractor = create (source, mime);
     if (extractor == NULL) {
         ALOGE("Failed to instantiate extractor \n");
->>>>>>> 8b8d02886bd9fb8d5ad451c03e486cfad74aa74e
     }
 
     return extractor;
 }
 
-<<<<<<< HEAD
-bool SniffExtendedExtractor(const sp<DataSource> &source, String8 *mimeType,
-                            float *confidence,sp<AMessage> *meta) {
-    void *extendedParserLib = ExtendedParserLib();
-    bool retVal = false;
-    if (extendedParserLib != NULL) {
-       ExtendedExtractorSniffers extendedExtractorSniffers=
-           (ExtendedExtractorSniffers) dlsym(extendedParserLib, EXTENDED_EXTRACTOR_SNIFFERS);
-
-       if(extendedExtractorSniffers == NULL) {
-           ALOGE(" dlsym for extendedExtractorSniffers function failed, dlerror = %s \n", dlerror());
-           return retVal;
-       }
-
-       retVal = extendedExtractorSniffers(source, mimeType, confidence, meta);
-
-       if(!retVal) {
-           ALOGV("ExtendedExtractor:: ExtendedExtractorSniffers  Failed");
-=======
 bool ExtendedExtractor::Sniff (
         const sp<DataSource> &source, String8 *mimeType,
         float *confidence,sp<AMessage> *meta) {
@@ -191,7 +115,6 @@ bool ExtendedExtractor::Sniff (
 
        if(!retVal) {
            ALOGV("Sniff Failed");
->>>>>>> 8b8d02886bd9fb8d5ad451c03e486cfad74aa74e
        }
     }
     return retVal;
@@ -199,25 +122,17 @@ bool ExtendedExtractor::Sniff (
 
 }  // namespace android
 
-<<<<<<< HEAD
-=======
 #else //ENABLE_AV_ENHANCEMENTS
 
 namespace android {
 
 MediaExtractor* ExtendedExtractor::Create (
         const sp<DataSource> &source, const char *mime) {
-    ARG_TOUCH(source);
-    ARG_TOUCH(mime);
     return NULL;
 }
 bool ExtendedExtractor::Sniff (
         const sp<DataSource> &source, String8 *mimeType,
-        float *confidence, sp<AMessage> *meta) {
-    ARG_TOUCH(source);
-    ARG_TOUCH(mimeType);
-    ARG_TOUCH(confidence);
-    ARG_TOUCH(meta);
+        float *confidence,sp<AMessage> *meta) {
     *confidence = 0.0;
     return false;
 }
@@ -225,5 +140,4 @@ bool ExtendedExtractor::Sniff (
 }  // namespace android
 
 #endif //ENABLE_AV_ENHANCEMENTS
->>>>>>> 8b8d02886bd9fb8d5ad451c03e486cfad74aa74e
 

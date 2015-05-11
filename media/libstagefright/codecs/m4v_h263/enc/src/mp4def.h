@@ -60,7 +60,7 @@ typedef unsigned short UShort;
 typedef short Short;
 typedef short int SInt;
 typedef unsigned int Bool;
-typedef uint32_t ULong;
+typedef unsigned long   ULong;
 typedef void Void;
 
 #define PV_CODEC_INIT       0

@@ -25,36 +25,20 @@
 namespace android {
 
 struct ABuffer;
-struct MediaCodec;
-struct MediaBuffer;
 
 struct NuPlayer::Decoder : public AHandler {
     Decoder(const sp<AMessage> &notify,
             const sp<NativeWindowWrapper> &nativeWindow = NULL);
 
-    virtual void configure(const sp<AMessage> &format);
-    virtual void init();
+    void configure(const sp<AMessage> &format);
 
-    status_t getInputBuffers(Vector<sp<ABuffer> > *dstBuffers) const;
-    virtual void signalFlush(const sp<AMessage> &format = NULL);
-    virtual void signalUpdateFormat(const sp<AMessage> &format);
-    virtual void signalResume();
-    virtual void initiateShutdown();
+    void signalFlush();
+    void signalResume();
+    void initiateShutdown();
 
-    virtual bool supportsSeamlessFormatChange(const sp<AMessage> &to) const;
-
-    enum {
-        kWhatFillThisBuffer      = 'flTB',
-        kWhatDrainThisBuffer     = 'drTB',
-        kWhatOutputFormatChanged = 'fmtC',
-        kWhatFlushCompleted      = 'flsC',
-        kWhatShutdownCompleted   = 'shDC',
-        kWhatEOS                 = 'eos ',
-        kWhatError               = 'err ',
-    };
+    bool supportsSeamlessFormatChange(const sp<AMessage> &to) const;
 
 protected:
-
     virtual ~Decoder();
 
     virtual void onMessageReceived(const sp<AMessage> &msg);
@@ -62,89 +46,25 @@ protected:
 private:
     enum {
         kWhatCodecNotify        = 'cdcN',
-        kWhatConfigure          = 'conf',
-        kWhatGetInputBuffers    = 'gInB',
-        kWhatInputBufferFilled  = 'inpF',
-        kWhatRenderBuffer       = 'rndr',
-        kWhatFlush              = 'flus',
-        kWhatShutdown           = 'shuD',
-        kWhatUpdateFormat       = 'uFmt',
     };
 
     sp<AMessage> mNotify;
     sp<NativeWindowWrapper> mNativeWindow;
 
-    sp<AMessage> mInputFormat;
-    sp<AMessage> mOutputFormat;
-    sp<MediaCodec> mCodec;
+    sp<AMessage> mFormat;
+    sp<ACodec> mCodec;
     sp<ALooper> mCodecLooper;
-    sp<ALooper> mDecoderLooper;
-    sp<PlayerExtendedStats> mPlayerExtendedStats;
 
-    List<sp<AMessage> > mPendingInputMessages;
+    Vector<sp<ABuffer> > mCSD;
+    size_t mCSDIndex;
 
-    Vector<sp<ABuffer> > mInputBuffers;
-    Vector<sp<ABuffer> > mOutputBuffers;
-    Vector<sp<ABuffer> > mCSDsForCurrentFormat;
-    Vector<sp<ABuffer> > mCSDsToSubmit;
-    Vector<bool> mInputBufferIsDequeued;
-    Vector<MediaBuffer *> mMediaBuffers;
+    sp<AMessage> makeFormat(const sp<MetaData> &meta);
 
-    void handleError(int32_t err);
-    bool handleAnInputBuffer();
-    bool handleAnOutputBuffer();
-
-    void releaseAndResetMediaBuffers();
-    void requestCodecNotification();
-    bool isStaleReply(const sp<AMessage> &msg);
-
-    void onConfigure(const sp<AMessage> &format);
-    void onFlush();
-    void onResume();
-    bool onInputBufferFilled(const sp<AMessage> &msg);
-    void onRenderBuffer(const sp<AMessage> &msg);
-    void onShutdown();
-
-    int32_t mBufferGeneration;
-    bool mPaused;
-    AString mComponentName;
+    void onFillThisBuffer(const sp<AMessage> &msg);
 
     bool supportsSeamlessAudioFormatChange(const sp<AMessage> &targetFormat) const;
-    void rememberCodecSpecificData(const sp<AMessage> &format);
 
     DISALLOW_EVIL_CONSTRUCTORS(Decoder);
-};
-
-struct NuPlayer::CCDecoder : public RefBase {
-    enum {
-        kWhatClosedCaptionData,
-        kWhatTrackAdded,
-    };
-
-    CCDecoder(const sp<AMessage> &notify);
-
-    size_t getTrackCount() const;
-    sp<AMessage> getTrackInfo(size_t index) const;
-    status_t selectTrack(size_t index, bool select);
-    bool isSelected() const;
-    void decode(const sp<ABuffer> &accessUnit);
-    void display(int64_t timeUs);
-    void flush();
-
-private:
-    sp<AMessage> mNotify;
-    KeyedVector<int64_t, sp<ABuffer> > mCCMap;
-    size_t mCurrentChannel;
-    int32_t mSelectedTrack;
-    int32_t mTrackIndices[4];
-    Vector<size_t> mFoundChannels;
-
-    bool isTrackValid(size_t index) const;
-    int32_t getTrackIndex(size_t channel) const;
-    bool extractFromSEI(const sp<ABuffer> &accessUnit);
-    sp<ABuffer> filterCCBuf(const sp<ABuffer> &ccBuf, size_t index);
-
-    DISALLOW_EVIL_CONSTRUCTORS(CCDecoder);
 };
 
 }  // namespace android

@@ -1,17 +1,3 @@
-# Copyright 2010 The Android Open Source Project
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#      http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
 LOCAL_PATH:= $(call my-dir)
 
 #
@@ -34,7 +20,6 @@ LOCAL_SRC_FILES:=               \
     api1/client2/JpegProcessor.cpp \
     api1/client2/CallbackProcessor.cpp \
     api1/client2/ZslProcessor.cpp \
-    api1/client2/ZslProcessorInterface.cpp \
     api1/client2/BurstCapture.cpp \
     api1/client2/JpegCompressor.cpp \
     api1/client2/CaptureSequencer.cpp \
@@ -48,7 +33,6 @@ LOCAL_SRC_FILES:=               \
     device3/Camera3InputStream.cpp \
     device3/Camera3OutputStream.cpp \
     device3/Camera3ZslStream.cpp \
-    device3/Camera3DummyStream.cpp \
     device3/StatusTracker.cpp \
     gui/RingBufferConsumer.cpp \
     utils/CameraTraces.cpp \
@@ -69,27 +53,21 @@ LOCAL_SHARED_LIBRARIES:= \
 
 LOCAL_C_INCLUDES += \
     system/media/camera/include \
-    system/media/private/camera/include \
     external/jpeg
 
 
-<<<<<<< HEAD
-ifeq ($(BOARD_USES_QCOM_LEGACY_CAM_PARAMS),true)
-    LOCAL_CFLAGS += -DQCOM_LEGACY_CAM_PARAMS
-endif
-
-ifeq ($(BOARD_HAVE_HTC_FFC),true)
-LOCAL_CFLAGS += -DBOARD_HAVE_HTC_FFC
-endif
-
-ifeq ($(BOARD_HTC_3D_SUPPORT),true)
-   LOCAL_CFLAGS += -DHTC_3D_SUPPORT
-=======
 LOCAL_CFLAGS += -Wall -Wextra
+
+ifeq ($(BOARD_USES_QCOM_HARDWARE),true)
+    LOCAL_CFLAGS += -DCAMERA_MSG_MGMT
+endif
+
+ifeq ($(BOARD_CAMERA_MSG_MGMT),true)
+    LOCAL_CFLAGS += -DCAMERA_MSG_MGMT
+endif
 
 ifeq ($(BOARD_NEEDS_MEMORYHEAPION),true)
     LOCAL_CFLAGS += -DUSE_MEMORY_HEAP_ION
->>>>>>> 8b8d02886bd9fb8d5ad451c03e486cfad74aa74e
 endif
 
 LOCAL_MODULE:= libcameraservice

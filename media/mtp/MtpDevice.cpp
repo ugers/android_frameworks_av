@@ -195,7 +195,7 @@ MtpDevice::MtpDevice(struct usb_device* device, int interface,
 
 MtpDevice::~MtpDevice() {
     close();
-    for (size_t i = 0; i < mDeviceProperties.size(); i++)
+    for (int i = 0; i < mDeviceProperties.size(); i++)
         delete mDeviceProperties[i];
     usb_request_free(mRequestIn1);
     usb_request_free(mRequestIn2);
@@ -253,7 +253,7 @@ void MtpDevice::print() {
             ALOGI("*** FORMAT: %s\n", MtpDebug::getFormatCodeName(format));
             MtpObjectPropertyList* props = getObjectPropsSupported(format);
             if (props) {
-                for (size_t j = 0; j < props->size(); j++) {
+                for (int j = 0; j < props->size(); j++) {
                     MtpObjectProperty prop = (*props)[j];
                     MtpProperty* property = getObjectPropDesc(prop, format);
                     if (property) {
@@ -313,10 +313,8 @@ MtpDeviceInfo* MtpDevice::getDeviceInfo() {
     MtpResponseCode ret = readResponse();
     if (ret == MTP_RESPONSE_OK) {
         MtpDeviceInfo* info = new MtpDeviceInfo;
-        if (info->read(mData))
-            return info;
-        else
-            delete info;
+        info->read(mData);
+        return info;
     }
     return NULL;
 }
@@ -348,10 +346,8 @@ MtpStorageInfo* MtpDevice::getStorageInfo(MtpStorageID storageID) {
     MtpResponseCode ret = readResponse();
     if (ret == MTP_RESPONSE_OK) {
         MtpStorageInfo* info = new MtpStorageInfo(storageID);
-        if (info->read(mData))
-            return info;
-        else
-            delete info;
+        info->read(mData);
+        return info;
     }
     return NULL;
 }
@@ -389,10 +385,8 @@ MtpObjectInfo* MtpDevice::getObjectInfo(MtpObjectHandle handle) {
     MtpResponseCode ret = readResponse();
     if (ret == MTP_RESPONSE_OK) {
         MtpObjectInfo* info = new MtpObjectInfo(handle);
-        if (info->read(mData))
-            return info;
-        else
-            delete info;
+        info->read(mData);
+        return info;
     }
     return NULL;
 }
@@ -553,10 +547,8 @@ MtpProperty* MtpDevice::getDevicePropDesc(MtpDeviceProperty code) {
     MtpResponseCode ret = readResponse();
     if (ret == MTP_RESPONSE_OK) {
         MtpProperty* property = new MtpProperty;
-        if (property->read(mData))
-            return property;
-        else
-            delete property;
+        property->read(mData);
+        return property;
     }
     return NULL;
 }
@@ -574,17 +566,15 @@ MtpProperty* MtpDevice::getObjectPropDesc(MtpObjectProperty code, MtpObjectForma
     MtpResponseCode ret = readResponse();
     if (ret == MTP_RESPONSE_OK) {
         MtpProperty* property = new MtpProperty;
-        if (property->read(mData))
-            return property;
-        else
-            delete property;
+        property->read(mData);
+        return property;
     }
     return NULL;
 }
 
 bool MtpDevice::readObject(MtpObjectHandle handle,
         bool (* callback)(void* data, int offset, int length, void* clientData),
-        size_t objectSize, void* clientData) {
+        int objectSize, void* clientData) {
     Mutex::Autolock autoLock(mMutex);
     bool result = false;
 

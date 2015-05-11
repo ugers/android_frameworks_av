@@ -44,7 +44,7 @@ NuPlayer::StreamingSource::~StreamingSource() {
 }
 
 void NuPlayer::StreamingSource::prepareAsync() {
-    notifyVideoSizeChanged();
+    notifyVideoSizeChanged(0, 0);
     notifyFlagsChanged(0);
     notifyPrepared();
 }
@@ -95,18 +95,19 @@ status_t NuPlayer::StreamingSource::feedMoreTSData() {
             }
 
             if (type & ATSParser::DISCONTINUITY_SEEK) {
-            uint64_t resumeAtPTS;
-            if (extra != NULL
-                && extra->findInt64(
-                  IStreamListener::kKeyResumeAtPTS,
-                  (int64_t *)&resumeAtPTS)) {
-              ALOGV("resumeAtPTS:%lld",resumeAtPTS);
-              if (resumeAtPTS == 0) {
-                ALOGV("ignore signalDiscontinuity");
-                continue;
-              }
+                uint64_t resumeAtPTS;
+                if (extra != NULL
+                    && extra->findInt64(
+                        IStreamListener::kKeyResumeAtPTS,
+                        (int64_t *)&resumeAtPTS)) {
+                    ALOGV("resumeAtPTS:%lld",resumeAtPTS);
+                    if (resumeAtPTS == 0) {
+                        ALOGV("ignore signalDiscontinuity");
+                        continue;
+                    }
+                }
             }
-          }
+
             mTSParser->signalDiscontinuity(
                     (ATSParser::DiscontinuityType)type, extra);
         } else if (n < 0) {
@@ -152,10 +153,6 @@ status_t NuPlayer::StreamingSource::feedMoreTSData() {
 }
 
 sp<MetaData> NuPlayer::StreamingSource::getFormatMeta(bool audio) {
-    if (mTSParser == NULL) {
-        return NULL;
-    }
-
     ATSParser::SourceType type =
         audio ? ATSParser::AUDIO : ATSParser::VIDEO;
 

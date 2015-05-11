@@ -14,11 +14,6 @@
  * limitations under the License.
  */
 
-#define LOG_TAG "AMessage"
-//#define LOG_NDEBUG 0
-//#define DUMP_STATS
-#include <cutils/log.h>
-
 #include "AMessage.h"
 
 #include <ctype.h>
@@ -65,14 +60,12 @@ ALooper::handler_id AMessage::target() const {
 void AMessage::clear() {
     for (size_t i = 0; i < mNumItems; ++i) {
         Item *item = &mItems[i];
-        delete[] item->mName;
-        item->mName = NULL;
-        freeItemValue(item);
+        freeItem(item);
     }
     mNumItems = 0;
 }
 
-void AMessage::freeItemValue(Item *item) {
+void AMessage::freeItem(Item *item) {
     switch (item->mType) {
         case kTypeString:
         {
@@ -95,85 +88,25 @@ void AMessage::freeItemValue(Item *item) {
     }
 }
 
-#ifdef DUMP_STATS
-#include <utils/Mutex.h>
-
-Mutex gLock;
-static int32_t gFindItemCalls = 1;
-static int32_t gDupCalls = 1;
-static int32_t gAverageNumItems = 0;
-static int32_t gAverageNumChecks = 0;
-static int32_t gAverageNumMemChecks = 0;
-static int32_t gAverageDupItems = 0;
-static int32_t gLastChecked = -1;
-
-static void reportStats() {
-    int32_t time = (ALooper::GetNowUs() / 1000);
-    if (time / 1000 != gLastChecked / 1000) {
-        gLastChecked = time;
-        ALOGI("called findItemIx %zu times (for len=%.1f i=%.1f/%.1f mem) dup %zu times (for len=%.1f)",
-                gFindItemCalls,
-                gAverageNumItems / (float)gFindItemCalls,
-                gAverageNumChecks / (float)gFindItemCalls,
-                gAverageNumMemChecks / (float)gFindItemCalls,
-                gDupCalls,
-                gAverageDupItems / (float)gDupCalls);
-        gFindItemCalls = gDupCalls = 1;
-        gAverageNumItems = gAverageNumChecks = gAverageNumMemChecks = gAverageDupItems = 0;
-        gLastChecked = time;
-    }
-}
-#endif
-
-inline size_t AMessage::findItemIndex(const char *name, size_t len) const {
-#ifdef DUMP_STATS
-    size_t memchecks = 0;
-#endif
-    size_t i = 0;
-    for (; i < mNumItems; i++) {
-        if (len != mItems[i].mNameLength) {
-            continue;
-        }
-#ifdef DUMP_STATS
-        ++memchecks;
-#endif
-        if (!memcmp(mItems[i].mName, name, len)) {
-            break;
-        }
-    }
-#ifdef DUMP_STATS
-    {
-        Mutex::Autolock _l(gLock);
-        ++gFindItemCalls;
-        gAverageNumItems += mNumItems;
-        gAverageNumMemChecks += memchecks;
-        gAverageNumChecks += i;
-        reportStats();
-    }
-#endif
-    return i;
-}
-
-// assumes item's name was uninitialized or NULL
-void AMessage::Item::setName(const char *name, size_t len) {
-    mNameLength = len;
-    mName = new char[len + 1];
-    memcpy((void*)mName, name, len + 1);
-}
-
 AMessage::Item *AMessage::allocateItem(const char *name) {
-    size_t len = strlen(name);
-    size_t i = findItemIndex(name, len);
+    name = AAtomizer::Atomize(name);
+
+    size_t i = 0;
+    while (i < mNumItems && mItems[i].mName != name) {
+        ++i;
+    }
+
     Item *item;
 
     if (i < mNumItems) {
         item = &mItems[i];
-        freeItemValue(item);
+        freeItem(item);
     } else {
         CHECK(mNumItems < kMaxNumItems);
         i = mNumItems++;
         item = &mItems[i];
-        item->setName(name, len);
+
+        item->mName = name;
     }
 
     return item;
@@ -181,18 +114,17 @@ AMessage::Item *AMessage::allocateItem(const char *name) {
 
 const AMessage::Item *AMessage::findItem(
         const char *name, Type type) const {
-    size_t i = findItemIndex(name, strlen(name));
-    if (i < mNumItems) {
+    name = AAtomizer::Atomize(name);
+
+    for (size_t i = 0; i < mNumItems; ++i) {
         const Item *item = &mItems[i];
-        return item->mType == type ? item : NULL;
 
+        if (item->mName == name) {
+            return item->mType == type ? item : NULL;
+        }
     }
-    return NULL;
-}
 
-bool AMessage::contains(const char *name) const {
-    size_t i = findItemIndex(name, strlen(name));
-    return i < mNumItems;
+    return NULL;
 }
 
 #define BASIC_TYPE(NAME,FIELDNAME,TYPENAME)                             \
@@ -226,11 +158,6 @@ void AMessage::setString(
     Item *item = allocateItem(name);
     item->mType = kTypeString;
     item->u.stringValue = new AString(s, len < 0 ? strlen(s) : len);
-}
-
-void AMessage::setString(
-        const char *name, const AString &s) {
-    setString(name, s.c_str(), s.size());
 }
 
 void AMessage::setObjectInternal(
@@ -351,20 +278,11 @@ sp<AMessage> AMessage::dup() const {
     sp<AMessage> msg = new AMessage(mWhat, mTarget);
     msg->mNumItems = mNumItems;
 
-#ifdef DUMP_STATS
-    {
-        Mutex::Autolock _l(gLock);
-        ++gDupCalls;
-        gAverageDupItems += mNumItems;
-        reportStats();
-    }
-#endif
-
     for (size_t i = 0; i < mNumItems; ++i) {
         const Item *from = &mItems[i];
         Item *to = &msg->mItems[i];
 
-        to->setName(from->mName, from->mNameLength);
+        to->mName = from->mName;
         to->mType = from->mType;
 
         switch (from->mType) {
@@ -485,7 +403,7 @@ AString AMessage::debugString(int32_t indent) const {
             {
                 sp<ABuffer> buffer = static_cast<ABuffer *>(item.u.refValue);
 
-                if (buffer != NULL && buffer->data() != NULL && buffer->size() <= 64) {
+                if (buffer != NULL && buffer->size() <= 64) {
                     tmp = StringPrintf("Buffer %s = {\n", item.mName);
                     hexdump(buffer->data(), buffer->size(), indent + 4, &tmp);
                     appendIndent(&tmp, indent + 2);
@@ -535,11 +453,11 @@ sp<AMessage> AMessage::FromParcel(const Parcel &parcel) {
     sp<AMessage> msg = new AMessage(what);
 
     msg->mNumItems = static_cast<size_t>(parcel.readInt32());
+
     for (size_t i = 0; i < msg->mNumItems; ++i) {
         Item *item = &msg->mItems[i];
 
-        const char *name = parcel.readCString();
-        item->setName(name, strlen(name));
+        item->mName = AAtomizer::Atomize(parcel.readCString());
         item->mType = static_cast<Type>(parcel.readInt32());
 
         switch (item->mType) {

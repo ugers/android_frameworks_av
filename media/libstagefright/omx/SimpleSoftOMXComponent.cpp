@@ -290,7 +290,6 @@ OMX_ERRORTYPE SimpleSoftOMXComponent::freeBuffer(
         OMX_BUFFERHEADERTYPE *header) {
     Mutex::Autolock autoLock(mLock);
 
-    internalSetParameter(OMX_IndexParamVendorFlushBuffer, 0);
     CHECK_LT(portIndex, mPorts.size());
 
     PortInfo *port = &mPorts.editItemAt(portIndex);
@@ -529,6 +528,8 @@ void SimpleSoftOMXComponent::onPortFlush(
 
         return;
     }
+
+    internalSetParameter(OMX_IndexParamVendorFlushBuffer, 0);
 
     CHECK_LT(portIndex, mPorts.size());
 

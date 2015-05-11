@@ -29,36 +29,6 @@
 
 namespace android {
 
-<<<<<<< HEAD
-struct CameraInfo {
-    /**
-     * The direction that the camera faces to. It should be CAMERA_FACING_BACK
-     * or CAMERA_FACING_FRONT.
-     */
-    int facing;
-
-    /**
-     * The orientation of the camera image. The value is the angle that the
-     * camera image needs to be rotated clockwise so it shows correctly on the
-     * display in its natural orientation. It should be 0, 90, 180, or 270.
-     *
-     * For example, suppose a device has a naturally tall screen. The
-     * back-facing camera sensor is mounted in landscape. You are looking at
-     * the screen. If the top side of the camera sensor is aligned with the
-     * right edge of the screen in natural orientation, the value should be
-     * 90. If the top side of a front-facing camera sensor is aligned with the
-     * right of the screen, the value should be 270.
-     */
-    int orientation;
-#ifdef QCOM_HARDWARE
-    int mode;
-#endif
-};
-
-class ICameraService;
-class ICamera;
-=======
->>>>>>> 8b8d02886bd9fb8d5ad451c03e486cfad74aa74e
 class Surface;
 class String8;
 class String16;
@@ -103,10 +73,6 @@ public:
     static  sp<Camera>  connect(int cameraId,
                                 const String16& clientPackageName,
                                 int clientUid);
-
-    static  status_t  connectLegacy(int cameraId, int halVersion,
-                                     const String16& clientPackageName,
-                                     int clientUid, sp<Camera>& camera);
 
             virtual     ~Camera();
 

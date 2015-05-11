@@ -89,9 +89,6 @@ void DrmManager::removeUniqueId(int uniqueId) {
 
 status_t DrmManager::loadPlugIns() {
 
-    String8 vendorPluginDirPath64("/vendor/lib64/drm");
-    loadPlugIns(vendorPluginDirPath64);
-
     String8 vendorPluginDirPath("/vendor/lib/drm");
     loadPlugIns(vendorPluginDirPath);
 
@@ -104,7 +101,7 @@ status_t DrmManager::loadPlugIns() {
 status_t DrmManager::loadPlugIns(const String8& plugInDirPath) {
     mPlugInManager.loadPlugIns(plugInDirPath);
     Vector<String8> plugInPathList = mPlugInManager.getPlugInIdList();
-    for (size_t i = 0; i < plugInPathList.size(); ++i) {
+    for (unsigned int i = 0; i < plugInPathList.size(); ++i) {
         String8 plugInPath = plugInPathList[i];
         DrmSupportInfo* info = mPlugInManager.getPlugIn(plugInPath).getSupportInfo(0);
         if (NULL != info) {
@@ -141,7 +138,7 @@ void DrmManager::addClient(int uniqueId) {
     Mutex::Autolock _l(mLock);
     if (!mSupportInfoToPlugInIdMap.isEmpty()) {
         Vector<String8> plugInIdList = mPlugInManager.getPlugInIdList();
-        for (size_t index = 0; index < plugInIdList.size(); index++) {
+        for (unsigned int index = 0; index < plugInIdList.size(); index++) {
             IDrmEngine& rDrmEngine = mPlugInManager.getPlugIn(plugInIdList.itemAt(index));
             rDrmEngine.initialize(uniqueId);
             rDrmEngine.setOnInfoListener(uniqueId, this);
@@ -152,7 +149,7 @@ void DrmManager::addClient(int uniqueId) {
 void DrmManager::removeClient(int uniqueId) {
     Mutex::Autolock _l(mLock);
     Vector<String8> plugInIdList = mPlugInManager.getPlugInIdList();
-    for (size_t index = 0; index < plugInIdList.size(); index++) {
+    for (unsigned int index = 0; index < plugInIdList.size(); index++) {
         IDrmEngine& rDrmEngine = mPlugInManager.getPlugIn(plugInIdList.itemAt(index));
         rDrmEngine.terminate(uniqueId);
     }
@@ -211,7 +208,7 @@ bool DrmManager::canHandle(int uniqueId, const String8& path) {
     bool result = false;
     Vector<String8> plugInPathList = mPlugInManager.getPlugInIdList();
 
-    for (size_t i = 0; i < plugInPathList.size(); ++i) {
+    for (unsigned int i = 0; i < plugInPathList.size(); ++i) {
         IDrmEngine& rDrmEngine = mPlugInManager.getPlugIn(plugInPathList[i]);
         result = rDrmEngine.canHandle(uniqueId, path);
 
@@ -321,7 +318,7 @@ status_t DrmManager::removeRights(int uniqueId, const String8& path) {
 status_t DrmManager::removeAllRights(int uniqueId) {
     Vector<String8> plugInIdList = mPlugInManager.getPlugInIdList();
     status_t result = DRM_ERROR_UNKNOWN;
-    for (size_t index = 0; index < plugInIdList.size(); index++) {
+    for (unsigned int index = 0; index < plugInIdList.size(); index++) {
         IDrmEngine& rDrmEngine = mPlugInManager.getPlugIn(plugInIdList.itemAt(index));
         result = rDrmEngine.removeAllRights(uniqueId);
         if (DRM_NO_ERROR != result) {
@@ -415,7 +412,7 @@ DecryptHandle* DrmManager::openDecryptSession(
     if (NULL != handle) {
         handle->decryptId = mDecryptSessionId + 1;
 
-        for (size_t index = 0; index < plugInIdList.size(); index++) {
+        for (unsigned int index = 0; index < plugInIdList.size(); index++) {
             String8 plugInId = plugInIdList.itemAt(index);
             IDrmEngine& rDrmEngine = mPlugInManager.getPlugIn(plugInId);
             result = rDrmEngine.openDecryptSession(uniqueId, handle, fd, offset, length, mime);
@@ -443,7 +440,7 @@ DecryptHandle* DrmManager::openDecryptSession(
     if (NULL != handle) {
         handle->decryptId = mDecryptSessionId + 1;
 
-        for (size_t index = 0; index < plugInIdList.size(); index++) {
+        for (unsigned int index = 0; index < plugInIdList.size(); index++) {
             String8 plugInId = plugInIdList.itemAt(index);
             IDrmEngine& rDrmEngine = mPlugInManager.getPlugIn(plugInId);
             result = rDrmEngine.openDecryptSession(uniqueId, handle, uri, mime);
@@ -568,7 +565,7 @@ String8 DrmManager::getSupportedPlugInId(const String8& mimeType) {
     String8 plugInId("");
 
     if (EMPTY_STRING != mimeType) {
-        for (size_t index = 0; index < mSupportInfoToPlugInIdMap.size(); index++) {
+        for (unsigned int index = 0; index < mSupportInfoToPlugInIdMap.size(); index++) {
             const DrmSupportInfo& drmSupportInfo = mSupportInfoToPlugInIdMap.keyAt(index);
 
             if (drmSupportInfo.isSupportedMimeType(mimeType)) {
@@ -584,7 +581,7 @@ String8 DrmManager::getSupportedPlugInIdFromPath(int uniqueId, const String8& pa
     String8 plugInId("");
     const String8 fileSuffix = path.getPathExtension();
 
-    for (size_t index = 0; index < mSupportInfoToPlugInIdMap.size(); index++) {
+    for (unsigned int index = 0; index < mSupportInfoToPlugInIdMap.size(); index++) {
         const DrmSupportInfo& drmSupportInfo = mSupportInfoToPlugInIdMap.keyAt(index);
 
         if (drmSupportInfo.isSupportedFileSuffix(fileSuffix)) {
@@ -602,7 +599,7 @@ String8 DrmManager::getSupportedPlugInIdFromPath(int uniqueId, const String8& pa
 
 void DrmManager::onInfo(const DrmInfoEvent& event) {
     Mutex::Autolock _l(mListenerLock);
-    for (size_t index = 0; index < mServiceListeners.size(); index++) {
+    for (unsigned int index = 0; index < mServiceListeners.size(); index++) {
         int uniqueId = mServiceListeners.keyAt(index);
 
         if (uniqueId == event.getUniqueId()) {

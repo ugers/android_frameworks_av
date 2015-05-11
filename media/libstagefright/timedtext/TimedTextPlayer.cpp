@@ -18,7 +18,6 @@
 #define LOG_TAG "TimedTextPlayer"
 #include <utils/Log.h>
 
-#include <inttypes.h>
 #include <limits.h>
 #include <media/stagefright/foundation/ADebug.h>
 #include <media/stagefright/foundation/AMessage.h>
@@ -272,7 +271,7 @@ int64_t TimedTextPlayer::delayUsFromCurrentTime(int64_t fireTimeUs) {
     sp<MediaPlayerBase> listener = mListener.promote();
     if (listener == NULL) {
         // TODO: it may be better to return kInvalidTimeUs
-        ALOGE("%s: Listener is NULL. (fireTimeUs = %" PRId64" )",
+        ALOGE("%s: Listener is NULL. (fireTimeUs = %lld)",
               __FUNCTION__, fireTimeUs);
         return 0;
     }

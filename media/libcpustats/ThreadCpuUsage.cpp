@@ -21,6 +21,7 @@
 #include <stdlib.h>
 #include <time.h>
 
+#include <utils/Debug.h>
 #include <utils/Log.h>
 
 #include <cpustats/ThreadCpuUsage.h>
@@ -217,7 +218,7 @@ uint32_t ThreadCpuUsage::getCpukHz(int cpuNum)
 #define FREQ_SIZE 64
             char freq_path[FREQ_SIZE];
 #define FREQ_DIGIT 27
-            static_assert(MAX_CPU <= 10, "MAX_CPU too large");
+            COMPILE_TIME_ASSERT_FUNCTION_SCOPE(MAX_CPU <= 10);
 #define FREQ_PATH "/sys/devices/system/cpu/cpu?/cpufreq/scaling_cur_freq"
             strlcpy(freq_path, FREQ_PATH, sizeof(freq_path));
             freq_path[FREQ_DIGIT] = cpuNum + '0';

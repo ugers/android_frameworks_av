@@ -55,41 +55,39 @@ MtpObjectInfo::~MtpObjectInfo() {
         free(mKeywords);
 }
 
-bool MtpObjectInfo::read(MtpDataPacket& packet) {
+void MtpObjectInfo::read(MtpDataPacket& packet) {
     MtpStringBuffer string;
     time_t time;
 
-    if (!packet.getUInt32(mStorageID)) return false;
-    if (!packet.getUInt16(mFormat)) return false;
-    if (!packet.getUInt16(mProtectionStatus)) return false;
-    if (!packet.getUInt32(mCompressedSize)) return false;
-    if (!packet.getUInt16(mThumbFormat)) return false;
-    if (!packet.getUInt32(mThumbCompressedSize)) return false;
-    if (!packet.getUInt32(mThumbPixWidth)) return false;
-    if (!packet.getUInt32(mThumbPixHeight)) return false;
-    if (!packet.getUInt32(mImagePixWidth)) return false;
-    if (!packet.getUInt32(mImagePixHeight)) return false;
-    if (!packet.getUInt32(mImagePixDepth)) return false;
-    if (!packet.getUInt32(mParent)) return false;
-    if (!packet.getUInt16(mAssociationType)) return false;
-    if (!packet.getUInt32(mAssociationDesc)) return false;
-    if (!packet.getUInt32(mSequenceNumber)) return false;
+    mStorageID = packet.getUInt32();
+    mFormat = packet.getUInt16();
+    mProtectionStatus = packet.getUInt16();
+    mCompressedSize = packet.getUInt32();
+    mThumbFormat = packet.getUInt16();
+    mThumbCompressedSize = packet.getUInt32();
+    mThumbPixWidth = packet.getUInt32();
+    mThumbPixHeight = packet.getUInt32();
+    mImagePixWidth = packet.getUInt32();
+    mImagePixHeight = packet.getUInt32();
+    mImagePixDepth = packet.getUInt32();
+    mParent = packet.getUInt32();
+    mAssociationType = packet.getUInt16();
+    mAssociationDesc = packet.getUInt32();
+    mSequenceNumber = packet.getUInt32();
 
-    if (!packet.getString(string)) return false;
+    packet.getString(string);
     mName = strdup((const char *)string);
 
-    if (!packet.getString(string)) return false;
+    packet.getString(string);
     if (parseDateTime((const char*)string, time))
         mDateCreated = time;
 
-    if (!packet.getString(string)) return false;
+    packet.getString(string);
     if (parseDateTime((const char*)string, time))
         mDateModified = time;
 
-    if (!packet.getString(string)) return false;
+    packet.getString(string);
     mKeywords = strdup((const char *)string);
-
-    return true;
 }
 
 void MtpObjectInfo::print() {

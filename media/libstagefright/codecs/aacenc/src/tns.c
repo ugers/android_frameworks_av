@@ -30,8 +30,6 @@
 #include "psy_configuration.h"
 #include "tns_func.h"
 
-#define UNUSED(x) (void)(x)
-
 #define TNS_MODIFY_BEGIN         2600  /* Hz */
 #define RATIO_PATCH_LOWER_BORDER 380   /* Hz */
 #define TNS_GAIN_THRESH			 141   /* 1.41*100 */
@@ -140,7 +138,7 @@ Word16 InitTnsConfigurationLong(Word32 bitRate,          /*!< bitrate */
                                 Word16 active)              /*!< tns active flag */
 {
 
-  Word32 bitratePerChannel __unused;
+  Word32 bitratePerChannel;
   tC->maxOrder     = TNS_MAX_ORDER;
   tC->tnsStartFreq = 1275;
   tC->coefRes      = 4;
@@ -206,7 +204,7 @@ Word16 InitTnsConfigurationShort(Word32 bitRate,              /*!< bitrate */
                                  PSY_CONFIGURATION_SHORT *pC, /*!< psy config struct */
                                  Word16 active)               /*!< tns active flag */
 {
-  Word32 bitratePerChannel __unused;
+  Word32 bitratePerChannel;
   tC->maxOrder     = TNS_MAX_ORDER_SHORT;
   tC->tnsStartFreq = 2750;
   tC->coefRes      = 3;
@@ -497,6 +495,36 @@ Word16 TnsEncode(TNS_INFO* tnsInfo,     /*!< tns info structure (modified) */
 
 /*****************************************************************************
 *
+* function name: m_pow2_cordic
+* description: Iterative power function
+*
+*	Calculates pow(2.0,x-1.0*(scale+1)) with INT_BITS bit precision
+*	using modified cordic algorithm
+* returns:     the result of pow2
+*
+*****************************************************************************/
+static Word32 m_pow2_cordic(Word32 x, Word16 scale)
+{
+  Word32 k;
+
+  Word32 accu_y = 0x40000000;
+  accu_y = L_shr(accu_y,scale);
+
+  for(k=1; k<INT_BITS; k++) {
+    const Word32 z = m_log2_table[k];
+
+    while(L_sub(x,z) >= 0) {
+
+      x = L_sub(x, z);
+      accu_y = L_add(accu_y, (accu_y >> k));
+    }
+  }
+  return(accu_y);
+}
+
+
+/*****************************************************************************
+*
 * function name: CalcWeightedSpectrum
 * description: Calculate weighted spectrum for LPC calculation
 *
@@ -614,8 +642,6 @@ static Word16 CalcTnsFilter(const Word16 *signal,
   Word32 predictionGain;
   Word32 i;
   Word32 tnsOrderPlus1 = tnsOrder + 1;
-
-  UNUSED(window);
 
   assert(tnsOrder <= TNS_MAX_ORDER);      /* remove asserts later? (btg) */
 

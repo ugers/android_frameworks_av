@@ -171,7 +171,7 @@ AVCEnc_Status InitRateControlModule(AVCHandle *avcHandle)
     AVCRateControl *rateCtrl = encvid->rateCtrl;
     double L1, L2, L3, bpp;
     int qp;
-    int i;
+    int i, j;
 
     rateCtrl->basicUnit = video->PicSizeInMbs;
 

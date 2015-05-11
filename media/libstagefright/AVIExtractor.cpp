@@ -666,22 +666,6 @@ status_t AVIExtractor::parseStreamHeader(off64_t offset, size_t size) {
     return OK;
 }
 
-// Returns the sample rate based on the sampling frequency index
-static uint32_t get_sample_rate(const uint8_t sf_index)
-{
-    static const uint32_t sample_rates[] =
-    {
-        96000, 88200, 64000, 48000, 44100, 32000,
-        24000, 22050, 16000, 12000, 11025, 8000
-    };
-
-    if (sf_index < sizeof(sample_rates) / sizeof(sample_rates[0])) {
-        return sample_rates[sf_index];
-    }
-
-    return 0;
-}
-
 status_t AVIExtractor::parseStreamFormat(off64_t offset, size_t size) {
     if (mTracks.isEmpty()) {
         return ERROR_MALFORMED;
@@ -719,7 +703,7 @@ status_t AVIExtractor::parseStreamFormat(off64_t offset, size_t size) {
     } else {
         uint32_t format = U16LE_AT(data);
 
-        if ((format == WAVE_FORMAT_MPEGLAYER3) || (format == WAVE_FORMAT_MPEG)) {
+        if (format == 0x55) {
             track->mMeta->setCString(kKeyMIMEType, MEDIA_MIMETYPE_AUDIO_MPEG);
         } else if (format == WAVE_FORMAT_AAC) {
 //          The WAVEFORMATEX structure in AVI container is as below:

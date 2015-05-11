@@ -67,9 +67,7 @@ LOCAL_C_INCLUDES := \
         $(LOCAL_PATH)/../common/include
 
 LOCAL_CFLAGS := \
-        -D"OSCL_UNUSED_ARG(x)=(void)(x)"
-
-LOCAL_CFLAGS += -Werror
+        -DOSCL_UNUSED_ARG=
 
 LOCAL_MODULE := libstagefright_amrnbenc
 
@@ -89,8 +87,6 @@ LOCAL_C_INCLUDES := \
         $(LOCAL_PATH)/include \
         $(LOCAL_PATH)/../common/include \
         $(LOCAL_PATH)/../common
-
-LOCAL_CFLAGS += -Werror
 
 LOCAL_STATIC_LIBRARIES := \
         libstagefright_amrnbenc

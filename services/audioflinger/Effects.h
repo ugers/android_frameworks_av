@@ -127,7 +127,6 @@ public:
                         { return (mDescriptor.flags & EFFECT_FLAG_OFFLOAD_SUPPORTED) != 0; }
     status_t         setOffloaded(bool offloaded, audio_io_handle_t io);
     bool             isOffloaded() const;
-    void             addEffectToHal_l();
 #ifdef QCOM_DIRECTTRACK
     bool             isOnLPA() { return mIsForLPA;}
     void             setLPAFlag(bool isForLPA) {mIsForLPA = isForLPA; }
@@ -166,7 +165,6 @@ mutable Mutex               mLock;      // mutex for process, commands and handl
     uint32_t mDisableWaitCnt;       // current process() calls count during disable period.
     bool     mSuspended;            // effect is suspended: temporarily disabled by framework
     bool     mOffloaded;            // effect is currently offloaded to the audio DSP
-    wp<AudioFlinger>    mAudioFlinger;
 #ifdef QCOM_DIRECTTRACK
     bool     mIsForLPA;
 #endif
@@ -186,7 +184,6 @@ public:
             const sp<IEffectClient>& effectClient,
             int32_t priority);
     virtual ~EffectHandle();
-    virtual status_t initCheck();
 
     // IEffect
     virtual status_t enable();
@@ -226,7 +223,7 @@ public:
     // destroyed_l() must be called with the associated EffectModule mLock held
     bool destroyed_l() const { return mDestroyed; }
 
-    void dumpToBuffer(char* buffer, size_t size);
+    void dump(char* buffer, size_t size);
 
 protected:
     friend class AudioFlinger;          // for mEffect, mHasControl, mEnabled
@@ -289,12 +286,10 @@ public:
 
     sp<EffectModule> getEffectFromDesc_l(effect_descriptor_t *descriptor);
     sp<EffectModule> getEffectFromId_l(int id);
-    sp<EffectModule> getEffectFromType_l(const effect_uuid_t *type);
 #ifdef QCOM_DIRECTTRACK
     sp<EffectModule> getEffectFromIndex_l(int idx);
 #endif
-
-    // FIXME use float to improve the dynamic range
+    sp<EffectModule> getEffectFromType_l(const effect_uuid_t *type);
     bool setVolume_l(uint32_t *left, uint32_t *right);
     void setDevice_l(audio_devices_t device);
     void setMode_l(audio_mode_t mode);
@@ -341,14 +336,6 @@ public:
     // At least one non offloadable effect in the chain is enabled
     bool isNonOffloadableEnabled();
 
-    // use release_cas because we don't care about the observed value, just want to make sure the
-    // new value is observable.
-    void forceVolume() { android_atomic_release_cas(false, true, &mForceVolume); }
-    // use acquire_cas because we are interested in the observed value and
-    // we are the only observers.
-    bool isVolumeForced() { return (android_atomic_acquire_cas(true, false, &mForceVolume) == 0); }
-
-    void syncHalEffectsState();
 
     void dump(int fd, const Vector<String16>& args);
 #ifdef QCOM_DIRECTTRACK
@@ -383,8 +370,6 @@ protected:
 
     void clearInputBuffer_l(sp<ThreadBase> thread);
 
-    void setThread(const sp<ThreadBase>& thread);
-
     wp<ThreadBase> mThread;     // parent mixer thread
     Mutex mLock;                // mutex protecting effect list
     Vector< sp<EffectModule> > mEffects; // list of effect modules
@@ -413,5 +398,4 @@ protected:
     // timeLow fields among effect type UUIDs.
     // Updated by updateSuspendedSessions_l() only.
     KeyedVector< int, sp<SuspendedEffectDesc> > mSuspendedEffects;
-    volatile int32_t mForceVolume; // force next volume command because a new effect was enabled
 };

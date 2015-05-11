@@ -24,24 +24,22 @@
 #include "MyHandler.h"
 #include "SDPLoader.h"
 
-#include <media/IMediaHTTPService.h>
 #include <media/stagefright/MediaDefs.h>
 #include <media/stagefright/MetaData.h>
 
 namespace android {
 
 const int64_t kNearEOSTimeoutUs = 2000000ll; // 2 secs
+const uint32_t kMaxNumKeepDamagedAccessUnits = 30;
 
 NuPlayer::RTSPSource::RTSPSource(
         const sp<AMessage> &notify,
-        const sp<IMediaHTTPService> &httpService,
         const char *url,
         const KeyedVector<String8, String8> *headers,
         bool uidValid,
         uid_t uid,
         bool isSDP)
     : Source(notify),
-      mHTTPService(httpService),
       mURL(url),
       mUIDValid(uidValid),
       mUID(uid),
@@ -51,9 +49,12 @@ NuPlayer::RTSPSource::RTSPSource(
       mFinalResult(OK),
       mDisconnectReplyID(0),
       mBuffering(true),
+      mIsH263(false),
+      mNumKeepDamagedAccessUnits(0),
       mSeekGeneration(0),
       mEOSTimeoutAudio(0),
-      mEOSTimeoutVideo(0) {
+      mEOSTimeoutVideo(0),
+      mSeekDoneNotify(NULL) {
     if (headers) {
         mExtraHeaders = *headers;
 
@@ -65,12 +66,18 @@ NuPlayer::RTSPSource::RTSPSource(
 
             mExtraHeaders.removeItemsAt(index);
         }
+
+        index = mExtraHeaders.indexOfKey(String8("rtp.transport.TCP"));
+
+        if (index >= 0) {
+            mFlags |= kFlagUseTCP;
+            mExtraHeaders.removeItemsAt(index);
+        }
     }
 }
 
 NuPlayer::RTSPSource::~RTSPSource() {
     if (mLooper != NULL) {
-        mLooper->unregisterHandler(id());
         mLooper->stop();
     }
 }
@@ -81,13 +88,14 @@ void NuPlayer::RTSPSource::prepareAsync() {
         mLooper->setName("rtsp");
         mLooper->start();
 
-        mLooper->registerHandler(this);
+        mReflector = new AHandlerReflector<RTSPSource>(this);
+        mLooper->registerHandler(mReflector);
     }
 
     CHECK(mHandler == NULL);
     CHECK(mSDPLoader == NULL);
 
-    sp<AMessage> notify = new AMessage(kWhatNotify, id());
+    sp<AMessage> notify = new AMessage(kWhatNotify, mReflector->id());
 
     CHECK_EQ(mState, (int)DISCONNECTED);
     mState = CONNECTING;
@@ -95,12 +103,12 @@ void NuPlayer::RTSPSource::prepareAsync() {
     if (mIsSDP) {
         mSDPLoader = new SDPLoader(notify,
                 (mFlags & kFlagIncognito) ? SDPLoader::kFlagIncognito : 0,
-                mHTTPService);
+                mUIDValid, mUID);
 
         mSDPLoader->load(
                 mURL.c_str(), mExtraHeaders.isEmpty() ? NULL : &mExtraHeaders);
     } else {
-        mHandler = new MyHandler(mURL.c_str(), notify, mUIDValid, mUID);
+        mHandler = new MyHandler(mURL.c_str(), notify, mUIDValid, mUID, (mFlags & kFlagUseTCP) ? true : false);
         mLooper->registerHandler(mHandler);
 
         mHandler->connect();
@@ -118,7 +126,7 @@ void NuPlayer::RTSPSource::stop() {
     if (mLooper == NULL) {
         return;
     }
-    sp<AMessage> msg = new AMessage(kWhatDisconnect, id());
+    sp<AMessage> msg = new AMessage(kWhatDisconnect, mReflector->id());
 
     sp<AMessage> dummy;
     msg->postAndAwaitResponse(&dummy);
@@ -134,9 +142,7 @@ void NuPlayer::RTSPSource::pause() {
         // Check if EOS or ERROR is received
         if (source != NULL && source->isFinished(mediaDurationUs)) {
             ALOGI("Nearing EOS...No Pause is issued");
-            if (mHandler != NULL) {
-                mHandler->setAUTimeoutCheck(false);
-            }
+            mHandler->setAUTimeoutCheck(false);
             return;
         }
     }
@@ -309,7 +315,7 @@ status_t NuPlayer::RTSPSource::getDuration(int64_t *durationUs) {
 }
 
 status_t NuPlayer::RTSPSource::seekTo(int64_t seekTimeUs) {
-    sp<AMessage> msg = new AMessage(kWhatPerformSeek, id());
+    sp<AMessage> msg = new AMessage(kWhatPerformSeek, mReflector->id());
     msg->setInt32("generation", ++mSeekGeneration);
     msg->setInt64("timeUs", seekTimeUs);
     msg->post(200000ll);
@@ -330,14 +336,14 @@ void NuPlayer::RTSPSource::performSeek(int64_t seekTimeUs) {
         TrackInfo *info = &mTracks.editItemAt(index);
         sp<AnotherPacketSource> source = info->mSource;
         if (source != NULL) {
-            source->queueDiscontinuity(ATSParser::DISCONTINUITY_SEEK, NULL, true);
+            source->queueDiscontinuity(ATSParser::DISCONTINUITY_SEEK, NULL);
         }
     }
 }
 
-int64_t NuPlayer::RTSPSource::getServerTimeoutUs() {
+int32_t NuPlayer::RTSPSource::getServerTimeoutMs() {
     if (mHandler != NULL) {
-        return mHandler->getServerTimeoutUs();
+        return mHandler->getServerTimeoutMs();
     } else {
         return 0;
     }
@@ -377,7 +383,7 @@ void NuPlayer::RTSPSource::onMessageReceived(const sp<AMessage> &msg) {
         {
             onConnected();
 
-            notifyVideoSizeChanged();
+            notifyVideoSizeChanged(0, 0);
 
             uint32_t flags = 0;
 
@@ -402,6 +408,10 @@ void NuPlayer::RTSPSource::onMessageReceived(const sp<AMessage> &msg) {
         case MyHandler::kWhatSeekDone:
         {
             mState = CONNECTED;
+            if (mSeekDoneNotify != NULL) {
+                mSeekDoneNotify->post();
+                mSeekDoneNotify = NULL;
+            }
             break;
         }
 
@@ -411,7 +421,6 @@ void NuPlayer::RTSPSource::onMessageReceived(const sp<AMessage> &msg) {
             if (mState == SEEKING) {
                 break;
             }
-
             size_t trackIndex;
             CHECK(msg->findSize("trackIndex", &trackIndex));
 
@@ -427,8 +436,15 @@ void NuPlayer::RTSPSource::onMessageReceived(const sp<AMessage> &msg) {
             int32_t damaged;
             if (accessUnit->meta()->findInt32("damaged", &damaged)
                     && damaged) {
-                ALOGI("dropping damaged access unit.");
-                break;
+                if (mIsH263 && mNumKeepDamagedAccessUnits < kMaxNumKeepDamagedAccessUnits) {
+                    ALOGI("keep a damaged  access unit");
+                    ++mNumKeepDamagedAccessUnits;
+                } else {
+                    ALOGI("dropping damaged access unit.");
+                    break;
+                }
+            } else {
+                mNumKeepDamagedAccessUnits = 0;
             }
 
             if (mTSParser != NULL) {
@@ -532,10 +548,7 @@ void NuPlayer::RTSPSource::onMessageReceived(const sp<AMessage> &msg) {
             TrackInfo *info = &mTracks.editItemAt(trackIndex);
             sp<AnotherPacketSource> source = info->mSource;
             if (source != NULL) {
-                source->queueDiscontinuity(
-                        ATSParser::DISCONTINUITY_SEEK,
-                        NULL,
-                        true /* discard */);
+                source->queueDiscontinuity(ATSParser::DISCONTINUITY_SEEK, NULL);
             }
 
             break;
@@ -591,6 +604,10 @@ void NuPlayer::RTSPSource::onConnected() {
             return;
         }
 
+        if (!strcasecmp(mime, MEDIA_MIMETYPE_VIDEO_H263)) {
+            mIsH263 = true;
+        }
+
         bool isAudio = !strncasecmp(mime, "audio/", 6);
         bool isVideo = !strncasecmp(mime, "video/", 6);
 
@@ -640,9 +657,9 @@ void NuPlayer::RTSPSource::onSDPLoaded(const sp<AMessage> &msg) {
             ALOGE("Unable to find url in SDP");
             err = UNKNOWN_ERROR;
         } else {
-            sp<AMessage> notify = new AMessage(kWhatNotify, id());
+            sp<AMessage> notify = new AMessage(kWhatNotify, mReflector->id());
 
-            mHandler = new MyHandler(rtspUri.c_str(), notify, mUIDValid, mUID);
+            mHandler = new MyHandler(rtspUri.c_str(), notify, mUIDValid, mUID, (mFlags & kFlagUseTCP) ? true : false);
             mLooper->registerHandler(mHandler);
 
             mHandler->loadSDP(desc);
@@ -703,6 +720,11 @@ void NuPlayer::RTSPSource::finishDisconnectIfPossible() {
 
     (new AMessage)->postReply(mDisconnectReplyID);
     mDisconnectReplyID = 0;
+}
+
+bool NuPlayer::RTSPSource::setCbfForSeekDone(const sp<AMessage> &notify) {
+    mSeekDoneNotify = notify;
+    return true;
 }
 
 }  // namespace android

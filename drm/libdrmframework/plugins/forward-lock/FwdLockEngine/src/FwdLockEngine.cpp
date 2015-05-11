@@ -316,7 +316,6 @@ String8 FwdLockEngine::onGetOriginalMimeType(int uniqueId, const String8& path, 
 
     if (-1 < fileDesc) {
         if (FwdLockFile_attach(fileDesc) < 0) {
-            close(fileDesc);
             return mimeString;
         }
         const char* pMimeType = FwdLockFile_GetContentType(fileDesc);

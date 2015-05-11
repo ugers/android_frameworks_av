@@ -25,13 +25,9 @@ namespace android {
 // state is wrapped by a SingleStateQueue.
 struct StaticAudioTrackState {
     // do not define constructors, destructors, or virtual methods
-
-    // These fields should both be size_t, but since they are located in shared memory we
-    // force to 32-bit.  The client and server may have different typedefs for size_t.
-    uint32_t    mLoopStart;
-    uint32_t    mLoopEnd;
-
-    int         mLoopCount;
+    size_t  mLoopStart;
+    size_t  mLoopEnd;
+    int     mLoopCount;
 };
 
 }   // namespace android

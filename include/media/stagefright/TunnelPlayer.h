@@ -1,16 +1,7 @@
 /*
-<<<<<<< HEAD
- * Copyright (C) 2009 The Android Open Source Project
- *
- * Copyright (c) 2009-2012, The Linux Foundation. All rights reserved.
- * Not a Contribution, Apache license notifications and license are retained
- * for attribution purposes only.
- *
-=======
  * Copyright (c) 2009-2012, The Linux Foundation. All rights reserved.
  * Not a Contribution
  * Copyright (C) 2009 The Android Open Source Project
->>>>>>> 8b8d02886bd9fb8d5ad451c03e486cfad74aa74e
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -30,25 +21,12 @@
 #define TUNNEL_PLAYER_H_
 
 #include "AudioPlayer.h"
-<<<<<<< HEAD
-#include <media/IAudioFlinger.h>
-=======
->>>>>>> 8b8d02886bd9fb8d5ad451c03e486cfad74aa74e
 #include <utils/threads.h>
 #include <utils/List.h>
 #include <utils/Vector.h>
 #include <fcntl.h>
 #include <pthread.h>
-<<<<<<< HEAD
-#include <binder/IServiceManager.h>
-#include <linux/unistd.h>
 #include <include/TimedEventQueue.h>
-#include <binder/BinderService.h>
-#include <binder/MemoryDealer.h>
-#include <powermanager/IPowerManager.h>
-=======
-#include <include/TimedEventQueue.h>
->>>>>>> 8b8d02886bd9fb8d5ad451c03e486cfad74aa74e
 
 // Pause timeout = 3sec
 #define TUNNEL_PAUSE_TIMEOUT_USEC 3000000
@@ -75,11 +53,7 @@ public:
     virtual status_t start(bool sourceAlreadyStarted = false);
 
     virtual void pause(bool playPendingSamples = false);
-<<<<<<< HEAD
-    virtual void resume();
-=======
     virtual status_t resume();
->>>>>>> 8b8d02886bd9fb8d5ad451c03e486cfad74aa74e
 
     // Returns the timestamp of the last buffer played (in us).
     virtual int64_t getMediaTimeUs();
@@ -95,10 +69,7 @@ public:
 
 
     static int mTunnelObjectsAlive;
-<<<<<<< HEAD
-=======
     static const int getTunnelObjectsAliveMax();
->>>>>>> 8b8d02886bd9fb8d5ad451c03e486cfad74aa74e
 private:
     int64_t mPositionTimeMediaUs;
     int64_t mPositionTimeRealUs;
@@ -106,10 +77,6 @@ private:
     bool mIsAudioRouted;
     bool mStarted;
     bool mPaused;
-<<<<<<< HEAD
-    bool mA2DPEnabled;
-=======
->>>>>>> 8b8d02886bd9fb8d5ad451c03e486cfad74aa74e
     int32_t mChannelMask;
     int32_t numChannels;
     int32_t mSampleRate;
@@ -119,51 +86,6 @@ private:
     int64_t mNumFramesPlayedSysTimeUs;
     audio_format_t mFormat;
     bool mHasVideo;
-<<<<<<< HEAD
-    void clearPowerManager();
-
-    class PMDeathRecipient : public IBinder::DeathRecipient {
-        public:
-                        PMDeathRecipient(void *obj){parentClass = (TunnelPlayer *)obj;}
-            virtual     ~PMDeathRecipient() {}
-
-            // IBinder::DeathRecipient
-            virtual     void        binderDied(const wp<IBinder>& who);
-
-        private:
-                        TunnelPlayer *parentClass;
-                        PMDeathRecipient(const PMDeathRecipient&);
-                        PMDeathRecipient& operator = (const PMDeathRecipient&);
-
-        friend class TunnelPlayer;
-    };
-
-    friend class PMDeathRecipient;
-
-    void        acquireWakeLock();
-    void        releaseWakeLock();
-
-    sp<IPowerManager>       mPowerManager;
-    sp<IBinder>             mWakeLockToken;
-    sp<PMDeathRecipient>    mDeathRecipient;
-
-    pthread_t extractorThread;
-
-    //Kill Thread boolean
-    bool killExtractorThread;
-
-    //Thread alive boolean
-    bool extractorThreadAlive;
-
-
-    //Declare the condition Variables and Mutex
-
-    Condition mExtractorCV;
-
-
-    // make sure Decoder thread has exited
-    void requestAndWaitForExtractorThreadExit();
-=======
 
     pthread_t mExtractorThread;
 
@@ -180,7 +102,6 @@ private:
 
     // make sure Decoder thread has exited
     void requestAndWaitForExtractorThreadExit_l();
->>>>>>> 8b8d02886bd9fb8d5ad451c03e486cfad74aa74e
 
 
     static void *extractorThreadWrapper(void *me);
@@ -188,48 +109,12 @@ private:
 
     void createThreads();
 
-<<<<<<< HEAD
-    volatile bool mIsA2DPEnabled;
-
-    //Structure to recieve the BT notification from the flinger.
-    class AudioFlingerTunneldecodeClient: public IBinder::DeathRecipient, public BnAudioFlingerClient {
-    public:
-        AudioFlingerTunneldecodeClient(void *obj);
-
-        TunnelPlayer *pBaseClass;
-        // DeathRecipient
-        virtual void binderDied(const wp<IBinder>& who);
-
-        // IAudioFlingerClient
-
-        // indicate a change in the configuration of an output or input: keeps the cached
-        // values for output/input parameters upto date in client process
-        virtual void ioConfigChanged(int event, audio_io_handle_t ioHandle, const void *param2);
-
-        friend class TunnelPlayer;
-    };
-
-    sp<IAudioFlinger> mAudioFlinger;
-
-    // helper function to obtain AudioFlinger service handle
-    void getAudioFlinger();
     void onPauseTimeOut();
 
-    sp<AudioFlingerTunneldecodeClient> mAudioFlingerClient;
-    friend class AudioFlingerTunneldecodeClient;
-    Mutex mAudioFlingerLock;
-=======
-    void onPauseTimeOut();
-
->>>>>>> 8b8d02886bd9fb8d5ad451c03e486cfad74aa74e
     sp<MediaSource> mSource;
 
     MediaBuffer *mInputBuffer;
 
-<<<<<<< HEAD
-    Mutex pmLock;
-=======
->>>>>>> 8b8d02886bd9fb8d5ad451c03e486cfad74aa74e
     Mutex mLock;
 
     bool mSeeking;
@@ -248,31 +133,6 @@ private:
     sp<TimedEventQueue::Event>  mPauseEvent;
     bool                        mPauseEventPending;
 
-<<<<<<< HEAD
-    typedef enum {
-      NCREATED = -1,
-      INITIALIZED,
-      RUNNING,
-      SLEEPING,
-      EXITING,
-    } ThreadState;
-
-    sp<MediaPlayerBase::AudioSink> mAudioSink;
-    AwesomePlayer *mObserver;
-    ThreadState mThreadState;
-    bool mStopSinkPending;
-
-    static size_t AudioSinkCallback(
-        MediaPlayerBase::AudioSink *audioSink,
-        void *data, size_t size, void *me);
-
-    enum A2DPState {
-        A2DP_ENABLED,
-        A2DP_DISABLED,
-        A2DP_CONNECT,
-        A2DP_DISCONNECT
-    };
-=======
     sp<MediaPlayerBase::AudioSink> mAudioSink;
     AwesomePlayer *mObserver;
 
@@ -280,7 +140,6 @@ private:
         MediaPlayerBase::AudioSink *audioSink,
         void *data, size_t size, void *me,
         MediaPlayerBase::AudioSink::cb_event_t event);
->>>>>>> 8b8d02886bd9fb8d5ad451c03e486cfad74aa74e
 
     void getPlayedTimeFromDSP_l(int64_t *timeStamp);
     void getOffsetRealTime_l(int64_t *offsetTime);
@@ -288,12 +147,7 @@ private:
     size_t fillBuffer(void *data, size_t size);
 
     void reset();
-<<<<<<< HEAD
-    status_t schedPauseTimeOut();
-    status_t stopAudioSink();
-=======
     bool seekTooClose(int64_t time_us);
->>>>>>> 8b8d02886bd9fb8d5ad451c03e486cfad74aa74e
 
     TunnelPlayer(const TunnelPlayer &);
     TunnelPlayer &operator=(const TunnelPlayer &);

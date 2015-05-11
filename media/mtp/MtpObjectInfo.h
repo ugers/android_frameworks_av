@@ -50,7 +50,7 @@ public:
                         MtpObjectInfo(MtpObjectHandle handle);
     virtual             ~MtpObjectInfo();
 
-    bool                read(MtpDataPacket& packet);
+    void                read(MtpDataPacket& packet);
 
     void                print();
 };

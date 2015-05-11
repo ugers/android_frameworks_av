@@ -16,8 +16,13 @@ LOCAL_SRC_FILES:= \
 
 LOCAL_C_INCLUDES:= \
         $(TOP)/frameworks/av/media/libstagefright \
-        $(TOP)/frameworks/native/include/media/openmax \
         $(TOP)/frameworks/av/media/libstagefright/mpeg2ts \
+
+ifneq ($(TI_CUSTOM_DOMX_PATH),)
+LOCAL_C_INCLUDES += $(TI_CUSTOM_DOMX_PATH)/omx_core/inc
+else
+LOCAL_C_INCLUDES += $(TOP)/frameworks/native/include/media/openmax
+endif
 
 LOCAL_SHARED_LIBRARIES:= \
         libbinder                       \
@@ -35,54 +40,3 @@ LOCAL_MODULE:= libstagefright_wfd
 LOCAL_MODULE_TAGS:= optional
 
 include $(BUILD_SHARED_LIBRARY)
-<<<<<<< HEAD
-
-################################################################################
-
-include $(CLEAR_VARS)
-
-LOCAL_SRC_FILES:= \
-        wfd.cpp                 \
-
-LOCAL_SHARED_LIBRARIES:= \
-        libbinder                       \
-        libgui                          \
-        libmedia                        \
-        libstagefright                  \
-        libstagefright_foundation       \
-        libstagefright_wfd              \
-        libutils                        \
-
-LOCAL_MODULE:= wfd
-
-LOCAL_MODULE_TAGS := debug
-
-include $(BUILD_EXECUTABLE)
-
-################################################################################
-
-include $(CLEAR_VARS)
-
-ifneq ($(TI_CUSTOM_DOMX_PATH),)
-LOCAL_C_INCLUDES:= $(TI_CUSTOM_DOMX_PATH)/omx_core/inc
-endif
-
-LOCAL_SRC_FILES:= \
-        udptest.cpp                 \
-
-LOCAL_SHARED_LIBRARIES:= \
-        libbinder                       \
-        libgui                          \
-        libmedia                        \
-        libstagefright                  \
-        libstagefright_foundation       \
-        libstagefright_wfd              \
-        libutils                        \
-
-LOCAL_MODULE:= udptest
-
-LOCAL_MODULE_TAGS := debug
-
-include $(BUILD_EXECUTABLE)
-=======
->>>>>>> 8b8d02886bd9fb8d5ad451c03e486cfad74aa74e

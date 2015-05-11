@@ -21,7 +21,6 @@
 
 #include <binder/Parcel.h>
 
-#include <media/IMediaHTTPService.h>
 #include <media/IMediaPlayer.h>
 #include <media/IStreamSource.h>
 
@@ -58,7 +57,6 @@ enum {
     SET_RETRANSMIT_ENDPOINT,
     GET_RETRANSMIT_ENDPOINT,
     SET_NEXT_PLAYER,
-<<<<<<< HEAD
     /* add by Gary. start {{----------------------------------- */
     /* 2011-9-15 10:51:10 */
     /* expend interfaces about subtitle, track and so on */
@@ -84,9 +82,11 @@ enum {
     GET_TRACK_LIST,
     GET_CUR_TRACK,
     SWITCH_TRACK,
-    SET_INPUT_DIMENSION_TYPE,   
+    SET_INPUT_DIMENSION_TYPE,  
+    SET_INPUT_DIMENSION_VALUE,
     GET_INPUT_DIMENSION_TYPE, 
     SET_OUTPUT_DIMENSION_TYPE,  
+    SET_OUTPUT_DIMENSION_VALUE,
     GET_OUTPUT_DIMENSION_TYPE,
     SET_ANAGLAGH_TYPE,   
     GET_ANAGLAGH_TYPE, 
@@ -95,32 +95,11 @@ enum {
     GET_AUDIO_ENCODE,                   
     GET_AUDIO_BIT_RATE,
     GET_AUDIO_SAMPLE_RATE,
-    /* add by Gary. end   -----------------------------------}} */
-    
-    /* add by Gary. start {{----------------------------------- */
-    /* 2011-11-14 */
-    /* support scale mode */
     ENABLE_SCALE_MODE,
-    /* add by Gary. end   -----------------------------------}} */
-
-    /* add by Gary. start {{----------------------------------- */
-    /* 2012-03-07 */
-    /* set audio channel mute */
     SET_CHANNEL_MUTE_MODE,
     GET_CHANNEL_MUTE_MODE,
-    /* add by Gary. end   -----------------------------------}} */
-
-    /* add by Gary. start {{----------------------------------- */
-    /* 2012-4-24 */
-    /* add two general interfaces for expansibility */
     GENERAL_INTERFACE,
-    /* add by Gary. end   -----------------------------------}} */
-
     SET_DATA_SOURCE_STREAM2,
-=======
-    SUSPEND,
-    RESUME,
->>>>>>> 8b8d02886bd9fb8d5ad451c03e486cfad74aa74e
 };
 
 class BpMediaPlayer: public BpInterface<IMediaPlayer>
@@ -139,17 +118,11 @@ public:
         remote()->transact(DISCONNECT, data, &reply);
     }
 
-    status_t setDataSource(
-            const sp<IMediaHTTPService> &httpService,
-            const char* url,
+    status_t setDataSource(const char* url,
             const KeyedVector<String8, String8>* headers)
     {
         Parcel data, reply;
         data.writeInterfaceToken(IMediaPlayer::getInterfaceDescriptor());
-        data.writeInt32(httpService != NULL);
-        if (httpService != NULL) {
-            data.writeStrongBinder(httpService->asBinder());
-        }
         data.writeCString(url);
         if (headers == NULL) {
             data.writeInt32(0);
@@ -183,22 +156,17 @@ public:
         return reply.readInt32();
     }
 
-<<<<<<< HEAD
     status_t setDataSource(const sp<IStreamSource> &source, int type) {
-		Parcel data, reply;
-		data.writeInterfaceToken(IMediaPlayer::getInterfaceDescriptor());
-		data.writeStrongBinder(source->asBinder());
-		data.writeInt32(type);
-		remote()->transact(SET_DATA_SOURCE_STREAM2, data, &reply);
-		return reply.readInt32();
-	}
+        Parcel data, reply;
+        data.writeInterfaceToken(IMediaPlayer::getInterfaceDescriptor());
+        data.writeStrongBinder(source->asBinder());
+        data.writeInt32(type);
+        remote()->transact(SET_DATA_SOURCE_STREAM2, data, &reply);
+        return reply.readInt32();
+    }
 
-    // pass the buffered ISurfaceTexture to the media player service
-    status_t setVideoSurfaceTexture(const sp<ISurfaceTexture>& surfaceTexture)
-=======
     // pass the buffered IGraphicBufferProducer to the media player service
     status_t setVideoSurfaceTexture(const sp<IGraphicBufferProducer>& bufferProducer)
->>>>>>> 8b8d02886bd9fb8d5ad451c03e486cfad74aa74e
     {
         Parcel data, reply;
         data.writeInterfaceToken(IMediaPlayer::getInterfaceDescriptor());
@@ -423,7 +391,6 @@ public:
         return err;
     }
 
-<<<<<<< HEAD
     /* add by Gary. start {{----------------------------------- */
     /* 2011-9-14 14:27:12 */
     /* expend interfaces about subtitle, track and so on */
@@ -601,7 +568,6 @@ public:
         remote()->transact(GET_SUB_DELAY, data, &reply);
         return reply.readInt32();
     }
-    
     int getTrackCount()
     {
         Parcel data, reply;
@@ -637,8 +603,9 @@ public:
         remote()->transact(GET_CUR_TRACK, data, &reply);
         return reply.readInt32();
     }
-    
-    status_t switchTrack(int index)
+
+  
+  status_t switchTrack(int index)
     {
         Parcel data, reply;
         data.writeInterfaceToken(IMediaPlayer::getInterfaceDescriptor());
@@ -646,13 +613,27 @@ public:
         remote()->transact(SWITCH_TRACK, data, &reply);
         return reply.readInt32();
     }
-    
+
+
+
+
+
     status_t setInputDimensionType(int type)
     {
         Parcel data, reply;
         data.writeInterfaceToken(IMediaPlayer::getInterfaceDescriptor());
         data.writeInt32(type);
         remote()->transact(SET_INPUT_DIMENSION_TYPE, data, &reply);
+        return reply.readInt32();
+    }
+
+    status_t setInputDimensionValue(int type, int value)
+    {
+        Parcel data, reply;
+        data.writeInterfaceToken(IMediaPlayer::getInterfaceDescriptor());
+        data.writeInt32(type);
+        data.writeInt32(value);
+        remote()->transact(SET_INPUT_DIMENSION_VALUE, data, &reply);
         return reply.readInt32();
     }
     
@@ -670,6 +651,16 @@ public:
         data.writeInterfaceToken(IMediaPlayer::getInterfaceDescriptor());
         data.writeInt32(type);
         remote()->transact(SET_OUTPUT_DIMENSION_TYPE, data, &reply);
+        return reply.readInt32();
+    }
+
+    status_t setOutputDimensionValue(int type, int value)
+    {
+        Parcel data, reply;
+        data.writeInterfaceToken(IMediaPlayer::getInterfaceDescriptor());
+        data.writeInt32(type);
+        data.writeInt32(value);
+        remote()->transact(SET_OUTPUT_DIMENSION_VALUE, data, &reply);
         return reply.readInt32();
     }
     
@@ -748,11 +739,6 @@ public:
         return reply.readInt32();
     }
 
-    /* add by Gary. end   -----------------------------------}} */
-
-    /* add by Gary. start {{----------------------------------- */
-    /* 2011-11-14 */
-    /* support scale mode */
     status_t enableScaleMode(bool enable, int width, int height)
     {
         Parcel data, reply;
@@ -763,11 +749,7 @@ public:
         remote()->transact(ENABLE_SCALE_MODE, data, &reply);
         return reply.readInt32();
     }
-    /* add by Gary. end   -----------------------------------}} */    
 
-    /* add by Gary. start {{----------------------------------- */
-    /* 2012-03-07 */
-    /* set audio channel mute */
     status_t setChannelMuteMode(int muteMode)
     {
         Parcel data, reply;
@@ -784,11 +766,7 @@ public:
         remote()->transact(GET_CHANNEL_MUTE_MODE, data, &reply);
         return reply.readInt32();
     }
-    /* add by Gary. end   -----------------------------------}} */
     
-    /* add by Gary. start {{----------------------------------- */
-    /* 2012-4-24 */
-    /* add two general interfaces for expansibility */
     status_t generalInterface(int cmd, int int1, int int2, int int3, void *p)
     {
         Parcel data, reply;
@@ -812,24 +790,7 @@ public:
         }
         return ret;
     }
-    /* add by Gary. end   -----------------------------------}} */
-=======
-    status_t suspend()
-    {
-        Parcel data, reply;
-        data.writeInterfaceToken(IMediaPlayer::getInterfaceDescriptor());
-        remote()->transact(SUSPEND, data, &reply);
-        return reply.readInt32();
-     }
-
-     status_t resume()
-     {
-        Parcel data, reply;
-        data.writeInterfaceToken(IMediaPlayer::getInterfaceDescriptor());
-        remote()->transact(RESUME, data, &reply);
-        return reply.readInt32();
-     }
->>>>>>> 8b8d02886bd9fb8d5ad451c03e486cfad74aa74e
+    
 };
 
 IMPLEMENT_META_INTERFACE(MediaPlayer, "android.media.IMediaPlayer");
@@ -847,13 +808,6 @@ status_t BnMediaPlayer::onTransact(
         } break;
         case SET_DATA_SOURCE_URL: {
             CHECK_INTERFACE(IMediaPlayer, data, reply);
-
-            sp<IMediaHTTPService> httpService;
-            if (data.readInt32()) {
-                httpService =
-                    interface_cast<IMediaHTTPService>(data.readStrongBinder());
-            }
-
             const char* url = data.readCString();
             KeyedVector<String8, String8> headers;
             int32_t numHeaders = data.readInt32();
@@ -862,8 +816,7 @@ status_t BnMediaPlayer::onTransact(
                 String8 value = data.readString8();
                 headers.add(key, value);
             }
-            reply->writeInt32(setDataSource(
-                        httpService, url, numHeaders > 0 ? &headers : NULL));
+            reply->writeInt32(setDataSource(url, numHeaders > 0 ? &headers : NULL));
             return NO_ERROR;
         } break;
         case SET_DATA_SOURCE_FD: {
@@ -882,13 +835,13 @@ status_t BnMediaPlayer::onTransact(
             return NO_ERROR;
         }
         case SET_DATA_SOURCE_STREAM2: {
-            CHECK_INTERFACE(IMediaPlayer, data, reply);
-            sp<IStreamSource> source =
-                interface_cast<IStreamSource>(data.readStrongBinder());
-            int32_t type = data.readInt32();
-            reply->writeInt32(setDataSource(source, type));
-            return NO_ERROR;
-        }
+			CHECK_INTERFACE(IMediaPlayer, data, reply);
+			sp<IStreamSource> source =
+				interface_cast<IStreamSource>(data.readStrongBinder());
+			int32_t type = data.readInt32();
+			reply->writeInt32(setDataSource(source, type));
+			return NO_ERROR;
+		}
         case SET_VIDEO_SURFACETEXTURE: {
             CHECK_INTERFACE(IMediaPlayer, data, reply);
             sp<IGraphicBufferProducer> bufferProducer =
@@ -1045,7 +998,6 @@ status_t BnMediaPlayer::onTransact(
 
             return NO_ERROR;
         } break;
-<<<<<<< HEAD
         /* add by Gary. start {{----------------------------------- */
         /* 2011-9-15 13:06:54 */
         /* expend interfaces about subtitle, track and so on */
@@ -1199,6 +1151,12 @@ status_t BnMediaPlayer::onTransact(
             delete[] trackList;
             return NO_ERROR;
          } break;
+		 case SET_INPUT_DIMENSION_TYPE: { 
+            CHECK_INTERFACE(IMediaPlayer, data, reply);
+            int type = data.readInt32();
+            reply->writeInt32(setInputDimensionType(type));
+            return NO_ERROR;
+         } break;
         case GET_CUR_TRACK: {
             CHECK_INTERFACE(IMediaPlayer, data, reply);
             reply->writeInt32(getCurTrack());
@@ -1209,12 +1167,7 @@ status_t BnMediaPlayer::onTransact(
             reply->writeInt32(switchTrack(data.readInt32()));
             return NO_ERROR;
         } break;
-        case SET_INPUT_DIMENSION_TYPE: { 
-            CHECK_INTERFACE(IMediaPlayer, data, reply);
-            int type = data.readInt32();
-            reply->writeInt32(setInputDimensionType(type));
-            return NO_ERROR;
-        } break;
+
         case GET_INPUT_DIMENSION_TYPE: { 
             CHECK_INTERFACE(IMediaPlayer, data, reply);
             reply->writeInt32(getInputDimensionType());
@@ -1224,6 +1177,13 @@ status_t BnMediaPlayer::onTransact(
             CHECK_INTERFACE(IMediaPlayer, data, reply);
             int type = data.readInt32();
             reply->writeInt32(setOutputDimensionType(type));
+            return NO_ERROR;
+        } break;
+        case SET_OUTPUT_DIMENSION_VALUE: { 
+            CHECK_INTERFACE(IMediaPlayer, data, reply);
+            int type = data.readInt32();
+            int value = data.readInt32();
+            reply->writeInt32(setOutputDimensionValue(type, value));
             return NO_ERROR;
         } break;
         case GET_OUTPUT_DIMENSION_TYPE: { 
@@ -1287,11 +1247,6 @@ status_t BnMediaPlayer::onTransact(
             reply->writeInt32(getAudioSampleRate());
             return NO_ERROR;
         } break;
-        /* add by Gary. end   -----------------------------------}} */
-
-        /* add by Gary. start {{----------------------------------- */
-        /* 2011-11-14 */
-        /* support scale mode */
         case ENABLE_SCALE_MODE: { 
             CHECK_INTERFACE(IMediaPlayer, data, reply);
             int type = data.readInt32();
@@ -1300,11 +1255,6 @@ status_t BnMediaPlayer::onTransact(
             reply->writeInt32(enableScaleMode(type, width, height));
             return NO_ERROR;
         } break;
-        /* add by Gary. end   -----------------------------------}} */
-
-        /* add by Gary. start {{----------------------------------- */
-        /* 2012-03-07 */
-        /* set audio channel mute */
         case SET_CHANNEL_MUTE_MODE: {      
             CHECK_INTERFACE(IMediaPlayer, data, reply);
             reply->writeInt32(setChannelMuteMode(data.readInt32()));
@@ -1315,10 +1265,6 @@ status_t BnMediaPlayer::onTransact(
             reply->writeInt32(getChannelMuteMode());
             return NO_ERROR;
         } break;
-        /* add by Gary. end   -----------------------------------}} */
-        /* add by Gary. start {{----------------------------------- */
-        /* 2012-4-24 */
-        /* add two general interfaces for expansibility */
         case GENERAL_INTERFACE: {      
             CHECK_INTERFACE(IMediaPlayer, data, reply);
             int cmd;
@@ -1347,21 +1293,6 @@ status_t BnMediaPlayer::onTransact(
             }
             return NO_ERROR;
         } break;
-        /* add by Gary. end   -----------------------------------}} */
-=======
-        case SUSPEND: {
-            CHECK_INTERFACE(IMediaPlayer, data, reply);
-            status_t ret = suspend();
-            reply->writeInt32(ret);
-            return NO_ERROR;
-        } break;
-        case RESUME: {
-            CHECK_INTERFACE(IMediaPlayer, data, reply);
-            status_t ret = resume();
-            reply->writeInt32(ret);
-            return NO_ERROR;
-        } break;
->>>>>>> 8b8d02886bd9fb8d5ad451c03e486cfad74aa74e
         default:
             return BBinder::onTransact(code, data, reply, flags);
     }

@@ -1,8 +1,5 @@
 /*
- * Copyright (c) 2013, The Linux Foundation. All rights reserved.
- * Not a Contribution.
  * Copyright (C) 2009 The Android Open Source Project
- * Copyright (c) 2013, The Linux Foundation. All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -31,14 +28,6 @@
 #include <media/stagefright/MetaData.h>
 #include <utils/threads.h>
 #include <drm/DrmManagerClient.h>
-#include <media/stagefright/ExtendedStats.h>
-
-#define PLAYER_STATS(func, ...) \
-    do { \
-        if(mPlayerExtendedStats != NULL) { \
-            mPlayerExtendedStats->func(__VA_ARGS__);} \
-    } \
-    while(0)
 
 namespace android {
 
@@ -74,7 +63,6 @@ struct AwesomePlayer {
     void setUID(uid_t uid);
 
     status_t setDataSource(
-            const sp<IMediaHTTPService> &httpService,
             const char *uri,
             const KeyedVector<String8, String8> *headers = NULL);
 
@@ -114,21 +102,11 @@ struct AwesomePlayer {
     void postAudioEOS(int64_t delayUs = 0ll);
     void postAudioSeekComplete();
     void postAudioTearDown();
-    void printFileName(int fd);
-#ifdef MTK_HARDWARE
-    void mtk_omx_get_current_time(int64_t* pReal_time);
-#endif
-
     status_t dump(int fd, const Vector<String16> &args) const;
-
-    status_t suspend();
-    status_t resume();
 
 private:
     friend struct AwesomeEvent;
     friend struct PreviewPlayer;
-
-    sp<PlayerExtendedStats> mPlayerExtendedStats;
 
     enum {
         PLAYING             = 0x01,
@@ -181,7 +159,6 @@ private:
     SystemTimeSource mSystemTimeSource;
     TimeSource *mTimeSource;
 
-    sp<IMediaHTTPService> mHTTPService;
     String8 mUri;
     KeyedVector<String8, String8> mUriHeaders;
 
@@ -194,7 +171,6 @@ private:
     bool mVideoRendererIsPreview;
     int32_t mMediaRenderingStartGeneration;
     int32_t mStartGeneration;
-    ssize_t mActiveVideoTrackIndex;
 
     ssize_t mActiveAudioTrackIndex;
     sp<MediaSource> mAudioTrack;
@@ -210,11 +186,9 @@ private:
     uint32_t mFlags;
     uint32_t mExtractorFlags;
     uint32_t mSinceLastDropped;
-    bool mDropFramesDisable; // hevc test
 
     int64_t mTimeSourceDeltaUs;
     int64_t mVideoTimeUs;
-    int64_t mVideoFrameDeltaUs;
 
     enum SeekType {
         NO_SEEK,
@@ -230,17 +204,6 @@ private:
 
     bool mWatchForAudioSeekComplete;
     bool mWatchForAudioEOS;
-<<<<<<< HEAD
-#ifdef QCOM_ENHANCED_AUDIO
-    static int mTunnelAliveAP;
-#endif
-=======
-#ifdef QCOM_DIRECTTRACK
-    static int mTunnelAliveAP;
-#endif
-
-    bool mIsFirstFrameAfterResume;
->>>>>>> 8b8d02886bd9fb8d5ad451c03e486cfad74aa74e
 
     sp<TimedEventQueue::Event> mVideoEvent;
     bool mVideoEventPending;
@@ -268,7 +231,6 @@ private:
     void postAudioTearDownEvent(int64_t delayUs);
 
     status_t play_l();
-    status_t fallbackToSWDecoder();
 
     MediaBuffer *mVideoBuffer;
 
@@ -280,13 +242,11 @@ private:
 
     int64_t mLastVideoTimeUs;
     TimedTextDriver *mTextDriver;
-    ssize_t mActiveTextTrackIndex;
 
     sp<WVMExtractor> mWVMExtractor;
     sp<MediaExtractor> mExtractor;
 
     status_t setDataSource_l(
-            const sp<IMediaHTTPService> &httpService,
             const char *uri,
             const KeyedVector<String8, String8> *headers = NULL);
 
@@ -353,25 +313,6 @@ private:
         ASSIGN
     };
     void modifyFlags(unsigned value, FlagMode mode);
-<<<<<<< HEAD
-=======
-#ifdef QCOM_DIRECTTRACK
-    void checkTunnelExceptions();
-#endif
->>>>>>> 8b8d02886bd9fb8d5ad451c03e486cfad74aa74e
-    void logFirstFrame();
-    void logCatchUp(int64_t ts, int64_t clock, int64_t delta);
-    void logLate(int64_t ts, int64_t clock, int64_t delta);
-    void logOnTime(int64_t ts, int64_t clock, int64_t delta);
-    void printStats();
-    int64_t getTimeOfDayUs();
-<<<<<<< HEAD
-#ifdef QCOM_HARDWARE
-    void checkTunnelExceptions();
-#endif
-=======
->>>>>>> 8b8d02886bd9fb8d5ad451c03e486cfad74aa74e
-    bool mStatistics;
 
     struct TrackStat {
         String8 mMIME;
@@ -397,33 +338,13 @@ private:
         int32_t mVideoHeight;
         uint32_t mFlags;
         Vector<TrackStat> mTracks;
-
-        int64_t mConsecutiveFramesDropped;
-        uint32_t mCatchupTimeStart;
-        uint32_t mNumTimesSyncLoss;
-        uint32_t mMaxEarlyDelta;
-        uint32_t mMaxLateDelta;
-        uint32_t mMaxTimeSyncLoss;
-        uint64_t mTotalFrames;
-        int64_t mFirstFrameLatencyStartUs; //first frame latency start
-        int64_t mFirstFrameLatencyUs;
-        int64_t mLastFrameUs;
-        bool mVeryFirstFrame;
-        int64_t mTotalTimeUs;
-        int64_t mLastPausedTimeMs;
-        int64_t mLastSeekToTimeMs;
-<<<<<<< HEAD
-=======
-        int64_t mResumeDelayStartUs;
-        int64_t mSeekDelayStartUs;
->>>>>>> 8b8d02886bd9fb8d5ad451c03e486cfad74aa74e
     } mStats;
 
     bool    mOffloadAudio;
     bool    mAudioTearDown;
     bool    mAudioTearDownWasPlaying;
     int64_t mAudioTearDownPosition;
-    bool mConsumeRights;
+
     status_t setVideoScalingMode(int32_t mode);
     status_t setVideoScalingMode_l(int32_t mode);
     status_t getTrackInfo(Parcel* reply) const;
@@ -435,26 +356,9 @@ private:
     status_t selectTrack(size_t trackIndex, bool select);
 
     size_t countTracks() const;
-#ifdef QCOM_DIRECTTRACK
-    bool inSupportedTunnelFormats(const char * mime);
-    //Flag to check if tunnel mode audio is enabled
-    bool mIsTunnelAudio;
-#endif
-
-    bool isWidevineContent() const;
-
-#ifdef USE_TUNNEL_MODE
-    bool inSupportedTunnelFormats(const char * mime);
-
-    //Flag to check if tunnel mode audio is enabled
-    bool mIsTunnelAudio;
-#endif
 
     AwesomePlayer(const AwesomePlayer &);
     AwesomePlayer &operator=(const AwesomePlayer &);
-#ifdef MTK_HARDWARE
-    int64_t mAVSyncTimeUs;
-#endif
 };
 
 }  // namespace android

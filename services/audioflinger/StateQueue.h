@@ -17,8 +17,6 @@
 #ifndef ANDROID_AUDIO_STATE_QUEUE_H
 #define ANDROID_AUDIO_STATE_QUEUE_H
 
-#include <stdatomic.h>
-
 // The state queue template class was originally driven by this use case / requirements:
 //  There are two threads: a fast mixer, and a normal mixer, and they share state.
 //  The interesting part of the shared state is a set of active fast tracks,
@@ -90,8 +88,6 @@
 //  effectively in random order, that is the observer should not do address
 //  arithmetic on the state pointers.  However to the mutator, the state pointers
 //  are in a definite circular order.
-
-#include "Configuration.h"
 
 namespace android {
 
@@ -188,7 +184,7 @@ private:
     T                 mStates[kN];      // written by mutator, read by observer
 
     // "volatile" is meaningless with SMP, but here it indicates that we're using atomic ops
-    atomic_uintptr_t  mNext; // written by mutator to advance next, read by observer
+    volatile const T* mNext; // written by mutator to advance next, read by observer
     volatile const T* mAck;  // written by observer to acknowledge advance of next, read by mutator
 
     // only used by observer

@@ -14,15 +14,12 @@
  * limitations under the License.
  */
 
-#include <inttypes.h>
-
 //#define LOG_NDEBUG 0
 #define LOG_TAG "SoftVideoDecoderOMXComponent"
 #include <utils/Log.h>
 
 #include "include/SoftVideoDecoderOMXComponent.h"
 
-#include <media/hardware/HardwareAPI.h>
 #include <media/stagefright/foundation/ADebug.h>
 #include <media/stagefright/foundation/ALooper.h>
 #include <media/stagefright/foundation/AMessage.h>
@@ -51,9 +48,6 @@ SoftVideoDecoderOMXComponent::SoftVideoDecoderOMXComponent(
         OMX_PTR appData,
         OMX_COMPONENTTYPE **component)
         : SimpleSoftOMXComponent(name, callbacks, appData, component),
-        mIsAdaptive(false),
-        mAdaptiveMaxWidth(0),
-        mAdaptiveMaxHeight(0),
         mWidth(width),
         mHeight(height),
         mCropLeft(0),
@@ -123,18 +117,16 @@ void SoftVideoDecoderOMXComponent::initPorts(
     updatePortDefinitions();
 }
 
-void SoftVideoDecoderOMXComponent::updatePortDefinitions(bool updateCrop) {
+void SoftVideoDecoderOMXComponent::updatePortDefinitions() {
     OMX_PARAM_PORTDEFINITIONTYPE *def = &editPortInfo(kInputPortIndex)->mDef;
     def->format.video.nFrameWidth = mWidth;
     def->format.video.nFrameHeight = mHeight;
     def->format.video.nStride = def->format.video.nFrameWidth;
     def->format.video.nSliceHeight = def->format.video.nFrameHeight;
 
-    def->nBufferSize = def->format.video.nFrameWidth * def->format.video.nFrameHeight * 3 / 2;
-
     def = &editPortInfo(kOutputPortIndex)->mDef;
-    def->format.video.nFrameWidth = outputBufferWidth();
-    def->format.video.nFrameHeight = outputBufferHeight();
+    def->format.video.nFrameWidth = mWidth;
+    def->format.video.nFrameHeight = mHeight;
     def->format.video.nStride = def->format.video.nFrameWidth;
     def->format.video.nSliceHeight = def->format.video.nFrameHeight;
 
@@ -142,105 +134,10 @@ void SoftVideoDecoderOMXComponent::updatePortDefinitions(bool updateCrop) {
             (def->format.video.nFrameWidth *
              def->format.video.nFrameHeight * 3) / 2;
 
-    if (updateCrop) {
-        mCropLeft = 0;
-        mCropTop = 0;
-        mCropWidth = mWidth;
-        mCropHeight = mHeight;
-    }
-}
-
-
-uint32_t SoftVideoDecoderOMXComponent::outputBufferWidth() {
-    return mIsAdaptive ? mAdaptiveMaxWidth : mWidth;
-}
-
-uint32_t SoftVideoDecoderOMXComponent::outputBufferHeight() {
-    return mIsAdaptive ? mAdaptiveMaxHeight : mHeight;
-}
-
-void SoftVideoDecoderOMXComponent::handlePortSettingsChange(
-        bool *portWillReset, uint32_t width, uint32_t height,
-        CropSettingsMode cropSettingsMode, bool fakeStride) {
-    *portWillReset = false;
-    bool sizeChanged = (width != mWidth || height != mHeight);
-    bool updateCrop = (cropSettingsMode == kCropUnSet);
-    bool cropChanged = (cropSettingsMode == kCropChanged);
-    bool strideChanged = false;
-    if (fakeStride) {
-        OMX_PARAM_PORTDEFINITIONTYPE *def = &editPortInfo(kOutputPortIndex)->mDef;
-        if (def->format.video.nStride != width || def->format.video.nSliceHeight != height) {
-            strideChanged = true;
-        }
-    }
-
-    if (sizeChanged || cropChanged || strideChanged) {
-        mWidth = width;
-        mHeight = height;
-
-        if ((sizeChanged && !mIsAdaptive)
-            || width > mAdaptiveMaxWidth
-            || height > mAdaptiveMaxHeight) {
-            if (mIsAdaptive) {
-                if (width > mAdaptiveMaxWidth) {
-                    mAdaptiveMaxWidth = width;
-                }
-                if (height > mAdaptiveMaxHeight) {
-                    mAdaptiveMaxHeight = height;
-                }
-            }
-            updatePortDefinitions(updateCrop);
-            notify(OMX_EventPortSettingsChanged, kOutputPortIndex, 0, NULL);
-            mOutputPortSettingsChange = AWAITING_DISABLED;
-            *portWillReset = true;
-        } else {
-            updatePortDefinitions(updateCrop);
-
-            if (fakeStride) {
-                // MAJOR HACK that is not pretty, it's just to fool the renderer to read the correct
-                // data.
-                // Some software decoders (e.g. SoftMPEG4) fill decoded frame directly to output
-                // buffer without considering the output buffer stride and slice height. So this is
-                // used to signal how the buffer is arranged.  The alternative is to re-arrange the
-                // output buffer in SoftMPEG4, but that results in memcopies.
-                OMX_PARAM_PORTDEFINITIONTYPE *def = &editPortInfo(kOutputPortIndex)->mDef;
-                def->format.video.nStride = mWidth;
-                def->format.video.nSliceHeight = mHeight;
-            }
-
-            notify(OMX_EventPortSettingsChanged, kOutputPortIndex,
-                   OMX_IndexConfigCommonOutputCrop, NULL);
-        }
-    }
-}
-
-void SoftVideoDecoderOMXComponent::copyYV12FrameToOutputBuffer(
-        uint8_t *dst, const uint8_t *srcY, const uint8_t *srcU, const uint8_t *srcV,
-        size_t srcYStride, size_t srcUStride, size_t srcVStride) {
-    size_t dstYStride = outputBufferWidth();
-    size_t dstUVStride = dstYStride / 2;
-    size_t dstHeight = outputBufferHeight();
-    uint8_t *dstStart = dst;
-
-    for (size_t i = 0; i < mHeight; ++i) {
-         memcpy(dst, srcY, mWidth);
-         srcY += srcYStride;
-         dst += dstYStride;
-    }
-
-    dst = dstStart + dstYStride * dstHeight;
-    for (size_t i = 0; i < mHeight / 2; ++i) {
-         memcpy(dst, srcU, mWidth / 2);
-         srcU += srcUStride;
-         dst += dstUVStride;
-    }
-
-    dst = dstStart + (5 * dstYStride * dstHeight) / 4;
-    for (size_t i = 0; i < mHeight / 2; ++i) {
-         memcpy(dst, srcV, mWidth / 2);
-         srcV += srcVStride;
-         dst += dstUVStride;
-    }
+    mCropLeft = 0;
+    mCropTop = 0;
+    mCropWidth = mWidth;
+    mCropHeight = mHeight;
 }
 
 OMX_ERRORTYPE SoftVideoDecoderOMXComponent::internalGetParameter(
@@ -278,18 +175,19 @@ OMX_ERRORTYPE SoftVideoDecoderOMXComponent::internalGetParameter(
         {
             OMX_VIDEO_PARAM_PROFILELEVELTYPE *profileLevel =
                   (OMX_VIDEO_PARAM_PROFILELEVELTYPE *) params;
+            OMX_U32 profileIndex = profileLevel->nProfileIndex;
 
             if (profileLevel->nPortIndex != kInputPortIndex) {
-                ALOGE("Invalid port index: %" PRIu32, profileLevel->nPortIndex);
+                ALOGE("Invalid port index: %ld", profileLevel->nPortIndex);
                 return OMX_ErrorUnsupportedIndex;
             }
 
-            if (profileLevel->nProfileIndex >= mNumProfileLevels) {
+            if (profileIndex >= mNumProfileLevels) {
                 return OMX_ErrorNoMore;
             }
 
-            profileLevel->eProfile = mProfileLevels[profileLevel->nProfileIndex].mProfile;
-            profileLevel->eLevel   = mProfileLevels[profileLevel->nProfileIndex].mLevel;
+            profileLevel->eProfile = mProfileLevels[profileIndex].mProfile;
+            profileLevel->eLevel   = mProfileLevels[profileIndex].mLevel;
             return OMX_ErrorNone;
         }
 
@@ -300,10 +198,7 @@ OMX_ERRORTYPE SoftVideoDecoderOMXComponent::internalGetParameter(
 
 OMX_ERRORTYPE SoftVideoDecoderOMXComponent::internalSetParameter(
         OMX_INDEXTYPE index, const OMX_PTR params) {
-    // Include extension index OMX_INDEXEXTTYPE.
-    const int32_t indexFull = index;
-
-    switch (indexFull) {
+    switch (index) {
         case OMX_IndexParamStandardComponentRole:
         {
             const OMX_PARAM_COMPONENTROLETYPE *roleParams =
@@ -334,58 +229,6 @@ OMX_ERRORTYPE SoftVideoDecoderOMXComponent::internalSetParameter(
             return OMX_ErrorNone;
         }
 
-        case kPrepareForAdaptivePlaybackIndex:
-        {
-            const PrepareForAdaptivePlaybackParams* adaptivePlaybackParams =
-                    (const PrepareForAdaptivePlaybackParams *)params;
-            mIsAdaptive = adaptivePlaybackParams->bEnable;
-            if (mIsAdaptive) {
-                mAdaptiveMaxWidth = adaptivePlaybackParams->nMaxFrameWidth;
-                mAdaptiveMaxHeight = adaptivePlaybackParams->nMaxFrameHeight;
-                mWidth = mAdaptiveMaxWidth;
-                mHeight = mAdaptiveMaxHeight;
-            } else {
-                mAdaptiveMaxWidth = 0;
-                mAdaptiveMaxHeight = 0;
-            }
-            updatePortDefinitions();
-            return OMX_ErrorNone;
-        }
-
-        case OMX_IndexParamPortDefinition:
-        {
-            OMX_PARAM_PORTDEFINITIONTYPE *newParams =
-                (OMX_PARAM_PORTDEFINITIONTYPE *)params;
-            OMX_VIDEO_PORTDEFINITIONTYPE *video_def = &newParams->format.video;
-            OMX_PARAM_PORTDEFINITIONTYPE *def = &editPortInfo(newParams->nPortIndex)->mDef;
-
-            uint32_t oldWidth = def->format.video.nFrameWidth;
-            uint32_t oldHeight = def->format.video.nFrameHeight;
-            uint32_t newWidth = video_def->nFrameWidth;
-            uint32_t newHeight = video_def->nFrameHeight;
-            if (newWidth != oldWidth || newHeight != oldHeight) {
-                bool outputPort = (newParams->nPortIndex == kOutputPortIndex);
-                def->format.video.nFrameWidth =
-                    (mIsAdaptive && outputPort) ? mAdaptiveMaxWidth : newWidth;
-                def->format.video.nFrameHeight =
-                    (mIsAdaptive && outputPort) ? mAdaptiveMaxHeight : newHeight;
-                def->format.video.nStride = def->format.video.nFrameWidth;
-                def->format.video.nSliceHeight = def->format.video.nFrameHeight;
-                def->nBufferSize =
-                    def->format.video.nFrameWidth * def->format.video.nFrameHeight * 3 / 2;
-                if (outputPort) {
-                    mWidth = newWidth;
-                    mHeight = newHeight;
-                    mCropLeft = 0;
-                    mCropTop = 0;
-                    mCropWidth = newWidth;
-                    mCropHeight = newHeight;
-                }
-                newParams->nBufferSize = def->nBufferSize;
-            }
-            return SimpleSoftOMXComponent::internalSetParameter(index, params);
-        }
-
         default:
             return SimpleSoftOMXComponent::internalSetParameter(index, params);
     }
@@ -413,16 +256,6 @@ OMX_ERRORTYPE SoftVideoDecoderOMXComponent::getConfig(
         default:
             return OMX_ErrorUnsupportedIndex;
     }
-}
-
-OMX_ERRORTYPE SoftVideoDecoderOMXComponent::getExtensionIndex(
-        const char *name, OMX_INDEXTYPE *index) {
-    if (!strcmp(name, "OMX.google.android.index.prepareForAdaptivePlayback")) {
-        *(int32_t*)index = kPrepareForAdaptivePlaybackIndex;
-        return OMX_ErrorNone;
-    }
-
-    return SimpleSoftOMXComponent::getExtensionIndex(name, index);
 }
 
 void SoftVideoDecoderOMXComponent::onReset() {

@@ -52,7 +52,7 @@ void MtpPacket::reset() {
     memset(mBuffer, 0, mBufferSize);
 }
 
-void MtpPacket::allocate(size_t length) {
+void MtpPacket::allocate(int length) {
     if (length > mBufferSize) {
         int newLength = length + mAllocationIncrement;
         mBuffer = (uint8_t *)realloc(mBuffer, newLength);

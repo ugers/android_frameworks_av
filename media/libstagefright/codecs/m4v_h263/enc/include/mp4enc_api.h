@@ -29,7 +29,7 @@ typedef int Int;
 typedef unsigned short UShort;
 typedef short Short;
 typedef unsigned int Bool;
-typedef uint32_t ULong;
+typedef unsigned long ULong;
 
 #define PV_CODEC_INIT  0
 #define PV_CODEC_STOP  1

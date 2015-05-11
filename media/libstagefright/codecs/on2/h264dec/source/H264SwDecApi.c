@@ -42,8 +42,6 @@
 #include "h264bsd_decoder.h"
 #include "h264bsd_util.h"
 
-#define UNUSED(x) (void)(x)
-
 /*------------------------------------------------------------------------------
        Version Information
 ------------------------------------------------------------------------------*/
@@ -75,7 +73,6 @@ H264DEC_EVALUATION      Compile evaluation version, restricts number of frames
 #endif
 
 void H264SwDecTrace(char *string) {
-    UNUSED(string);
 }
 
 void* H264SwDecMalloc(u32 size) {

@@ -25,7 +25,6 @@
 namespace android {
 
 class ALooper;
-struct IMediaHTTPService;
 class MediaPlayerBase;
 class MediaSource;
 class Parcel;
@@ -35,9 +34,7 @@ class DataSource;
 
 class TimedTextDriver {
 public:
-    TimedTextDriver(
-            const wp<MediaPlayerBase> &listener,
-            const sp<IMediaHTTPService> &httpService);
+    TimedTextDriver(const wp<MediaPlayerBase> &listener);
 
     ~TimedTextDriver();
 
@@ -80,7 +77,6 @@ private:
     sp<ALooper> mLooper;
     sp<TimedTextPlayer> mPlayer;
     wp<MediaPlayerBase> mListener;
-    sp<IMediaHTTPService> mHTTPService;
 
     // Variables to be guarded by mLock.
     State mState;

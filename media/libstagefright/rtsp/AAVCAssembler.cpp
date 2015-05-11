@@ -124,7 +124,7 @@ ARTPAssembler::AssemblyStatus AAVCAssembler::addNALUnit(
 }
 
 void AAVCAssembler::addSingleNALUnit(const sp<ABuffer> &buffer) {
-    ALOGV("addSingleNALUnit of size %zu", buffer->size());
+    ALOGV("addSingleNALUnit of size %d", buffer->size());
 #if !LOG_NDEBUG
     hexdump(buffer->data(), buffer->size());
 #endif
@@ -191,7 +191,7 @@ ARTPAssembler::AssemblyStatus AAVCAssembler::addFragmentedNALUnit(
     CHECK((indicator & 0x1f) == 28);
 
     if (size < 2) {
-        ALOGV("Ignoring malformed FU buffer (size = %zu)", size);
+        ALOGV("Ignoring malformed FU buffer (size = %d)", size);
 
         queue->erase(queue->begin());
         ++mNextExpectedSeqNo;
@@ -225,7 +225,7 @@ ARTPAssembler::AssemblyStatus AAVCAssembler::addFragmentedNALUnit(
     } else {
         List<sp<ABuffer> >::iterator it = ++queue->begin();
         while (it != queue->end()) {
-            ALOGV("sequence length %zu", totalCount);
+            ALOGV("sequence length %d", totalCount);
 
             const sp<ABuffer> &buffer = *it;
 
@@ -294,7 +294,7 @@ ARTPAssembler::AssemblyStatus AAVCAssembler::addFragmentedNALUnit(
     for (size_t i = 0; i < totalCount; ++i) {
         const sp<ABuffer> &buffer = *it;
 
-        ALOGV("piece #%zu/%zu", i + 1, totalCount);
+        ALOGV("piece #%d/%d", i + 1, totalCount);
 #if !LOG_NDEBUG
         hexdump(buffer->data(), buffer->size());
 #endif
@@ -317,7 +317,7 @@ ARTPAssembler::AssemblyStatus AAVCAssembler::addFragmentedNALUnit(
 void AAVCAssembler::submitAccessUnit() {
     CHECK(!mNALUnits.empty());
 
-    ALOGV("Access unit complete (%zu nal units)", mNALUnits.size());
+    ALOGV("Access unit complete (%d nal units)", mNALUnits.size());
 
     size_t totalSize = 0;
     for (List<sp<ABuffer> >::iterator it = mNALUnits.begin();

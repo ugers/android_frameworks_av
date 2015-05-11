@@ -10,11 +10,8 @@ LOCAL_SRC_FILES:=                 \
         MPEG2TSExtractor.cpp      \
 
 LOCAL_C_INCLUDES:= \
-        $(TOP)/frameworks/av/media/libstagefright \
-        $(TOP)/frameworks/native/include/media/openmax \
-        $(TOP)/$(call project-path-for,qcom-media)/mm-core/inc
-
-LOCAL_CFLAGS += -Werror
+	$(TOP)/frameworks/av/media/libstagefright \
+	$(TOP)/frameworks/native/include/media/openmax
 
 LOCAL_MODULE:= libstagefright_mpeg2ts
 

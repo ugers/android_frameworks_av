@@ -29,7 +29,6 @@
 extern "C" {
 #endif /* __cplusplus */
 
-#include <stdint.h>
 
 /****************************************************************************************/
 /*                                                                                      */
@@ -86,14 +85,14 @@ extern "C" {
 
 typedef     char                LVM_CHAR;           /* ASCII character */
 
-typedef     int8_t              LVM_INT8;           /* Signed 8-bit word */
-typedef     uint8_t             LVM_UINT8;          /* Unsigned 8-bit word */
+typedef     char                LVM_INT8;           /* Signed 8-bit word */
+typedef     unsigned char       LVM_UINT8;          /* Unsigned 8-bit word */
 
-typedef     int16_t             LVM_INT16;          /* Signed 16-bit word */
-typedef     uint16_t            LVM_UINT16;         /* Unsigned 16-bit word */
+typedef     short               LVM_INT16;          /* Signed 16-bit word */
+typedef     unsigned short      LVM_UINT16;         /* Unsigned 16-bit word */
 
-typedef     int32_t             LVM_INT32;          /* Signed 32-bit word */
-typedef     uint32_t            LVM_UINT32;         /* Unsigned 32-bit word */
+typedef     long                LVM_INT32;          /* Signed 32-bit word */
+typedef     unsigned long       LVM_UINT32;         /* Unsigned 32-bit word */
 
 
 /****************************************************************************************/

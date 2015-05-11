@@ -3,7 +3,6 @@
  * Not a Contribution.
  *
  * Copyright (C) 2006-2011 The Android Open Source Project
- * Copyright (c) 2012-2013, The Linux Foundation. All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -36,28 +35,15 @@ const char * const AudioParameter::keyChannels = AUDIO_PARAMETER_STREAM_CHANNELS
 const char * const AudioParameter::keyFrameCount = AUDIO_PARAMETER_STREAM_FRAME_COUNT;
 const char * const AudioParameter::keyInputSource = AUDIO_PARAMETER_STREAM_INPUT_SOURCE;
 const char * const AudioParameter::keyScreenState = AUDIO_PARAMETER_KEY_SCREEN_STATE;
-<<<<<<< HEAD
-#ifdef QCOM_HARDWARE
-const char * const AudioParameter::keyHandleFm = AUDIO_PARAMETER_KEY_HANDLE_FM;
-const char * const AudioParameter::keyVoipCheck = AUDIO_PARAMETER_KEY_VOIP_CHECK;
-const char * const AudioParameter::keyFluenceType = AUDIO_PARAMETER_KEY_FLUENCE_TYPE;
-const char * const AudioParameter::keySSR = AUDIO_PARAMETER_KEY_SSR;
-const char * const AudioParameter::keyHandleA2dpDevice = AUDIO_PARAMETER_KEY_HANDLE_A2DP_DEVICE;
-const char * const AudioParameter::keyADSPStatus = AUDIO_PARAMETER_KEY_ADSP_STATUS;
-#endif
-=======
-const char * const AudioParameter::keySSR = AUDIO_PARAMETER_KEY_SSR;
-const char * const AudioParameter::keyADSPStatus = AUDIO_PARAMETER_KEY_ADSP_STATUS;
->>>>>>> 8b8d02886bd9fb8d5ad451c03e486cfad74aa74e
+const char * const AudioParameter::keySoundCardStatus = AUDIO_PARAMETER_KEY_SND_CARD_STATUS;
 
 AudioParameter::AudioParameter(const String8& keyValuePairs)
 {
     char *str = new char[keyValuePairs.length()+1];
     mKeyValuePairs = keyValuePairs;
-    char *last;
 
     strcpy(str, keyValuePairs.string());
-    char *pair = strtok_r(str, ";", &last);
+    char *pair = strtok(str, ";");
     while (pair != NULL) {
         if (strlen(pair) != 0) {
             size_t eqIdx = strcspn(pair, "=");
@@ -76,7 +62,7 @@ AudioParameter::AudioParameter(const String8& keyValuePairs)
         } else {
             ALOGV("AudioParameter() cstor empty key value pair");
         }
-        pair = strtok_r(NULL, ";", &last);
+        pair = strtok(NULL, ";");
     }
 
     delete[] str;

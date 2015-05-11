@@ -16,14 +16,12 @@
 
 #include "Configuration.h"
 #include "FastMixerState.h"
-#include "FastCaptureState.h"
 #include "StateQueue.h"
 
 // FIXME hack for gcc
 
 namespace android {
 
-template class StateQueue<FastMixerState>;      // typedef FastMixerStateQueue
-template class StateQueue<FastCaptureState>;    // typedef FastCaptureStateQueue
+template class StateQueue<FastMixerState>;  // typedef FastMixerStateQueue
 
 }

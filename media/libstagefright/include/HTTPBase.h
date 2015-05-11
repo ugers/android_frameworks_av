@@ -50,48 +50,50 @@ struct HTTPBase : public DataSource {
 
     virtual status_t setBandwidthStatCollectFreq(int32_t freqMs);
 
-    virtual void setBandwidthHistorySize(size_t numHistoryItems);
+    static status_t UpdateProxyConfig(
+            const char *host, int32_t port, const char *exclusionList);
+
+    void setUID(uid_t uid);
+    bool getUID(uid_t *uid) const;
+
+    static sp<HTTPBase> Create(uint32_t flags = 0);
 
     static void RegisterSocketUserTag(int sockfd, uid_t uid, uint32_t kTag);
     static void UnRegisterSocketUserTag(int sockfd);
 
-<<<<<<< HEAD
+    static void RegisterSocketUserMark(int sockfd, uid_t uid);
+    static void UnRegisterSocketUserMark(int sockfd);
     //* add by chenxiaochuan for QQ live stream.
     virtual AString getRedirectUri(bool getAll = false)
     {
-      return AString("");
+    	return AString("");
     }
 
     virtual bool isRedirected()
     {
-      return false;
+    	return false;
     }
 
     virtual void setRedirectHost(const char* host)
     {
-      return;
+    	return;
     }
 
     virtual void setRedirectPort(const char* port)
     {
-      return;
+    	return;
     }
 
     virtual void setRedirectPath(const char* path)
     {
-      return;
+    	return;
     }
     virtual void setRedirectSpec(const char* path) = 0;
     virtual void forceDisconnect(){};
     virtual void setTimeoutLastUs(int64_t timeoutUs) {};
     //* end.
-=======
-    static void RegisterSocketUserMark(int sockfd, uid_t uid);
-    static void UnRegisterSocketUserMark(int sockfd);
->>>>>>> 8b8d02886bd9fb8d5ad451c03e486cfad74aa74e
-
 protected:
-    virtual void addBandwidthMeasurement(size_t numBytes, int64_t delayUs);
+    void addBandwidthMeasurement(size_t numBytes, int64_t delayUs);
 
 private:
     struct BandwidthEntry {
@@ -105,7 +107,6 @@ private:
     size_t mNumBandwidthHistoryItems;
     int64_t mTotalTransferTimeUs;
     size_t mTotalTransferBytes;
-    size_t mMaxBandwidthHistoryItems;
 
     enum {
         kMinBandwidthCollectFreqMs = 1000,   // 1 second
@@ -115,6 +116,9 @@ private:
     int64_t mPrevBandwidthMeasureTimeUs;
     int32_t mPrevEstimatedBandWidthKbps;
     int32_t mBandWidthCollectFreqMs;
+
+    bool mUIDValid;
+    uid_t mUID;
 
     DISALLOW_EVIL_CONSTRUCTORS(HTTPBase);
 };

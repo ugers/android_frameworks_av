@@ -25,10 +25,7 @@
 #include <camera/Camera.h>
 #include <camera/CameraParameters.h>
 #include <system/window.h>
-#include "hardware/camera.h"
-#ifdef USE_MEMORY_HEAP_ION
-#include <binder/MemoryHeapIon.h>
-#endif
+#include <hardware/camera.h>
 
 namespace android {
 
@@ -92,39 +89,11 @@ public:
         }
     }
 
-    status_t filterOpenErrorCode(status_t err) {
-        switch(err) {
-            case NO_ERROR:
-            case -EBUSY:
-            case -EINVAL:
-            case -EUSERS:
-                return err;
-            default:
-                break;
-        }
-        return -ENODEV;
-    }
-
-
     status_t initialize(hw_module_t *module)
     {
         ALOGI("Opening camera %s", mName.string());
-        camera_module_t *cameraModule = reinterpret_cast<camera_module_t *>(module);
-        camera_info info;
-        status_t res = cameraModule->get_camera_info(atoi(mName.string()), &info);
-        if (res != OK) return res;
-
-        int rc = OK;
-        if (module->module_api_version >= CAMERA_MODULE_API_VERSION_2_3 &&
-            info.device_version > CAMERA_DEVICE_API_VERSION_1_0) {
-            // Open higher version camera device as HAL1.0 device.
-            rc = cameraModule->open_legacy(module, mName.string(),
-                                               CAMERA_DEVICE_API_VERSION_1_0,
-                                               (hw_device_t **)&mDevice);
-        } else {
-            rc = filterOpenErrorCode(module->methods->open(
-                module, mName.string(), (hw_device_t **)&mDevice));
-        }
+        int rc = module->methods->open(module, mName.string(),
+                                       (hw_device_t **)&mDevice);
         if (rc != OK) {
             ALOGE("Could not open camera %s: %d", mName.string(), rc);
             return rc;
@@ -139,12 +108,6 @@ public:
         ALOGV("%s(%s) buf %p", __FUNCTION__, mName.string(), buf.get());
 
         if (mDevice->ops->set_preview_window) {
-#ifdef QCOM_HARDWARE
-            ALOGV("%s buf %p mPreviewWindow %p", __FUNCTION__, buf.get(), mPreviewWindow.get());
-            if (mPreviewWindow.get() && (buf.get() != mPreviewWindow.get())) {
-                 mDevice->ops->set_preview_window(mDevice, 0);
-            }
-#endif
             mPreviewWindow = buf;
             mHalPreviewWindow.user = this;
             ALOGV("%s &mHalPreviewWindow %p mHalPreviewWindow.user %p", __FUNCTION__,
@@ -347,10 +310,6 @@ public:
     void releaseRecordingFrame(const sp<IMemory>& mem)
     {
         ALOGV("%s(%s)", __FUNCTION__, mName.string());
-        if (mem == NULL) {
-             ALOGE("%s: NULL memory reference", __FUNCTION__);
-             return;
-        }
         if (mDevice->ops->release_recording_frame) {
             ssize_t offset;
             size_t size;
@@ -492,13 +451,17 @@ private:
         ALOGV("%s", __FUNCTION__);
         CameraHardwareInterface *__this =
                 static_cast<CameraHardwareInterface *>(user);
+        if (data != NULL) {
           sp<CameraHeapMemory> mem(static_cast<CameraHeapMemory *>(data->handle));
           if (index >= mem->mNumBufs) {
             ALOGE("%s: invalid buffer index %d, max allowed is %d", __FUNCTION__,
                  index, mem->mNumBufs);
             return;
+          }
+          __this->mDataCb(msg_type, mem->mBuffers[index], metadata, __this->mCbUser);
+        } else {
+          __this->mDataCb(msg_type, NULL, metadata, __this->mCbUser);
         }
-        __this->mDataCb(msg_type, mem->mBuffers[index], metadata, __this->mCbUser);
     }
 
     static void __data_cb_timestamp(nsecs_t timestamp, int32_t msg_type,
@@ -530,11 +493,7 @@ private:
                          mBufSize(buf_size),
                          mNumBufs(num_buffers)
         {
-#ifdef USE_MEMORY_HEAP_ION
-            mHeap = new MemoryHeapIon(fd, buf_size * num_buffers);
-#else
             mHeap = new MemoryHeapBase(fd, buf_size * num_buffers);
-#endif
             commonInitialization();
         }
 
@@ -542,11 +501,7 @@ private:
                          mBufSize(buf_size),
                          mNumBufs(num_buffers)
         {
-#ifdef USE_MEMORY_HEAP_ION
-            mHeap = new MemoryHeapIon(buf_size * num_buffers);
-#else
             mHeap = new MemoryHeapBase(buf_size * num_buffers);
-#endif
             commonInitialization();
         }
 
@@ -578,24 +533,14 @@ private:
         camera_memory_t handle;
     };
 
-#ifdef USE_MEMORY_HEAP_ION
-    static camera_memory_t* __get_memory(int fd, size_t buf_size, uint_t num_bufs,
-                                         void *ion_fd)
-    {
-#else
     static camera_memory_t* __get_memory(int fd, size_t buf_size, uint_t num_bufs,
                                          void *user __attribute__((unused)))
     {
-#endif
         CameraHeapMemory *mem;
         if (fd < 0)
             mem = new CameraHeapMemory(buf_size, num_bufs);
         else
             mem = new CameraHeapMemory(fd, buf_size, num_bufs);
-#ifdef USE_MEMORY_HEAP_ION
-        if (ion_fd)
-            *((int *) ion_fd) = mem->mHeap->getHeapID();
-#endif
         mem->incStrong(mem);
         return &mem->handle;
     }
@@ -670,14 +615,9 @@ private:
     static int __set_buffers_geometry(struct preview_stream_ops* w,
                       int width, int height, int format)
     {
-        int rc;
         ANativeWindow *a = anw(w);
-
-        rc = native_window_set_buffers_dimensions(a, width, height);
-        if (!rc) {
-            rc = native_window_set_buffers_format(a, format);
-        }
-        return rc;
+        return native_window_set_buffers_geometry(a,
+                          width, height, format);
     }
 
     static int __set_crop(struct preview_stream_ops *w,
@@ -700,9 +640,6 @@ private:
 
     static int __set_usage(struct preview_stream_ops* w, int usage)
     {
-#ifdef HTC_3D_SUPPORT
-        usage |= GRALLOC_USAGE_PRIVATE_0;
-#endif
         ANativeWindow *a = anw(w);
         return native_window_set_usage(a, usage);
     }
@@ -721,30 +658,6 @@ private:
         return a->query(a, NATIVE_WINDOW_MIN_UNDEQUEUED_BUFFERS, count);
     }
 
-#ifdef HTC_3D_SUPPORT
-    static int __set_3d_mode(
-                      const struct preview_stream_ops *w, int r1, int r2, int r3)
-    {
-        return 0;
-    }
-#endif
-
-    // add interfaces
-	static int __perform(struct preview_stream_ops *w, int cmd0, int cmd1, int value)
-	{
-        ANativeWindow *a = anw(w);
-        return a->perform(a, cmd0, cmd1, value);
-	}
-
-	static int __set_buffers_geometryex(struct preview_stream_ops* w,
-                      int width, int height, int format, int screenid)
-    {
-        ANativeWindow *a = anw(w);
-        //return native_window_set_buffers_geometryex(a,
-        //                  width, height, format, screenid);
-        return OK;
-    }
-
     void initHalPreviewWindow()
     {
         mHalPreviewWindow.nw.cancel_buffer = __cancel_buffer;
@@ -752,9 +665,6 @@ private:
         mHalPreviewWindow.nw.dequeue_buffer = __dequeue_buffer;
         mHalPreviewWindow.nw.enqueue_buffer = __enqueue_buffer;
         mHalPreviewWindow.nw.set_buffer_count = __set_buffer_count;
-#ifdef HTC_3D_SUPPORT
-        mHalPreviewWindow.nw.set_3d_mode = __set_3d_mode;
-#endif
         mHalPreviewWindow.nw.set_buffers_geometry = __set_buffers_geometry;
         mHalPreviewWindow.nw.set_crop = __set_crop;
         mHalPreviewWindow.nw.set_timestamp = __set_timestamp;
@@ -763,10 +673,6 @@ private:
 
         mHalPreviewWindow.nw.get_min_undequeued_buffer_count =
                 __get_min_undequeued_buffer_count;
-
-        // add interfaces
-		mHalPreviewWindow.nw.perform = __perform;
-		mHalPreviewWindow.nw.set_buffers_geometryex = __set_buffers_geometryex;
     }
 
     sp<ANativeWindow>        mPreviewWindow;

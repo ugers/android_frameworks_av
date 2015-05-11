@@ -18,8 +18,6 @@
 #define ATRACE_TAG ATRACE_TAG_CAMERA
 //#define LOG_NDEBUG 0
 
-#include <inttypes.h>
-
 #include <utils/Log.h>
 #include <utils/Trace.h>
 
@@ -54,13 +52,10 @@ Camera2ClientBase<TClientBase>::Camera2ClientBase(
         int servicePid):
         TClientBase(cameraService, remoteCallback, clientPackageName,
                 cameraId, cameraFacing, clientPid, clientUid, servicePid),
-        mSharedCameraCallbacks(remoteCallback),
-        mDeviceVersion(cameraService->getDeviceVersion(cameraId))
+        mSharedCameraCallbacks(remoteCallback)
 {
-    ALOGI("Camera %d: Opened. Client: %s (PID %d, UID %d)", cameraId,
-            String8(clientPackageName).string(), clientPid, clientUid);
+    ALOGI("Camera %d: Opened", cameraId);
 
-    mInitialClientPid = clientPid;
     mDevice = CameraDeviceFactory::createDevice(cameraId);
     LOG_ALWAYS_FATAL_IF(mDevice == 0, "Device should never be NULL here.");
 }
@@ -114,12 +109,11 @@ Camera2ClientBase<TClientBase>::~Camera2ClientBase() {
 
     TClientBase::mDestructionStarted = true;
 
+    TClientBase::finishCameraOps();
+
     disconnect();
 
-    ALOGI("Closed Camera %d. Client was: %s (PID %d, UID %u)",
-            TClientBase::mCameraId,
-            String8(TClientBase::mClientPackageName).string(),
-            mInitialClientPid, TClientBase::mClientUid);
+    ALOGI("Closed Camera %d", TClientBase::mCameraId);
 }
 
 template <typename TClientBase>
@@ -225,11 +219,10 @@ status_t Camera2ClientBase<TClientBase>::connect(
 /** Device-related methods */
 
 template <typename TClientBase>
-void Camera2ClientBase<TClientBase>::notifyError(
-        ICameraDeviceCallbacks::CameraErrorCode errorCode,
-        const CaptureResultExtras& resultExtras) {
-    ALOGE("Error condition %d reported by HAL, requestId %" PRId32, errorCode,
-          resultExtras.requestId);
+void Camera2ClientBase<TClientBase>::notifyError(int errorCode, int arg1,
+                                                 int arg2) {
+    ALOGE("Error condition %d reported by HAL, arguments %d, %d", errorCode,
+          arg1, arg2);
 }
 
 template <typename TClientBase>
@@ -238,13 +231,13 @@ void Camera2ClientBase<TClientBase>::notifyIdle() {
 }
 
 template <typename TClientBase>
-void Camera2ClientBase<TClientBase>::notifyShutter(const CaptureResultExtras& resultExtras,
+void Camera2ClientBase<TClientBase>::notifyShutter(int requestId,
                                                    nsecs_t timestamp) {
-    (void)resultExtras;
+    (void)requestId;
     (void)timestamp;
 
-    ALOGV("%s: Shutter notification for request id %" PRId32 " at time %" PRId64,
-            __FUNCTION__, resultExtras.requestId, timestamp);
+    ALOGV("%s: Shutter notification for request id %d at time %lld",
+            __FUNCTION__, requestId, timestamp);
 }
 
 template <typename TClientBase>
@@ -281,11 +274,6 @@ void Camera2ClientBase<TClientBase>::notifyAutoWhitebalance(uint8_t newState,
 template <typename TClientBase>
 int Camera2ClientBase<TClientBase>::getCameraId() const {
     return TClientBase::mCameraId;
-}
-
-template <typename TClientBase>
-int Camera2ClientBase<TClientBase>::getCameraDeviceVersion() const {
-    return mDeviceVersion;
 }
 
 template <typename TClientBase>

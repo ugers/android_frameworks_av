@@ -14,8 +14,6 @@
  * limitations under the License.
  */
 
-#include <inttypes.h>
-
 //#define LOG_NDEBUG 0
 #define LOG_TAG "CameraSourceTimeLapse"
 
@@ -81,14 +79,13 @@ CameraSourceTimeLapse::CameraSourceTimeLapse(
       mSkipCurrentFrame(false) {
 
     mTimeBetweenFrameCaptureUs = timeBetweenFrameCaptureUs;
-    ALOGD("starting time lapse mode: %" PRId64 " us",
+    ALOGD("starting time lapse mode: %lld us",
         mTimeBetweenFrameCaptureUs);
 
     mVideoWidth = videoSize.width;
     mVideoHeight = videoSize.height;
 
-    if (OK == mInitCheck && !trySettingVideoSize(videoSize.width, videoSize.height)) {
-        releaseCamera();
+    if (!trySettingVideoSize(videoSize.width, videoSize.height)) {
         mInitCheck = NO_INIT;
     }
 
@@ -137,7 +134,7 @@ bool CameraSourceTimeLapse::trySettingVideoSize(
     }
 
     bool videoSizeSupported = false;
-    for (size_t i = 0; i < supportedSizes.size(); ++i) {
+    for (uint32_t i = 0; i < supportedSizes.size(); ++i) {
         int32_t pictureWidth = supportedSizes[i].width;
         int32_t pictureHeight = supportedSizes[i].height;
 
@@ -234,7 +231,7 @@ sp<IMemory> CameraSourceTimeLapse::createIMemoryCopy(
     return newMemory;
 }
 
-bool CameraSourceTimeLapse::skipCurrentFrame(int64_t /* timestampUs */) {
+bool CameraSourceTimeLapse::skipCurrentFrame(int64_t timestampUs) {
     ALOGV("skipCurrentFrame");
     if (mSkipCurrentFrame) {
         mSkipCurrentFrame = false;
@@ -268,7 +265,7 @@ bool CameraSourceTimeLapse::skipFrameAndModifyTimeStamp(int64_t *timestampUs) {
 
             // Really make sure that this video recording frame will not be dropped.
             if (*timestampUs < mStartTimeUs) {
-                ALOGI("set timestampUs to start time stamp %" PRId64 " us", mStartTimeUs);
+                ALOGI("set timestampUs to start time stamp %lld us", mStartTimeUs);
                 *timestampUs = mStartTimeUs;
             }
             return false;

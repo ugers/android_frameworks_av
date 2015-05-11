@@ -475,6 +475,7 @@ void Transform_Real(Word16 *mdctDelayBuffer,
 	Word32 *winPtr;
 
 	Word32 delayBufferSf,timeSignalSf,minSf;
+	Word32 headRoom=0;
 
 	switch(blockType){
 

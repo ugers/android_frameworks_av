@@ -1,24 +1,24 @@
 /*
- * Copyright (C) 2008 The Android Open Source Project
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
+**
+** Copyright (C) 2008, The Android Open Source Project
+**
+** Licensed under the Apache License, Version 2.0 (the "License");
+** you may not use this file except in compliance with the License.
+** You may obtain a copy of the License at
+**
+**     http://www.apache.org/licenses/LICENSE-2.0
+**
+** Unless required by applicable law or agreed to in writing, software
+** distributed under the License is distributed on an "AS IS" BASIS,
+** WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+** See the License for the specific language governing permissions and
+** limitations under the License.
+*/
 
 #ifndef ANDROID_SERVERS_CAMERA_CAMERASERVICE_H
 #define ANDROID_SERVERS_CAMERA_CAMERASERVICE_H
 
 #include <utils/Vector.h>
-#include <utils/KeyedVector.h>
 #include <binder/AppOpsManager.h>
 #include <binder/BinderService.h>
 #include <binder/IAppOpsCallback.h>
@@ -31,22 +31,15 @@
 #include <camera/IProCameraCallbacks.h>
 #include <camera/camera2/ICameraDeviceUser.h>
 #include <camera/camera2/ICameraDeviceCallbacks.h>
-#include <camera/VendorTagDescriptor.h>
-#include <camera/CaptureResult.h>
-#include <camera/CameraParameters.h>
 
 #include <camera/ICameraServiceListener.h>
 
 /* This needs to be increased if we can have more cameras */
-<<<<<<< HEAD
 #ifdef OMAP_ENHANCEMENT
 #define MAX_CAMERAS 3
 #else
 #define MAX_CAMERAS 2
 #endif
-=======
-#define MAX_CAMERAS 4
->>>>>>> 8b8d02886bd9fb8d5ad451c03e486cfad74aa74e
 
 namespace android {
 
@@ -84,15 +77,9 @@ public:
                                       struct CameraInfo* cameraInfo);
     virtual status_t    getCameraCharacteristics(int cameraId,
                                                  CameraMetadata* cameraInfo);
-    virtual status_t    getCameraVendorTagDescriptor(/*out*/ sp<VendorTagDescriptor>& desc);
 
     virtual status_t connect(const sp<ICameraClient>& cameraClient, int cameraId,
             const String16& clientPackageName, int clientUid,
-            /*out*/
-            sp<ICamera>& device);
-
-    virtual status_t connectLegacy(const sp<ICameraClient>& cameraClient, int cameraId,
-            int halVersion, const String16& clientPackageName, int clientUid,
             /*out*/
             sp<ICamera>& device);
 
@@ -112,15 +99,6 @@ public:
     virtual status_t    addListener(const sp<ICameraServiceListener>& listener);
     virtual status_t    removeListener(
                                     const sp<ICameraServiceListener>& listener);
-
-    virtual status_t    getLegacyParameters(
-            int cameraId,
-            /*out*/
-            String16* parameters);
-
-    // OK = supports api of that version, -EOPNOTSUPP = does not support
-    virtual status_t    supportsCameraApi(
-            int cameraId, int apiVersion);
 
     // Extra permissions checks
     virtual status_t    onTransact(uint32_t code, const Parcel& data,
@@ -146,10 +124,6 @@ public:
     // CameraDeviceFactory functionality
     int                 getDeviceVersion(int cameraId, int* facing = NULL);
 
-    /////////////////////////////////////////////////////////////////////
-    // Shared utilities
-    static status_t     filterOpenErrorCode(status_t err);
-    static status_t     filterGetInfoErrorCode(status_t err);
 
     /////////////////////////////////////////////////////////////////////
     // CameraClient functionality
@@ -161,19 +135,20 @@ public:
 
     class BasicClient : public virtual RefBase {
     public:
-        virtual status_t    initialize(camera_module_t *module) = 0;
-        virtual void        disconnect();
+        virtual status_t initialize(camera_module_t *module) = 0;
+
+        virtual void          disconnect() = 0;
 
         // because we can't virtually inherit IInterface, which breaks
         // virtual inheritance
         virtual sp<IBinder> asBinderWrapper() = 0;
 
         // Return the remote callback binder object (e.g. IProCameraCallbacks)
-        sp<IBinder>         getRemote() {
+        sp<IBinder>     getRemote() {
             return mRemoteBinder;
         }
 
-        virtual status_t    dump(int fd, const Vector<String16>& args) = 0;
+        virtual status_t      dump(int fd, const Vector<String16>& args) = 0;
 
     protected:
         BasicClient(const sp<CameraService>& cameraService,
@@ -201,7 +176,9 @@ public:
         pid_t                           mClientPid;
         uid_t                           mClientUid;      // immutable after constructor
         pid_t                           mServicePid;     // immutable after constructor
+#ifdef QCOM_HARDWARE
         int                             mBurstCnt;
+#endif
 
         // - The app-side Binder interface to receive callbacks from us
         sp<IBinder>                     mRemoteBinder;   // immutable after constructor
@@ -211,9 +188,7 @@ public:
         status_t                        finishCameraOps();
 
         // Notify client about a fatal error
-        virtual void                    notifyError(
-                ICameraDeviceCallbacks::CameraErrorCode errorCode,
-                const CaptureResultExtras& resultExtras) = 0;
+        virtual void                    notifyError() = 0;
     private:
         AppOpsManager                   mAppOpsManager;
 
@@ -290,8 +265,7 @@ public:
         // convert client from cookie. Client lock should be acquired before getting Client.
         static Client*       getClientFromCookie(void* user);
 
-        virtual void         notifyError(ICameraDeviceCallbacks::CameraErrorCode errorCode,
-                                         const CaptureResultExtras& resultExtras);
+        virtual void         notifyError();
 
 
         // - The app-side Binder interface to receive callbacks from us
@@ -339,8 +313,7 @@ public:
         virtual void          onExclusiveLockStolen() = 0;
 
     protected:
-        virtual void          notifyError(ICameraDeviceCallbacks::CameraErrorCode errorCode,
-                                          const CaptureResultExtras& resultExtras);
+        virtual void          notifyError();
 
         sp<IProCameraCallbacks> mRemoteCallback;
     }; // class ProClient
@@ -421,57 +394,6 @@ private:
     // Helpers
 
     bool                isValidCameraId(int cameraId);
-
-    bool                setUpVendorTags();
-
-    /**
-     * A mapping of camera ids to CameraParameters returned by that camera device.
-     *
-     * This cache is used to generate CameraCharacteristic metadata when using
-     * the HAL1 shim.
-     */
-    KeyedVector<int, CameraParameters>    mShimParams;
-
-    /**
-     * Initialize and cache the metadata used by the HAL1 shim for a given cameraId.
-     *
-     * Returns OK on success, or a negative error code.
-     */
-    status_t            initializeShimMetadata(int cameraId);
-
-    /**
-     * Get the cached CameraParameters for the camera. If they haven't been
-     * cached yet, then initialize them for the first time.
-     *
-     * Returns OK on success, or a negative error code.
-     */
-    status_t            getLegacyParametersLazy(int cameraId, /*out*/CameraParameters* parameters);
-
-    /**
-     * Generate the CameraCharacteristics metadata required by the Camera2 API
-     * from the available HAL1 CameraParameters and CameraInfo.
-     *
-     * Returns OK on success, or a negative error code.
-     */
-    status_t            generateShimMetadata(int cameraId, /*out*/CameraMetadata* cameraInfo);
-
-    /**
-     * Connect a new camera client.  This should only be used while holding the
-     * mutex for mServiceLock.
-     *
-     * Returns OK on success, or a negative error code.
-     */
-    status_t            connectHelperLocked(
-            /*out*/
-            sp<Client>& client,
-            /*in*/
-            const sp<ICameraClient>& cameraClient,
-            int cameraId,
-            const String16& clientPackageName,
-            int clientUid,
-            int callingPid,
-            int halVersion = CAMERA_HAL_API_VERSION_UNSPECIFIED,
-            bool legacyMode = false);
 };
 
 } // namespace android

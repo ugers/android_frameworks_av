@@ -35,10 +35,7 @@ typedef Parcel::ReadableBlob ReadableBlob;
 enum {
     DISCONNECT = IBinder::FIRST_CALL_TRANSACTION,
     SUBMIT_REQUEST,
-    SUBMIT_REQUEST_LIST,
     CANCEL_REQUEST,
-    BEGIN_CONFIGURE,
-    END_CONFIGURE,
     DELETE_STREAM,
     CREATE_STREAM,
     CREATE_DEFAULT_REQUEST,
@@ -78,8 +75,7 @@ public:
         reply.readExceptionCode();
     }
 
-    virtual status_t submitRequest(sp<CaptureRequest> request, bool repeating,
-                              int64_t *lastFrameNumber)
+    virtual int submitRequest(sp<CaptureRequest> request, bool streaming)
     {
         Parcel data, reply;
         data.writeInterfaceToken(ICameraDeviceUser::getInterfaceDescriptor());
@@ -93,67 +89,15 @@ public:
         }
 
         // arg1 = streaming (bool)
-        data.writeInt32(repeating);
+        data.writeInt32(streaming);
 
         remote()->transact(SUBMIT_REQUEST, data, &reply);
 
         reply.readExceptionCode();
-        status_t res = reply.readInt32();
-
-        status_t resFrameNumber = BAD_VALUE;
-        if (reply.readInt32() != 0) {
-            if (lastFrameNumber != NULL) {
-                resFrameNumber = reply.readInt64(lastFrameNumber);
-            }
-        }
-
-	if ((res != NO_ERROR) || (resFrameNumber != NO_ERROR)) {
-            res = FAILED_TRANSACTION;
-        }
-        return res;
+        return reply.readInt32();
     }
 
-    virtual status_t submitRequestList(List<sp<CaptureRequest> > requestList, bool repeating,
-                                  int64_t *lastFrameNumber)
-    {
-        Parcel data, reply;
-        data.writeInterfaceToken(ICameraDeviceUser::getInterfaceDescriptor());
-
-        data.writeInt32(requestList.size());
-
-        for (List<sp<CaptureRequest> >::iterator it = requestList.begin();
-                it != requestList.end(); ++it) {
-            sp<CaptureRequest> request = *it;
-            if (request != 0) {
-                data.writeInt32(1);
-                if (request->writeToParcel(&data) != OK) {
-                    return BAD_VALUE;
-                }
-            } else {
-                data.writeInt32(0);
-            }
-        }
-
-        data.writeInt32(repeating);
-
-        remote()->transact(SUBMIT_REQUEST_LIST, data, &reply);
-
-        reply.readExceptionCode();
-        status_t res = reply.readInt32();
-
-        status_t resFrameNumber = BAD_VALUE;
-        if (reply.readInt32() != 0) {
-            if (lastFrameNumber != NULL) {
-                resFrameNumber = reply.readInt64(lastFrameNumber);
-            }
-        }
-        if ((res != NO_ERROR) || (resFrameNumber != NO_ERROR)) {
-            res = FAILED_TRANSACTION;
-        }
-        return res;
-    }
-
-    virtual status_t cancelRequest(int requestId, int64_t *lastFrameNumber)
+    virtual status_t cancelRequest(int requestId)
     {
         Parcel data, reply;
         data.writeInterfaceToken(ICameraDeviceUser::getInterfaceDescriptor());
@@ -161,37 +105,6 @@ public:
 
         remote()->transact(CANCEL_REQUEST, data, &reply);
 
-        reply.readExceptionCode();
-        status_t res = reply.readInt32();
-
-        status_t resFrameNumber = BAD_VALUE;
-        if (reply.readInt32() != 0) {
-            if (lastFrameNumber != NULL) {
-                res = reply.readInt64(lastFrameNumber);
-            }
-        }
-        if ((res != NO_ERROR) || (resFrameNumber != NO_ERROR)) {
-            res = FAILED_TRANSACTION;
-        }
-        return res;
-    }
-
-    virtual status_t beginConfigure()
-    {
-        ALOGV("beginConfigure");
-        Parcel data, reply;
-        data.writeInterfaceToken(ICameraDeviceUser::getInterfaceDescriptor());
-        remote()->transact(BEGIN_CONFIGURE, data, &reply);
-        reply.readExceptionCode();
-        return reply.readInt32();
-    }
-
-    virtual status_t endConfigure()
-    {
-        ALOGV("endConfigure");
-        Parcel data, reply;
-        data.writeInterfaceToken(ICameraDeviceUser::getInterfaceDescriptor());
-        remote()->transact(END_CONFIGURE, data, &reply);
         reply.readExceptionCode();
         return reply.readInt32();
     }
@@ -284,25 +197,14 @@ public:
         return reply.readInt32();
     }
 
-    virtual status_t flush(int64_t *lastFrameNumber)
+    virtual status_t flush()
     {
         ALOGV("flush");
         Parcel data, reply;
         data.writeInterfaceToken(ICameraDeviceUser::getInterfaceDescriptor());
         remote()->transact(FLUSH, data, &reply);
         reply.readExceptionCode();
-        status_t res = reply.readInt32();
-
-        status_t resFrameNumber = BAD_VALUE;
-        if (reply.readInt32() != 0) {
-            if (lastFrameNumber != NULL) {
-                res = reply.readInt64(lastFrameNumber);
-            }
-        }
-        if ((res != NO_ERROR) || (resFrameNumber != NO_ERROR)) {
-            res = FAILED_TRANSACTION;
-        }
-        return res;
+        return reply.readInt32();
     }
 
 private:
@@ -337,43 +239,11 @@ status_t BnCameraDeviceUser::onTransact(
             }
 
             // arg1 = streaming (bool)
-            bool repeating = data.readInt32();
+            bool streaming = data.readInt32();
 
             // return code: requestId (int32)
             reply->writeNoException();
-            int64_t lastFrameNumber = -1;
-            reply->writeInt32(submitRequest(request, repeating, &lastFrameNumber));
-            reply->writeInt32(1);
-            reply->writeInt64(lastFrameNumber);
-
-            return NO_ERROR;
-        } break;
-        case SUBMIT_REQUEST_LIST: {
-            CHECK_INTERFACE(ICameraDeviceUser, data, reply);
-
-            List<sp<CaptureRequest> > requestList;
-            int requestListSize = data.readInt32();
-            for (int i = 0; i < requestListSize; i++) {
-                if (data.readInt32() != 0) {
-                    sp<CaptureRequest> request = new CaptureRequest();
-                    if (request->readFromParcel(const_cast<Parcel*>(&data)) != OK) {
-                        return BAD_VALUE;
-                    }
-                    requestList.push_back(request);
-                } else {
-                    sp<CaptureRequest> request = 0;
-                    requestList.push_back(request);
-                    ALOGE("A request is missing. Sending in null request.");
-                }
-            }
-
-            bool repeating = data.readInt32();
-
-            reply->writeNoException();
-            int64_t lastFrameNumber = -1;
-            reply->writeInt32(submitRequestList(requestList, repeating, &lastFrameNumber));
-            reply->writeInt32(1);
-            reply->writeInt64(lastFrameNumber);
+            reply->writeInt32(submitRequest(request, streaming));
 
             return NO_ERROR;
         } break;
@@ -381,10 +251,7 @@ status_t BnCameraDeviceUser::onTransact(
             CHECK_INTERFACE(ICameraDeviceUser, data, reply);
             int requestId = data.readInt32();
             reply->writeNoException();
-            int64_t lastFrameNumber = -1;
-            reply->writeInt32(cancelRequest(requestId, &lastFrameNumber));
-            reply->writeInt32(1);
-            reply->writeInt64(lastFrameNumber);
+            reply->writeInt32(cancelRequest(requestId));
             return NO_ERROR;
         } break;
         case DELETE_STREAM: {
@@ -472,24 +339,9 @@ status_t BnCameraDeviceUser::onTransact(
         case FLUSH: {
             CHECK_INTERFACE(ICameraDeviceUser, data, reply);
             reply->writeNoException();
-            int64_t lastFrameNumber = -1;
-            reply->writeInt32(flush(&lastFrameNumber));
-            reply->writeInt32(1);
-            reply->writeInt64(lastFrameNumber);
+            reply->writeInt32(flush());
             return NO_ERROR;
         }
-        case BEGIN_CONFIGURE: {
-            CHECK_INTERFACE(ICameraDeviceUser, data, reply);
-            reply->writeNoException();
-            reply->writeInt32(beginConfigure());
-            return NO_ERROR;
-        } break;
-        case END_CONFIGURE: {
-            CHECK_INTERFACE(ICameraDeviceUser, data, reply);
-            reply->writeNoException();
-            reply->writeInt32(endConfigure());
-            return NO_ERROR;
-        } break;
         default:
             return BBinder::onTransact(code, data, reply, flags);
     }

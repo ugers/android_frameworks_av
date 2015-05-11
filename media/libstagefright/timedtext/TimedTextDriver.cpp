@@ -20,7 +20,6 @@
 
 #include <binder/IPCThreadState.h>
 
-#include <media/IMediaHTTPService.h>
 #include <media/mediaplayer.h>
 #include <media/MediaPlayerInterface.h>
 #include <media/stagefright/DataSource.h>
@@ -41,11 +40,9 @@
 namespace android {
 
 TimedTextDriver::TimedTextDriver(
-        const wp<MediaPlayerBase> &listener,
-        const sp<IMediaHTTPService> &httpService)
+        const wp<MediaPlayerBase> &listener)
     : mLooper(new ALooper),
       mListener(listener),
-      mHTTPService(httpService),
       mState(UNINITIALIZED),
       mCurrentTrackIndex(UINT_MAX) {
     mLooper->setName("TimedTextDriver");
@@ -210,7 +207,7 @@ status_t TimedTextDriver::addOutOfBandTextSource(
     }
 
     sp<DataSource> dataSource =
-            DataSource::CreateFromURI(mHTTPService, uri);
+            DataSource::CreateFromURI(uri);
     return createOutOfBandTextSource(trackIndex, mimeType, dataSource);
 }
 

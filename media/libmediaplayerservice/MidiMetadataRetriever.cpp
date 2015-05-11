@@ -22,8 +22,6 @@
 #include "MidiMetadataRetriever.h"
 #include <media/mediametadataretriever.h>
 
-#include <media/IMediaHTTPService.h>
-
 namespace android {
 
 static status_t ERROR_NOT_OPEN = -1;
@@ -38,9 +36,7 @@ void MidiMetadataRetriever::clearMetadataValues()
 }
 
 status_t MidiMetadataRetriever::setDataSource(
-        const sp<IMediaHTTPService> &httpService,
-        const char *url,
-        const KeyedVector<String8, String8> *headers)
+        const char *url, const KeyedVector<String8, String8> *headers)
 {
     ALOGV("setDataSource: %s", url? url: "NULL pointer");
     Mutex::Autolock lock(mLock);
@@ -48,7 +44,7 @@ status_t MidiMetadataRetriever::setDataSource(
     if (mMidiPlayer == 0) {
         mMidiPlayer = new MidiFile();
     }
-    return mMidiPlayer->setDataSource(httpService, url, headers);
+    return mMidiPlayer->setDataSource(url, headers);
 }
 
 status_t MidiMetadataRetriever::setDataSource(int fd, int64_t offset, int64_t length)

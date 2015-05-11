@@ -104,8 +104,7 @@ status_t MediaRecorderClient::setPreviewSurface(const sp<IGraphicBufferProducer>
 status_t MediaRecorderClient::setVideoSource(int vs)
 {
     ALOGV("setVideoSource(%d)", vs);
-    // Check camera permission for sources other than SURFACE
-    if (vs != VIDEO_SOURCE_SURFACE && !checkPermission(cameraPermission)) {
+    if (!checkPermission(cameraPermission)) {
         return PERMISSION_DENIED;
     }
     Mutex::Autolock lock(mLock);
@@ -261,17 +260,6 @@ status_t MediaRecorderClient::start()
     }
     return mRecorder->start();
 
-}
-
-status_t MediaRecorderClient::pause()
-{
-    ALOGV("pause");
-    Mutex::Autolock lock(mLock);
-    if (mRecorder == NULL) {
-        ALOGE("recorder is not initialized");
-        return NO_INIT;
-    }
-    return mRecorder->pause();
 }
 
 status_t MediaRecorderClient::stop()

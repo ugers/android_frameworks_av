@@ -1,10 +1,4 @@
 /*
- * Copyright (c) 2013, The Linux Foundation. All rights reserved.
- * Not a Contribution.
-<<<<<<< HEAD
- *
-=======
->>>>>>> 8b8d02886bd9fb8d5ad451c03e486cfad74aa74e
  * Copyright (C) 2007 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -33,7 +27,6 @@
 
 #include <media/mediaplayer.h>
 #include <media/AudioSystem.h>
-#include <media/AudioTimestamp.h>
 #include <media/Metadata.h>
 
 #include "mediaplayerinfo.h"
@@ -51,7 +44,6 @@ namespace android {
 #define MASTER_SCREEN        0
 #define SLAVE_SCREEN         1
 /* add by Gary. end   -----------------------------------}} */
-
 class Parcel;
 class Surface;
 class IGraphicBufferProducer;
@@ -67,23 +59,20 @@ enum player_type {
     // The shared library with the test player is passed passed as an
     // argument to the 'test:' url in the setDataSource call.
     TEST_PLAYER = 5,
-<<<<<<< HEAD
 
     CEDARX_PLAYER = 8,
     CEDARA_PLAYER = 9,
-=======
-    DASH_PLAYER = 6,
->>>>>>> 8b8d02886bd9fb8d5ad451c03e486cfad74aa74e
+    THUMBNAIL_PLAYER = 10,
 };
 
 enum player_states {
-  PLAYER_STATE_UNKOWN = 0,
-  PLAYER_STATE_PREPARED,
-  PLAYER_STATE_PAUSE,
-  PLAYER_STATE_PLAYING,
-  PLAYER_STATE_SEEKING,
-  PLAYER_STATE_SUSPEND,
-  PLAYER_STATE_RESUME,
+    PLAYER_STATE_UNKOWN = 0,
+    PLAYER_STATE_PREPARED,
+    PLAYER_STATE_PAUSE,
+    PLAYER_STATE_PLAYING,
+    PLAYER_STATE_SEEKING,
+    PLAYER_STATE_SUSPEND,
+    PLAYER_STATE_RESUME,
 };
 
 #define DEFAULT_AUDIOSINK_BUFFERCOUNT 4
@@ -111,12 +100,8 @@ public:
             CB_EVENT_FILL_BUFFER,   // Request to write more data to buffer.
             CB_EVENT_STREAM_END,    // Sent after all the buffers queued in AF and HW are played
                                     // back (after stop is called)
-            CB_EVENT_TEAR_DOWN,      // The AudioTrack was invalidated due to use case change:
+            CB_EVENT_TEAR_DOWN      // The AudioTrack was invalidated due to use case change:
                                     // Need to re-evaluate offloading options
-#ifdef QCOM_DIRECTTRACK
-            CB_EVENT_UNDERRUN,
-            CB_EVENT_HW_FAIL
-#endif
         };
 
         // Callback returns the number of bytes actually written to the buffer.
@@ -132,20 +117,11 @@ public:
         virtual ssize_t     channelCount() const = 0;
         virtual ssize_t     frameSize() const = 0;
         virtual uint32_t    latency() const = 0;
-<<<<<<< HEAD
-#ifdef QCOM_HARDWARE
-=======
-#ifdef QCOM_DIRECTTRACK
->>>>>>> 8b8d02886bd9fb8d5ad451c03e486cfad74aa74e
-        virtual audio_stream_type_t    streamType() const {return AUDIO_STREAM_DEFAULT;}
-#endif
         virtual float       msecsPerFrame() const = 0;
         virtual status_t    getPosition(uint32_t *position) const = 0;
-        virtual status_t    getTimestamp(AudioTimestamp &ts) const = 0;
         virtual status_t    getFramesWritten(uint32_t *frameswritten) const = 0;
         virtual int         getSessionId() const = 0;
         virtual audio_stream_type_t getAudioStreamType() const = 0;
-        virtual uint32_t    getSampleRate() const = 0;
 
         // If no callback is specified, use the "write" API below to submit
         // audio data.
@@ -167,17 +143,9 @@ public:
 
         virtual status_t    setPlaybackRatePermille(int32_t rate) { return INVALID_OPERATION; }
         virtual bool        needsTrailingPadding() { return true; }
-<<<<<<< HEAD
-#ifdef QCOM_HARDWARE
-=======
+
         virtual status_t    setParameters(const String8& keyValuePairs) { return NO_ERROR; };
         virtual String8     getParameters(const String8& keys) { return String8::empty(); };
-
-#ifdef QCOM_DIRECTTRACK
->>>>>>> 8b8d02886bd9fb8d5ad451c03e486cfad74aa74e
-        virtual ssize_t     sampleRate() const {return 0;};
-        virtual status_t    getTimeStamp(uint64_t *tstamp) {return 0;};
-#endif
     };
 
                         MediaPlayerBase() : mCookie(0), mNotify(0) {}
@@ -190,7 +158,6 @@ public:
     }
 
     virtual status_t    setDataSource(
-            const sp<IMediaHTTPService> &httpService,
             const char *url,
             const KeyedVector<String8, String8> *headers = NULL) = 0;
 
@@ -267,12 +234,24 @@ public:
         return INVALID_OPERATION;
     }
 
-<<<<<<< HEAD
+    virtual status_t updateProxyConfig(
+            const char *host, int32_t port, const char *exclusionList) {
+        return INVALID_OPERATION;
+	}
+	
+	/*Begin (Modified by Michael. 2014.05.22)*/
+	virtual status_t getMediaPlayerInfo( struct MediaPlayerInfo* mediaPlayerInfo)
+	{
+		return OK;
+	}
+	/*End (Modified by Michael. 2014.05.22)*/
+	
     /* add by Gary. start {{----------------------------------- */
-    virtual status_t    setScreen(int screen){
+	    virtual status_t    setScreen(int screen){
         return OK;
     };
-    virtual int    		getMeidaPlayerState(){
+
+    virtual int getMeidaPlayerState(){
         return PLAYER_STATE_UNKOWN;
     };
     /* add by Gary. end   -----------------------------------}} */
@@ -369,12 +348,12 @@ public:
     {
         return -1;
     }
-    
     virtual int getTrackCount()
     {
         return 0;
     }
-    
+
+
     virtual int getTrackList(MediaPlayer_TrackInfo *infoList, int count)
     {
         return 0;
@@ -384,13 +363,12 @@ public:
     {
         return -1;
     }
-    
     virtual status_t switchTrack(int index)
     {
         return OK;
     }
 
-    virtual status_t setInputDimensionType(int type)
+    virtual status_t setInputDimensionValue(int type, int value)
     {
         return -1;
     }
@@ -401,6 +379,11 @@ public:
     }
 
     virtual status_t setOutputDimensionType(int type)
+    {
+        return -1;
+    }
+
+    virtual status_t setOutputDimensionValue(int type, int value)
     {
         return -1;
     }
@@ -444,16 +427,14 @@ public:
     {
         return -1;
     }
-    /* add by Gary. end   -----------------------------------}} */
-
-    /* add by Gary. start {{----------------------------------- */
-    /* 2011-11-14 */
-    /* support scale mode */
+   virtual status_t setInputDimensionType(int type)
+    {
+        return -1;
+    }
     virtual status_t enableScaleMode(bool enable, int width, int height)
     {
         return -1;
     }
-    /* add by Gary. end   -----------------------------------}} */
 
     /* add by Gary. start {{----------------------------------- */
     /* 2011-11-14 */
@@ -491,31 +472,18 @@ public:
     virtual status_t setChannelMuteMode(int muteMode)
     {
         return OK;
-    };
+    }
     
     virtual int getChannelMuteMode()
     {
         return -1;
-    };
-    /* add by Gary. end   -----------------------------------}} */
+    }
     
-    /* add by Gary. start {{----------------------------------- */
-    /* 2012-4-24 */
-    /* add two general interfaces for expansibility */
+    //* add general interfaces for expansibility 
     virtual status_t generalInterface(int cmd, int int1, int int2, int int3, void *p)
     {
         return OK;
     }
-    /* add by Gary. end   -----------------------------------}} */
-=======
-    virtual status_t suspend() {
-        return INVALID_OPERATION;
-    }
-
-    virtual status_t resume() {
-        return INVALID_OPERATION;
-    }
->>>>>>> 8b8d02886bd9fb8d5ad451c03e486cfad74aa74e
 
 private:
     friend class MediaPlayerService;

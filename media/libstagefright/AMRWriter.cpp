@@ -14,12 +14,6 @@
  * limitations under the License.
  */
 
-#include <fcntl.h>
-#include <inttypes.h>
-#include <sys/prctl.h>
-#include <sys/stat.h>
-#include <sys/types.h>
-
 #include <media/stagefright/foundation/ADebug.h>
 #include <media/stagefright/AMRWriter.h>
 #include <media/stagefright/MediaBuffer.h>
@@ -28,6 +22,10 @@
 #include <media/stagefright/MediaSource.h>
 #include <media/stagefright/MetaData.h>
 #include <media/mediarecorder.h>
+#include <sys/prctl.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
 
 namespace android {
 
@@ -107,7 +105,7 @@ status_t AMRWriter::addSource(const sp<MediaSource> &source) {
     return OK;
 }
 
-status_t AMRWriter::start(MetaData * /* params */) {
+status_t AMRWriter::start(MetaData *params) {
     if (mInitCheck != OK) {
         return mInitCheck;
     }
@@ -164,7 +162,7 @@ status_t AMRWriter::reset() {
     void *dummy;
     pthread_join(mThread, &dummy);
 
-    status_t err = static_cast<status_t>(reinterpret_cast<uintptr_t>(dummy));
+    status_t err = (status_t) dummy;
     {
         status_t status = mSource->stop();
         if (err == OK &&
@@ -193,7 +191,7 @@ bool AMRWriter::exceedsFileDurationLimit() {
 
 // static
 void *AMRWriter::ThreadWrapper(void *me) {
-    return (void *)(uintptr_t) static_cast<AMRWriter *>(me)->threadFunc();
+    return (void *) static_cast<AMRWriter *>(me)->threadFunc();
 }
 
 status_t AMRWriter::threadFunc() {
@@ -237,7 +235,7 @@ status_t AMRWriter::threadFunc() {
             mResumed = false;
         }
         timestampUs -= previousPausedDurationUs;
-        ALOGV("time stamp: %" PRId64 ", previous paused duration: %" PRId64,
+        ALOGV("time stamp: %lld, previous paused duration: %lld",
                 timestampUs, previousPausedDurationUs);
         if (timestampUs > maxTimestampUs) {
             maxTimestampUs = timestampUs;

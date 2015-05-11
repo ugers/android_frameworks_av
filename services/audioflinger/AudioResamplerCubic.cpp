@@ -32,6 +32,14 @@ void AudioResamplerCubic::init() {
     memset(&right, 0, sizeof(state));
 }
 
+void AudioResamplerCubic::reset(){
+   mInputIndex = 0;
+   mPhaseFraction = 0;
+   mBuffer.frameCount = 0;
+   memset(&left, 0, sizeof(state));
+   memset(&right, 0, sizeof(state));
+}
+
 void AudioResamplerCubic::resample(int32_t* out, size_t outFrameCount,
         AudioBufferProvider* provider) {
 
@@ -60,15 +68,14 @@ void AudioResamplerCubic::resampleStereo16(int32_t* out, size_t outFrameCount,
     uint32_t phaseIncrement = mPhaseIncrement;
     size_t outputIndex = 0;
     size_t outputSampleCount = outFrameCount * 2;
-    size_t inFrameCount = getInFrameCountRequired(outFrameCount);
+    size_t inFrameCount = (outFrameCount*mInSampleRate)/mSampleRate;
 
     // fetch first buffer
     if (mBuffer.frameCount == 0) {
         mBuffer.frameCount = inFrameCount;
         provider->getNextBuffer(&mBuffer, mPTS);
-        if (mBuffer.raw == NULL) {
+        if (mBuffer.raw == NULL)
             return;
-        }
         // ALOGW("New buffer: offset=%p, frames=%dn", mBuffer.raw, mBuffer.frameCount);
     }
     int16_t *in = mBuffer.i16;
@@ -98,9 +105,8 @@ void AudioResamplerCubic::resampleStereo16(int32_t* out, size_t outFrameCount,
                 mBuffer.frameCount = inFrameCount;
                 provider->getNextBuffer(&mBuffer,
                                         calculateOutputPTS(outputIndex / 2));
-                if (mBuffer.raw == NULL) {
+                if (mBuffer.raw == NULL)
                     goto save_state;  // ugly, but efficient
-                }
                 in = mBuffer.i16;
                 // ALOGW("New buffer: offset=%p, frames=%d", mBuffer.raw, mBuffer.frameCount);
             }
@@ -128,15 +134,14 @@ void AudioResamplerCubic::resampleMono16(int32_t* out, size_t outFrameCount,
     uint32_t phaseIncrement = mPhaseIncrement;
     size_t outputIndex = 0;
     size_t outputSampleCount = outFrameCount * 2;
-    size_t inFrameCount = getInFrameCountRequired(outFrameCount);
+    size_t inFrameCount = (outFrameCount*mInSampleRate)/mSampleRate;
 
     // fetch first buffer
     if (mBuffer.frameCount == 0) {
         mBuffer.frameCount = inFrameCount;
         provider->getNextBuffer(&mBuffer, mPTS);
-        if (mBuffer.raw == NULL) {
+        if (mBuffer.raw == NULL)
             return;
-        }
         // ALOGW("New buffer: offset=%p, frames=%d", mBuffer.raw, mBuffer.frameCount);
     }
     int16_t *in = mBuffer.i16;
@@ -166,9 +171,8 @@ void AudioResamplerCubic::resampleMono16(int32_t* out, size_t outFrameCount,
                 mBuffer.frameCount = inFrameCount;
                 provider->getNextBuffer(&mBuffer,
                                         calculateOutputPTS(outputIndex / 2));
-                if (mBuffer.raw == NULL) {
+                if (mBuffer.raw == NULL)
                     goto save_state;  // ugly, but efficient
-                }
                 // ALOGW("New buffer: offset=%p, frames=%dn", mBuffer.raw, mBuffer.frameCount);
                 in = mBuffer.i16;
             }

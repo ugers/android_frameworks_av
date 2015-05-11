@@ -61,11 +61,7 @@ public:
     virtual status_t start(bool sourceAlreadyStarted = false);
 
     virtual void pause(bool playPendingSamples = false);
-<<<<<<< HEAD
-    virtual void resume();
-=======
     virtual status_t resume();
->>>>>>> 8b8d02886bd9fb8d5ad451c03e486cfad74aa74e
 
     // Returns the timestamp of the last buffer played (in us).
     virtual int64_t getMediaTimeUs();
@@ -108,13 +104,6 @@ private:
     int64_t mSeekTimeUs;
 
     bool mStarted;
-<<<<<<< HEAD
-#ifdef QCOM_HARDWARE
-    bool mSourcePaused;
-#endif
-=======
-    bool mSourcePaused;
->>>>>>> 8b8d02886bd9fb8d5ad451c03e486cfad74aa74e
 
     bool mIsFirstBuffer;
     status_t mFirstBufferResult;
@@ -127,9 +116,7 @@ private:
     bool mPlaying;
     int64_t mStartPosUs;
     const uint32_t mCreateFlags;
-    bool mPauseRequired;
 
-    bool mUseSmallBufs;
     static void AudioCallback(int event, void *user, void *info);
     void AudioCallback(int event, void *info);
 
@@ -145,7 +132,7 @@ private:
     void reset();
 
     uint32_t getNumFramesPendingPlayout() const;
-    int64_t getOutputPlayPositionUs_l();
+    int64_t getOutputPlayPositionUs_l() const;
 
     bool allowDeepBuffering() const { return (mCreateFlags & ALLOW_DEEP_BUFFERING) != 0; }
     bool useOffload() const { return (mCreateFlags & USE_OFFLOAD) != 0; }

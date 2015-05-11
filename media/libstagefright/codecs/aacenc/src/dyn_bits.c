@@ -25,6 +25,7 @@
 #include "bit_cnt.h"
 #include "psy_const.h"
 
+
 /*****************************************************************************
 *
 * function name: buildBitLookUp
@@ -225,7 +226,7 @@ gmStage2(SECTION_INFO *sectionInfo,
   }
 
   while (TRUE) {
-    Word16 maxMergeGain, maxNdx = 0, maxNdxNext, maxNdxLast;
+    Word16 maxMergeGain, maxNdx, maxNdxNext, maxNdxLast;
 
     maxMergeGain = findMaxMerge(mergeGainLookUp, sectionInfo, maxSfb, &maxNdx);
 

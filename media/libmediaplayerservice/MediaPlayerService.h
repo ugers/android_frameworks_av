@@ -1,13 +1,6 @@
 /*
 **
-** Copyright (c) 2013, The Linux Foundation. All rights reserved.
-** Not a Contribution.
-**
-<<<<<<< HEAD
-** Copyright (C) 2008 The Android Open Source Project
-=======
 ** Copyright 2008, The Android Open Source Project
->>>>>>> 8b8d02886bd9fb8d5ad451c03e486cfad74aa74e
 **
 ** Licensed under the Apache License, Version 2.0 (the "License");
 ** you may not use this file except in compliance with the License.
@@ -79,8 +72,7 @@ class MediaPlayerService : public BnMediaPlayerService
         class CallbackData;
 
      public:
-                                AudioOutput(int sessionId, int uid, int pid,
-                                        const audio_attributes_t * attr);
+                                AudioOutput(int sessionId, int uid);
         virtual                 ~AudioOutput();
 
         virtual bool            ready() const { return mTrack != 0; }
@@ -90,15 +82,10 @@ class MediaPlayerService : public BnMediaPlayerService
         virtual ssize_t         channelCount() const;
         virtual ssize_t         frameSize() const;
         virtual uint32_t        latency() const;
-#ifdef QCOM_DIRECTTRACK
-        virtual audio_stream_type_t streamType() const;
-#endif
         virtual float           msecsPerFrame() const;
         virtual status_t        getPosition(uint32_t *position) const;
-        virtual status_t        getTimestamp(AudioTimestamp &ts) const;
         virtual status_t        getFramesWritten(uint32_t *frameswritten) const;
         virtual int             getSessionId() const;
-        virtual uint32_t        getSampleRate() const;
 
         virtual status_t        open(
                 uint32_t sampleRate, int channelCount, audio_channel_mask_t channelMask,
@@ -116,7 +103,6 @@ class MediaPlayerService : public BnMediaPlayerService
                 void            setAudioStreamType(audio_stream_type_t streamType) {
                                                                         mStreamType = streamType; }
         virtual audio_stream_type_t getAudioStreamType() const { return mStreamType; }
-                void            setAudioAttributes(const audio_attributes_t * attributes);
 
                 void            setVolume(float left, float right);
         virtual status_t        setPlaybackRatePermille(int32_t ratePermille);
@@ -129,14 +115,8 @@ class MediaPlayerService : public BnMediaPlayerService
                 void            setNextOutput(const sp<AudioOutput>& nextOutput);
                 void            switchToNextOutput();
         virtual bool            needsTrailingPadding() { return mNextOutput == NULL; }
-
         virtual status_t        setParameters(const String8& keyValuePairs);
         virtual String8         getParameters(const String8& keys);
-
-#ifdef QCOM_DIRECTTRACK
-        virtual ssize_t         sampleRate() const;
-        virtual status_t        getTimeStamp(uint64_t *tstamp);
-#endif
 
     private:
         static void             setMinBufferCount();
@@ -152,7 +132,6 @@ class MediaPlayerService : public BnMediaPlayerService
         CallbackData *          mCallbackData;
         uint64_t                mBytesWritten;
         audio_stream_type_t     mStreamType;
-        const audio_attributes_t *mAttributes;
         float                   mLeftVolume;
         float                   mRightVolume;
         int32_t                 mPlaybackRatePermille;
@@ -160,7 +139,6 @@ class MediaPlayerService : public BnMediaPlayerService
         float                   mMsecsPerFrame;
         int                     mSessionId;
         int                     mUid;
-        int                     mPid;
         float                   mSendLevel;
         int                     mAuxEffectId;
         static bool             mIsOnEmulator;
@@ -211,14 +189,12 @@ class MediaPlayerService : public BnMediaPlayerService
         virtual ssize_t         bufferSize() const { return frameSize() * mFrameCount; }
         virtual ssize_t         frameCount() const { return mFrameCount; }
         virtual ssize_t         channelCount() const { return (ssize_t)mChannelCount; }
-        virtual ssize_t         frameSize() const { return (ssize_t)mFrameSize; }
+        virtual ssize_t         frameSize() const { return ssize_t(mChannelCount * ((mFormat == AUDIO_FORMAT_PCM_16_BIT)?sizeof(int16_t):sizeof(u_int8_t))); }
         virtual uint32_t        latency() const;
         virtual float           msecsPerFrame() const;
         virtual status_t        getPosition(uint32_t *position) const;
-        virtual status_t        getTimestamp(AudioTimestamp &ts) const;
         virtual status_t        getFramesWritten(uint32_t *frameswritten) const;
         virtual int             getSessionId() const;
-        virtual uint32_t        getSampleRate() const;
 
         virtual status_t        open(
                 uint32_t sampleRate, int channelCount, audio_channel_mask_t channelMask,
@@ -233,17 +209,13 @@ class MediaPlayerService : public BnMediaPlayerService
         virtual void            flush() {}
         virtual void            pause() {}
         virtual void            close() {}
-                void            setAudioStreamType(audio_stream_type_t streamType __unused) {}
+                void            setAudioStreamType(audio_stream_type_t streamType) {}
                 // stream type is not used for AudioCache
         virtual audio_stream_type_t getAudioStreamType() const { return AUDIO_STREAM_DEFAULT; }
 
-                void            setVolume(float left __unused, float right __unused) {}
-        virtual status_t        setPlaybackRatePermille(int32_t ratePermille __unused) { return INVALID_OPERATION; }
-#ifdef QCOM_DIRECTTRACK
-        virtual ssize_t         sampleRate() const;
-#else
+                void            setVolume(float left, float right) {}
+        virtual status_t        setPlaybackRatePermille(int32_t ratePermille) { return INVALID_OPERATION; }
                 uint32_t        sampleRate() const { return mSampleRate; }
-#endif
                 audio_format_t  format() const { return mFormat; }
                 size_t          size() const { return mSize; }
                 status_t        wait();
@@ -266,7 +238,6 @@ class MediaPlayerService : public BnMediaPlayerService
         ssize_t             mFrameCount;
         uint32_t            mSampleRate;
         uint32_t            mSize;
-        size_t              mFrameSize;
         int                 mError;
         bool                mCommandComplete;
 
@@ -283,20 +254,13 @@ public:
 
     virtual sp<IMediaPlayer>    create(const sp<IMediaPlayerClient>& client, int audioSessionId);
 
-    virtual status_t            decode(
-            const sp<IMediaHTTPService> &httpService,
-            const char* url,
-            uint32_t *pSampleRate,
-            int* pNumChannels,
-            audio_format_t* pFormat,
-            const sp<IMemoryHeap>& heap,
-            size_t *pSize);
-
+    virtual status_t            decode(const char* url, uint32_t *pSampleRate, int* pNumChannels,
+                                       audio_format_t* pFormat,
+                                       const sp<IMemoryHeap>& heap, size_t *pSize);
     virtual status_t            decode(int fd, int64_t offset, int64_t length,
                                        uint32_t *pSampleRate, int* pNumChannels,
                                        audio_format_t* pFormat,
                                        const sp<IMemoryHeap>& heap, size_t *pSize);
-    virtual sp<IMediaCodecList> getCodecList() const;
     virtual sp<IOMX>            getOMX();
     virtual sp<ICrypto>         makeCrypto();
     virtual sp<IDrm>            makeDrm();
@@ -305,6 +269,9 @@ public:
     virtual sp<IRemoteDisplay> listenForRemoteDisplay(const sp<IRemoteDisplayClient>& client,
             const String8& iface);
     virtual status_t            dump(int fd, const Vector<String16>& args);
+
+    virtual status_t        updateProxyConfig(
+            const char *host, int32_t port, const char *exclusionList);
 
             void                removeClient(wp<Client> client);
 
@@ -378,13 +345,13 @@ public:
     /* add the global interfaces to control the subtitle gate  */
     virtual status_t            setGlobalSubGate(bool showSub);
     virtual bool                getGlobalSubGate();
-    /* add by Gary. end   -----------------------------------}} */
-
-    /* add by Gary. start {{----------------------------------- */
-    /* 2012-4-24 */
-    /* add two general interfaces for expansibility */
+    //* add general interfaces for expansibility 
     virtual status_t            generalGlobalInterface(int cmd, int int1, int int2, int int3, void *p);
-    /* add by Gary. end   -----------------------------------}} */
+	/*Begin (Modified by Michael. 2014.05.22)*/
+    virtual  status_t		 getMediaPlayerList();
+    virtual  status_t		 getMediaPlayerInfo(int mediaPlayerId, struct MediaPlayerInfo* mediaPlayerInfo);
+    /*End (Modified by Michael. 2014.05.22)*/
+	
 private:
 
     class Client : public BnMediaPlayer {
@@ -447,8 +414,10 @@ private:
         virtual int             getCurTrack();
         virtual status_t        switchTrack(int index);
         virtual status_t        setInputDimensionType(int type);
+        virtual status_t        setInputDimensionValue(int type, int value);
         virtual int             getInputDimensionType();
         virtual status_t        setOutputDimensionType(int type);
+        virtual status_t        setOutputDimensionValue(int type, int value);
         virtual int             getOutputDimensionType();
         virtual status_t        setAnaglaghType(int type);
         virtual int             getAnaglaghType();
@@ -457,11 +426,7 @@ private:
         virtual status_t        getAudioEncode(char *encode);
         virtual int             getAudioBitRate();
         virtual int             getAudioSampleRate();
-        /* add by Gary. end   -----------------------------------}} */
-        
-        /* add by Gary. start {{----------------------------------- */
-        /* 2011-11-14 */
-        /* support scale mode */
+        //* support scale mode
         virtual status_t        enableScaleMode(bool enable, int width, int height);
         /* add by Gary. end   -----------------------------------}} */
         
@@ -480,19 +445,16 @@ private:
         /* set audio channel mute */
         virtual status_t        setChannelMuteMode(int muteMode);
         virtual int             getChannelMuteMode();
-        /* add by Gary. end   -----------------------------------}} */
-
-        /* add by Gary. start {{----------------------------------- */
-        /* 2012-4-24 */
-        /* add two general interfaces for expansibility */
+        //* add general interfaces for expansibility
         virtual status_t        generalInterface(int cmd, int int1, int int2, int int3, void *p);
-        /* add by Gary. end   -----------------------------------}} */
-        virtual status_t        setDataSource(const sp<IStreamSource> &source, int type);
+        /*Begin (Modified by Michael. 2014.05.22)*/
+        virtual  status_t		getMediaPlayerInfo(struct MediaPlayerInfo* mediaPlayerInfo);
+        /*End (Modified by Michael. 2014.05.22)*/
+		virtual status_t        setDataSource(const sp<IStreamSource> &source, int type);
 
         sp<MediaPlayerBase>     createPlayer(player_type playerType);
 
         virtual status_t        setDataSource(
-                        const sp<IMediaHTTPService> &httpService,
                         const char *url,
                         const KeyedVector<String8, String8> *headers);
 
@@ -511,9 +473,6 @@ private:
         virtual status_t        dump(int fd, const Vector<String16>& args) const;
 
                 int             getAudioSessionId() { return mAudioSessionId; }
-
-        virtual status_t        suspend();
-        virtual status_t        resume();
 
     private:
         friend class MediaPlayerService;
@@ -545,8 +504,6 @@ private:
         // Disconnect from the currently connected ANativeWindow.
         void disconnectNativeWindow();
 
-        status_t setAudioAttributes_l(const Parcel &request);
-
         mutable     Mutex                       mLock;
                     sp<MediaPlayerBase>         mPlayer;
                     sp<MediaPlayerService>      mService;
@@ -557,22 +514,16 @@ private:
                     bool                        mLoop;
                     int32_t                     mConnId;
                     int                         mAudioSessionId;
-                    audio_attributes_t *        mAudioAttributes;
                     uid_t                       mUID;
                     sp<ANativeWindow>           mConnectedWindow;
                     sp<IBinder>                 mConnectedWindowBinder;
                     struct sockaddr_in          mRetransmitEndpoint;
                     bool                        mRetransmitEndpointValid;
                     sp<Client>                  mNextClient;
-
-                    /* add by Gary. start {{----------------------------------- */
+                    //* for play during<1 song
                     int                         mHasSurface;
-                    int 						mMsg; //add by lszhang for play during<1 song
-                    /* add by Gary. end   -----------------------------------}} */
-
-                    /* add by Gary. start {{----------------------------------- */
-                    /* 2011-9-28 16:28:24 */
-                    /* save properties before creating the real player */
+                    int 						mMsg; 
+                    //* for subtitle
                     bool                        mSubGate;
                     int                         mSubColor;
                     int                         mSubFrameColor;
@@ -603,7 +554,6 @@ private:
                     int                         mWhiteExtend;
                     int                         mBlackExtend;
                     /* add by Gary. end   -----------------------------------}} */
-
         // Metadata filters.
         media::Metadata::Filter mMetadataAllow;  // protected by mLock
         media::Metadata::Filter mMetadataDrop;  // protected by mLock
@@ -644,14 +594,12 @@ private:
                 int                         mBlackExtend;
                 bool                        mGlobalSubGate;  // 2012-03-12, add the global interfaces to control the subtitle gate
                 /* add by Gary. end   -----------------------------------}} */
-                
+
                 /*Start by Bevis. Detect http data source from other application.*/
                 wp<Client> mDetectClient;
                 /*Start by Bevis. Detect http data source from other application.*/
-
                 /*Add by eric_wang. record hdmi state, 20130318 */
                 static int                  mHdmiPlugged;   //1:hdmi plugin, 0:hdmi plugout
-                /*Add by eric_wang. record hdmi state, 20130318, end ---------- */
 };
 
 // ----------------------------------------------------------------------------

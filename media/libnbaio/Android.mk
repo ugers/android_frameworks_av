@@ -31,12 +31,9 @@ LOCAL_SHARED_LIBRARIES := \
     libcommon_time_client \
     libcutils \
     libutils \
-    liblog
-
-LOCAL_STATIC_LIBRARIES += libinstantssq
-
-ifeq ($(BOARD_HAVE_PRE_KITKAT_AUDIO_BLOB),true)
-    LOCAL_CFLAGS += -DHAVE_PRE_KITKAT_AUDIO_BLOB
-endif
+    liblog \
+    libmedia
+# This dependency on libmedia is for SingleStateQueueInstantiations.
+# Consider a separate a library for SingleStateQueueInstantiations.
 
 include $(BUILD_SHARED_LIBRARY)

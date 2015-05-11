@@ -30,7 +30,7 @@ struct StagefrightMediaScanner : public MediaScanner {
             const char *path, const char *mimeType,
             MediaScannerClient &client);
 
-    virtual MediaAlbumArt *extractAlbumArt(int fd);
+    virtual char *extractAlbumArt(int fd);
 
 private:
     StagefrightMediaScanner(const StagefrightMediaScanner &);

@@ -19,7 +19,7 @@
 
 #include <media/stagefright/MediaBuffer.h>
 #include <media/stagefright/foundation/ABase.h>
-#include "SoftVideoEncoderOMXComponent.h"
+#include "SimpleSoftOMXComponent.h"
 #include "mp4enc_api.h"
 
 
@@ -27,7 +27,7 @@ namespace android {
 
 struct MediaBuffer;
 
-struct SoftMPEG4Encoder : public SoftVideoEncoderOMXComponent {
+struct SoftMPEG4Encoder : public SimpleSoftOMXComponent {
     SoftMPEG4Encoder(
             const char *name,
             const OMX_CALLBACKTYPE *callbacks,
@@ -43,12 +43,21 @@ struct SoftMPEG4Encoder : public SoftVideoEncoderOMXComponent {
 
     virtual void onQueueFilled(OMX_U32 portIndex);
 
+    // Override SoftOMXComponent methods
+
+    virtual OMX_ERRORTYPE getExtensionIndex(
+            const char *name, OMX_INDEXTYPE *index);
+
 protected:
     virtual ~SoftMPEG4Encoder();
 
 private:
     enum {
         kNumBuffers = 2,
+    };
+
+    enum {
+        kStoreMetaDataExtensionIndex = OMX_IndexVendorStartUnused + 1
     };
 
     // OMX input buffer's timestamp and flags
@@ -80,6 +89,9 @@ private:
     OMX_ERRORTYPE initEncParams();
     OMX_ERRORTYPE initEncoder();
     OMX_ERRORTYPE releaseEncoder();
+
+    uint8_t* extractGrallocData(void *data, buffer_handle_t *buffer);
+    void releaseGrallocData(buffer_handle_t buffer);
 
     DISALLOW_EVIL_CONSTRUCTORS(SoftMPEG4Encoder);
 };

@@ -1,6 +1,5 @@
 /*
  * Copyright (C) 2009 The Android Open Source Project
- * Copyright (c) 2012, The Linux Foundation. All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,7 +14,7 @@
  * limitations under the License.
  */
 
-//#define LOG_NDEBUG 0
+#define LOG_NDEBUG 0
 #define LOG_TAG "StagefrightMediaScanner"
 #include <utils/Log.h>
 
@@ -25,7 +24,6 @@
 
 #include <media/stagefright/StagefrightMediaScanner.h>
 
-#include <media/IMediaHTTPService.h>
 #include <media/mediametadataretriever.h>
 #include <private/media/VideoFrame.h>
 
@@ -39,31 +37,21 @@ StagefrightMediaScanner::StagefrightMediaScanner() {}
 StagefrightMediaScanner::~StagefrightMediaScanner() {}
 
 static int FileHasAcceptableExtension(const char *extension) {
+
+	
     static const char *kValidExtensions[] = {
         ".mp3", ".mp4", ".m4a", ".3gp", ".3gpp", ".3g2", ".3gpp2",
         ".mpeg", ".ogg", ".mid", ".smf", ".imy", ".wma", ".aac",
         ".wav", ".amr", ".midi", ".xmf", ".rtttl", ".rtx", ".ota",
-        ".mkv", ".mka", ".webm", ".ts", ".fl", ".flac", ".mxmf",
-<<<<<<< HEAD
-        ".avi", ".mpg", ".qcp", ".awb", ".ac3", ".dts", ".wmv",
-#ifdef QCOM_HARDWARE
-        ".ec3"
-#endif
-=======
-        ".adts", ".dm", ".m2ts", ".mp3d", ".wmv", ".asf", ".flv",
-        ".mov", ".ra", ".rm", ".rmvb", ".ac3", ".ape", ".dts",
-        ".mp1", ".mp2", ".f4v", "hlv", "nrg", "m2v", ".swf",
-        ".avi", ".mpg", ".mpeg", ".awb", ".vc1", ".vob", ".divx",
-        ".mpga", ".mov", ".qcp", ".ec3"
->>>>>>> 8b8d02886bd9fb8d5ad451c03e486cfad74aa74e
+        ".mka", ".fl", ".flac", ".mxmf",
+        ".mpeg", ".mpg"
     };
-
     static const char *kValidExtensionsAW[] = {
        ".mkv", ".rmvb", ".rm", ".mov", ".flv", ".f4v", ".avi",
        ".mp1", ".mp2", ".awb", ".oga", ".ape", ".ac3",
        ".dts", ".omg", ".oma", ".midi", ".m4v", ".wmv", ".asf",
        ".vob", ".pmp", ".m4r", ".ra", ".webm",
-       ".ts", ".m2ts"
+       ".ts",".m2ts"
     };
 
     size_t kNumValidExtensions;
@@ -78,13 +66,13 @@ static int FileHasAcceptableExtension(const char *extension) {
     }
 
     kNumValidExtensions =
-        sizeof(kValidExtensionsAW) / sizeof(kValidExtensionsAW[0]);
+            sizeof(kValidExtensionsAW) / sizeof(kValidExtensionsAW[0]);
 
     for (size_t i = 0; i < kNumValidExtensions; ++i) {
-        if (!strcasecmp(extension, kValidExtensionsAW[i])) {
-            return 2;
-        }
-    }
+		if (!strcasecmp(extension, kValidExtensionsAW[i])) {
+			return 2;
+		}
+	}
 
     return 0;
 }
@@ -150,17 +138,15 @@ MediaScanResult StagefrightMediaScanner::processFile(
 }
 
 MediaScanResult StagefrightMediaScanner::processFileInternal(
-        const char *path, const char * /* mimeType */,
+        const char *path, const char *mimeType,
         MediaScannerClient &client) {
     const char *extension = strrchr(path, '.');
-    short faccext_ret;
 
     if (!extension) {
         return MEDIA_SCAN_RESULT_SKIPPED;
     }
 
-    faccext_ret = FileHasAcceptableExtension(extension);
-    if (!faccext_ret) {
+    if (!FileHasAcceptableExtension(extension)) {
         return MEDIA_SCAN_RESULT_SKIPPED;
     }
 
@@ -176,18 +162,13 @@ MediaScanResult StagefrightMediaScanner::processFileInternal(
         return HandleMIDI(path, &client);
     }
 
-    status_t status;
     sp<MediaMetadataRetriever> mRetriever(new MediaMetadataRetriever);
 
-    if (faccext_ret == 2) { // allwinner media scanner
-    	status = mRetriever->setDataSource(path);
-        return MEDIA_SCAN_RESULT_OK;
-    }
-
     int fd = open(path, O_RDONLY | O_LARGEFILE);
+    status_t status;
     if (fd < 0) {
         // couldn't open it locally, maybe the media server can?
-        status = mRetriever->setDataSource(NULL /* httpService */, path);
+        status = mRetriever->setDataSource(path);
     } else {
         status = mRetriever->setDataSource(fd, 0, 0x7ffffffffffffffL);
         close(fd);
@@ -242,7 +223,7 @@ MediaScanResult StagefrightMediaScanner::processFileInternal(
     return MEDIA_SCAN_RESULT_OK;
 }
 
-MediaAlbumArt *StagefrightMediaScanner::extractAlbumArt(int fd) {
+char *StagefrightMediaScanner::extractAlbumArt(int fd) {
     ALOGV("extractAlbumArt %d", fd);
 
     off64_t size = lseek64(fd, 0, SEEK_END);
@@ -254,9 +235,15 @@ MediaAlbumArt *StagefrightMediaScanner::extractAlbumArt(int fd) {
     sp<MediaMetadataRetriever> mRetriever(new MediaMetadataRetriever);
     if (mRetriever->setDataSource(fd, 0, size) == OK) {
         sp<IMemory> mem = mRetriever->extractAlbumArt();
+
         if (mem != NULL) {
             MediaAlbumArt *art = static_cast<MediaAlbumArt *>(mem->pointer());
-            return art->clone();
+
+            char *data = (char *)malloc(art->mSize + 4);
+            *(int32_t *)data = art->mSize;
+            memcpy(&data[4], &art[1], art->mSize);
+
+            return data;
         }
     }
 
