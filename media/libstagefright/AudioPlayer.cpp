@@ -145,24 +145,11 @@ status_t AudioPlayer::start(bool sourceAlreadyStarted) {
     audio_format_t audioFormat = AUDIO_FORMAT_PCM_16_BIT;
 
     int32_t bitWidth = 16;
-#if defined(ENABLE_AV_ENHANCEMENTS) || defined(ENABLE_OFFLOAD_ENHANCEMENTS)
-    format->findInt32(kKeySampleBits, &bitWidth);
-#endif
-
     if (useOffload()) {
         if (mapMimeToAudioFormat(audioFormat, mime) != OK) {
             ALOGE("Couldn't map mime type \"%s\" to a valid AudioSystem::audio_format", mime);
             audioFormat = AUDIO_FORMAT_INVALID;
-        } else if (audio_is_linear_pcm(audioFormat) || audio_is_offload_pcm(audioFormat)) {
-#if defined(QCOM_HARDWARE) || defined(ENABLE_OFFLOAD_ENHANCEMENTS)
-            // Override audio format for PCM offload
-            if (bitWidth >= 24) {
-                ALOGD("24-bit PCM offload enabled format=%d", audioFormat);
-                audioFormat = AUDIO_FORMAT_PCM_24_BIT_OFFLOAD;
-            } else {
-                audioFormat = AUDIO_FORMAT_PCM_16_BIT_OFFLOAD;
-            }
-#endif
+        } else {
             ALOGV("Mime type \"%s\" mapped to audio_format 0x%x", mime, audioFormat);
         }
     }
