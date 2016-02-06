@@ -27,7 +27,7 @@
 #include <binder/IServiceManager.h>
 #include <binder/IPCThreadState.h>
 
-#include <gui/SurfaceTextureClient.h>
+#include <gui/Surface.h>
 
 #include <media/mediaplayer.h>
 #include <media/AudioSystem.h>
@@ -836,6 +836,17 @@ status_t MediaPlayer::setNextMediaPlayer(const sp<MediaPlayer>& next) {
         return NO_INIT;
     }
     return mPlayer->setNextPlayer(next == NULL ? NULL : next->mPlayer);
+}
+
+status_t MediaPlayer::updateProxyConfig(
+        const char *host, int32_t port, const char *exclusionList) {
+    const sp<IMediaPlayerService>& service = getMediaPlayerService();
+
+    if (service != NULL) {
+        return service->updateProxyConfig(host, port, exclusionList);
+    }
+
+    return INVALID_OPERATION;
 }
 
 /* add by Gary.  {{----------------------------------- */

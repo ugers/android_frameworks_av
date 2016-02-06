@@ -711,8 +711,8 @@ private:
                 __get_min_undequeued_buffer_count;
 
         // add interfaces
-		mHalPreviewWindow.nw.perform = __perform;
-		mHalPreviewWindow.nw.set_buffers_geometryex = __set_buffers_geometryex;
+		//mHalPreviewWindow.nw.perform = __perform;
+		//mHalPreviewWindow.nw.set_buffers_geometryex = __set_buffers_geometryex;
     }
 
     sp<ANativeWindow>        mPreviewWindow;

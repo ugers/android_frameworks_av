@@ -46,7 +46,7 @@
 namespace android {
 
 class GLConsumer;
-class SurfaceTextureClient;
+class Surface;
 class RenderInput;
 
 class NativeWindowRenderer {
@@ -165,7 +165,7 @@ private:
     NativeWindowRenderer* mRenderer;
     GLuint mTextureId;
     sp<GLConsumer> mST;
-    sp<SurfaceTextureClient> mSTC;
+    sp<Surface> mSTC;
     int mWidth, mHeight;
 
     // These are only valid during render() calls

@@ -74,6 +74,11 @@ public:
     // returns true in *state if tracks are active on the specified stream or has been active
     // in the past inPastMs milliseconds
     static status_t isStreamActive(audio_stream_type_t stream, bool *state, uint32_t inPastMs = 0);
+    // returns true in *state if tracks are active for what qualifies as remote playback
+    // on the specified stream or have been active in the past inPastMs milliseconds. Remote
+    // playback isn't mutually exclusive with local playback.
+    static status_t isStreamActiveRemotely(audio_stream_type_t stream, bool *state,
+            uint32_t inPastMs = 0);
     // returns true in *state if a recorder is currently recording with the specified source
     static status_t isSourceActive(audio_source_t source, bool *state);
 
@@ -91,17 +96,17 @@ public:
     static float linearToLog(int volume);
     static int logToLinear(float volume);
 
-    static status_t getOutputSamplingRate(int* samplingRate, audio_stream_type_t stream = AUDIO_STREAM_DEFAULT);
-    static status_t getOutputFrameCount(int* frameCount, audio_stream_type_t stream = AUDIO_STREAM_DEFAULT);
+    static status_t getOutputSamplingRate(uint32_t* samplingRate, audio_stream_type_t stream = AUDIO_STREAM_DEFAULT);
+    static status_t getOutputFrameCount(size_t* frameCount, audio_stream_type_t stream = AUDIO_STREAM_DEFAULT);
     static status_t getOutputLatency(uint32_t* latency, audio_stream_type_t stream = AUDIO_STREAM_DEFAULT);
     static status_t getSamplingRate(audio_io_handle_t output,
                                           audio_stream_type_t streamType,
-                                          int* samplingRate);
+                                          uint32_t* samplingRate);
     // returns the number of frames per audio HAL write buffer. Corresponds to
     // audio_stream->get_buffer_size()/audio_stream_frame_size()
     static status_t getFrameCount(audio_io_handle_t output,
                                   audio_stream_type_t stream,
-                                  int* frameCount);
+                                  size_t* frameCount);
     // returns the audio output stream latency in ms. Corresponds to
     // audio_stream_out->get_latency()
     static status_t getLatency(audio_io_handle_t output,
@@ -250,6 +255,12 @@ public:
     // helpers for android.media.AudioManager.getProperty(), see description there for meaning
     static int32_t getPrimaryOutputSamplingRate();
     static int32_t getPrimaryOutputFrameCount();
+	
+	static status_t setLowRamDevice(bool isLowRamDevice);
+	
+    // check presence of audio flinger service.
+    // returns NO_ERROR if binding to service succeeds, DEAD_OBJECT otherwise
+    static status_t checkAudioFlinger();
 
     // ----------------------------------------------------------------------------
 

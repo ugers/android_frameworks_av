@@ -16,7 +16,7 @@
 
 #define LOG_TAG "Camera2-Parameters"
 #define ATRACE_TAG ATRACE_TAG_CAMERA
-//#define LOG_NDEBUG 0
+// #define LOG_NDEBUG 0
 
 #include <utils/Log.h>
 #include <utils/Trace.h>
@@ -58,13 +58,13 @@ status_t Parameters::initialize(const CameraMetadata *info) {
     res = buildQuirks();
     if (res != OK) return res;
 
-    camera_metadata_ro_entry_t availableProcessedSizes =
-        staticInfo(ANDROID_SCALER_AVAILABLE_PROCESSED_SIZES, 2);
-    if (!availableProcessedSizes.count) return NO_INIT;
+    const Size MAX_PREVIEW_SIZE = { MAX_PREVIEW_WIDTH, MAX_PREVIEW_HEIGHT };
+    res = getFilteredPreviewSizes(MAX_PREVIEW_SIZE, &availablePreviewSizes);
+    if (res != OK) return res;
 
     // TODO: Pick more intelligently
-    previewWidth = availableProcessedSizes.data.i32[0];
-    previewHeight = availableProcessedSizes.data.i32[1];
+    previewWidth = availablePreviewSizes[0].width;
+    previewHeight = availablePreviewSizes[0].height;
     videoWidth = previewWidth;
     videoHeight = previewHeight;
 
@@ -75,12 +75,13 @@ status_t Parameters::initialize(const CameraMetadata *info) {
                     previewWidth, previewHeight));
     {
         String8 supportedPreviewSizes;
-        for (size_t i=0; i < availableProcessedSizes.count; i += 2) {
+        for (size_t i = 0; i < availablePreviewSizes.size(); i++) {
             if (i != 0) supportedPreviewSizes += ",";
             supportedPreviewSizes += String8::format("%dx%d",
-                    availableProcessedSizes.data.i32[i],
-                    availableProcessedSizes.data.i32[i+1]);
+                    availablePreviewSizes[i].width,
+                    availablePreviewSizes[i].height);
         }
+        ALOGV("Supported preview sizes are: %s", supportedPreviewSizes.string());
         params.set(CameraParameters::KEY_SUPPORTED_PREVIEW_SIZES,
                 supportedPreviewSizes);
         params.set(CameraParameters::KEY_SUPPORTED_VIDEO_SIZES,
@@ -90,26 +91,6 @@ status_t Parameters::initialize(const CameraMetadata *info) {
     camera_metadata_ro_entry_t availableFpsRanges =
         staticInfo(ANDROID_CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES, 2);
     if (!availableFpsRanges.count) return NO_INIT;
-
-    previewFpsRange[0] = availableFpsRanges.data.i32[0];
-    previewFpsRange[1] = availableFpsRanges.data.i32[1];
-
-    params.set(CameraParameters::KEY_PREVIEW_FPS_RANGE,
-            String8::format("%d,%d",
-                    previewFpsRange[0] * kFpsToApiScale,
-                    previewFpsRange[1] * kFpsToApiScale));
-
-    {
-        String8 supportedPreviewFpsRange;
-        for (size_t i=0; i < availableFpsRanges.count; i += 2) {
-            if (i != 0) supportedPreviewFpsRange += ",";
-            supportedPreviewFpsRange += String8::format("(%d,%d)",
-                    availableFpsRanges.data.i32[i] * kFpsToApiScale,
-                    availableFpsRanges.data.i32[i+1] * kFpsToApiScale);
-        }
-        params.set(CameraParameters::KEY_SUPPORTED_PREVIEW_FPS_RANGE,
-                supportedPreviewFpsRange);
-    }
 
     previewFormat = HAL_PIXEL_FORMAT_YCrCb_420_SP;
     params.set(CameraParameters::KEY_PREVIEW_FORMAT,
@@ -152,7 +133,16 @@ status_t Parameters::initialize(const CameraMetadata *info) {
                 supportedPreviewFormats +=
                     CameraParameters::PIXEL_FORMAT_RGBA8888;
                 break;
+            case HAL_PIXEL_FORMAT_YCbCr_420_888:
+                // Flexible YUV allows both YV12 and NV21
+                supportedPreviewFormats +=
+                    CameraParameters::PIXEL_FORMAT_YUV420P;
+                supportedPreviewFormats += ",";
+                supportedPreviewFormats +=
+                    CameraParameters::PIXEL_FORMAT_YUV420SP;
+                break;
             // Not advertizing JPEG, RAW_SENSOR, etc, for preview formats
+            case HAL_PIXEL_FORMAT_IMPLEMENTATION_DEFINED:
             case HAL_PIXEL_FORMAT_RAW_SENSOR:
             case HAL_PIXEL_FORMAT_BLOB:
                 addComma = false;
@@ -169,13 +159,37 @@ status_t Parameters::initialize(const CameraMetadata *info) {
                 supportedPreviewFormats);
     }
 
+    previewFpsRange[0] = availableFpsRanges.data.i32[0];
+    previewFpsRange[1] = availableFpsRanges.data.i32[1];
+
     // PREVIEW_FRAME_RATE / SUPPORTED_PREVIEW_FRAME_RATES are deprecated, but
     // still have to do something sane for them
 
     // NOTE: Not scaled like FPS range values are.
-    previewFps = fpsFromRange(previewFpsRange[0], previewFpsRange[1]);
+    int previewFps = fpsFromRange(previewFpsRange[0], previewFpsRange[1]);
     params.set(CameraParameters::KEY_PREVIEW_FRAME_RATE,
             previewFps);
+
+    // PREVIEW_FPS_RANGE
+    // -- Order matters. Set range after single value to so that a roundtrip
+    //    of setParameters(getParameters()) would keep the FPS range in higher
+    //    order.
+    params.set(CameraParameters::KEY_PREVIEW_FPS_RANGE,
+            String8::format("%d,%d",
+                    previewFpsRange[0] * kFpsToApiScale,
+                    previewFpsRange[1] * kFpsToApiScale));
+
+    {
+        String8 supportedPreviewFpsRange;
+        for (size_t i=0; i < availableFpsRanges.count; i += 2) {
+            if (i != 0) supportedPreviewFpsRange += ",";
+            supportedPreviewFpsRange += String8::format("(%d,%d)",
+                    availableFpsRanges.data.i32[i] * kFpsToApiScale,
+                    availableFpsRanges.data.i32[i+1] * kFpsToApiScale);
+        }
+        params.set(CameraParameters::KEY_SUPPORTED_PREVIEW_FPS_RANGE,
+                supportedPreviewFpsRange);
+    }
 
     {
         SortedVector<int32_t> sortedPreviewFrameRates;
@@ -239,9 +253,17 @@ status_t Parameters::initialize(const CameraMetadata *info) {
         staticInfo(ANDROID_JPEG_AVAILABLE_THUMBNAIL_SIZES, 4);
     if (!availableJpegThumbnailSizes.count) return NO_INIT;
 
-    // TODO: Pick default thumbnail size sensibly
-    jpegThumbSize[0] = availableJpegThumbnailSizes.data.i32[0];
-    jpegThumbSize[1] = availableJpegThumbnailSizes.data.i32[1];
+    // Pick the largest thumbnail size that matches still image aspect ratio.
+    ALOG_ASSERT(pictureWidth > 0 && pictureHeight > 0,
+            "Invalid picture size, %d x %d", pictureWidth, pictureHeight);
+    float picAspectRatio = static_cast<float>(pictureWidth) / pictureHeight;
+    Size thumbnailSize =
+            getMaxSizeForRatio(
+                    picAspectRatio,
+                    &availableJpegThumbnailSizes.data.i32[0],
+                    availableJpegThumbnailSizes.count);
+    jpegThumbSize[0] = thumbnailSize.width;
+    jpegThumbSize[1] = thumbnailSize.height;
 
     params.set(CameraParameters::KEY_JPEG_THUMBNAIL_WIDTH,
             jpegThumbSize[0]);
@@ -278,53 +300,56 @@ status_t Parameters::initialize(const CameraMetadata *info) {
     gpsProcessingMethod = "unknown";
     // GPS fields in CameraParameters are not set by implementation
 
-    wbMode = ANDROID_CONTROL_AWB_AUTO;
+    wbMode = ANDROID_CONTROL_AWB_MODE_AUTO;
     params.set(CameraParameters::KEY_WHITE_BALANCE,
             CameraParameters::WHITE_BALANCE_AUTO);
 
     camera_metadata_ro_entry_t availableWhiteBalanceModes =
-        staticInfo(ANDROID_CONTROL_AWB_AVAILABLE_MODES);
-    {
+        staticInfo(ANDROID_CONTROL_AWB_AVAILABLE_MODES, 0, 0, false);
+    if (!availableWhiteBalanceModes.count) {
+        params.set(CameraParameters::KEY_SUPPORTED_WHITE_BALANCE,
+                CameraParameters::WHITE_BALANCE_AUTO);
+    } else {
         String8 supportedWhiteBalance;
         bool addComma = false;
         for (size_t i=0; i < availableWhiteBalanceModes.count; i++) {
             if (addComma) supportedWhiteBalance += ",";
             addComma = true;
             switch (availableWhiteBalanceModes.data.u8[i]) {
-            case ANDROID_CONTROL_AWB_AUTO:
+            case ANDROID_CONTROL_AWB_MODE_AUTO:
                 supportedWhiteBalance +=
                     CameraParameters::WHITE_BALANCE_AUTO;
                 break;
-            case ANDROID_CONTROL_AWB_INCANDESCENT:
+            case ANDROID_CONTROL_AWB_MODE_INCANDESCENT:
                 supportedWhiteBalance +=
                     CameraParameters::WHITE_BALANCE_INCANDESCENT;
                 break;
-            case ANDROID_CONTROL_AWB_FLUORESCENT:
+            case ANDROID_CONTROL_AWB_MODE_FLUORESCENT:
                 supportedWhiteBalance +=
                     CameraParameters::WHITE_BALANCE_FLUORESCENT;
                 break;
-            case ANDROID_CONTROL_AWB_WARM_FLUORESCENT:
+            case ANDROID_CONTROL_AWB_MODE_WARM_FLUORESCENT:
                 supportedWhiteBalance +=
                     CameraParameters::WHITE_BALANCE_WARM_FLUORESCENT;
                 break;
-            case ANDROID_CONTROL_AWB_DAYLIGHT:
+            case ANDROID_CONTROL_AWB_MODE_DAYLIGHT:
                 supportedWhiteBalance +=
                     CameraParameters::WHITE_BALANCE_DAYLIGHT;
                 break;
-            case ANDROID_CONTROL_AWB_CLOUDY_DAYLIGHT:
+            case ANDROID_CONTROL_AWB_MODE_CLOUDY_DAYLIGHT:
                 supportedWhiteBalance +=
                     CameraParameters::WHITE_BALANCE_CLOUDY_DAYLIGHT;
                 break;
-            case ANDROID_CONTROL_AWB_TWILIGHT:
+            case ANDROID_CONTROL_AWB_MODE_TWILIGHT:
                 supportedWhiteBalance +=
                     CameraParameters::WHITE_BALANCE_TWILIGHT;
                 break;
-            case ANDROID_CONTROL_AWB_SHADE:
+            case ANDROID_CONTROL_AWB_MODE_SHADE:
                 supportedWhiteBalance +=
                     CameraParameters::WHITE_BALANCE_SHADE;
                 break;
             // Skipping values not mappable to v1 API
-            case ANDROID_CONTROL_AWB_OFF:
+            case ANDROID_CONTROL_AWB_MODE_OFF:
                 addComma = false;
                 break;
             default:
@@ -339,53 +364,55 @@ status_t Parameters::initialize(const CameraMetadata *info) {
                 supportedWhiteBalance);
     }
 
-    effectMode = ANDROID_CONTROL_EFFECT_OFF;
+    effectMode = ANDROID_CONTROL_EFFECT_MODE_OFF;
     params.set(CameraParameters::KEY_EFFECT,
             CameraParameters::EFFECT_NONE);
 
     camera_metadata_ro_entry_t availableEffects =
-        staticInfo(ANDROID_CONTROL_AVAILABLE_EFFECTS);
-    if (!availableEffects.count) return NO_INIT;
-    {
+        staticInfo(ANDROID_CONTROL_AVAILABLE_EFFECTS, 0, 0, false);
+    if (!availableEffects.count) {
+        params.set(CameraParameters::KEY_SUPPORTED_EFFECTS,
+                CameraParameters::EFFECT_NONE);
+    } else {
         String8 supportedEffects;
         bool addComma = false;
         for (size_t i=0; i < availableEffects.count; i++) {
             if (addComma) supportedEffects += ",";
             addComma = true;
             switch (availableEffects.data.u8[i]) {
-                case ANDROID_CONTROL_EFFECT_OFF:
+                case ANDROID_CONTROL_EFFECT_MODE_OFF:
                     supportedEffects +=
                         CameraParameters::EFFECT_NONE;
                     break;
-                case ANDROID_CONTROL_EFFECT_MONO:
+                case ANDROID_CONTROL_EFFECT_MODE_MONO:
                     supportedEffects +=
                         CameraParameters::EFFECT_MONO;
                     break;
-                case ANDROID_CONTROL_EFFECT_NEGATIVE:
+                case ANDROID_CONTROL_EFFECT_MODE_NEGATIVE:
                     supportedEffects +=
                         CameraParameters::EFFECT_NEGATIVE;
                     break;
-                case ANDROID_CONTROL_EFFECT_SOLARIZE:
+                case ANDROID_CONTROL_EFFECT_MODE_SOLARIZE:
                     supportedEffects +=
                         CameraParameters::EFFECT_SOLARIZE;
                     break;
-                case ANDROID_CONTROL_EFFECT_SEPIA:
+                case ANDROID_CONTROL_EFFECT_MODE_SEPIA:
                     supportedEffects +=
                         CameraParameters::EFFECT_SEPIA;
                     break;
-                case ANDROID_CONTROL_EFFECT_POSTERIZE:
+                case ANDROID_CONTROL_EFFECT_MODE_POSTERIZE:
                     supportedEffects +=
                         CameraParameters::EFFECT_POSTERIZE;
                     break;
-                case ANDROID_CONTROL_EFFECT_WHITEBOARD:
+                case ANDROID_CONTROL_EFFECT_MODE_WHITEBOARD:
                     supportedEffects +=
                         CameraParameters::EFFECT_WHITEBOARD;
                     break;
-                case ANDROID_CONTROL_EFFECT_BLACKBOARD:
+                case ANDROID_CONTROL_EFFECT_MODE_BLACKBOARD:
                     supportedEffects +=
                         CameraParameters::EFFECT_BLACKBOARD;
                     break;
-                case ANDROID_CONTROL_EFFECT_AQUA:
+                case ANDROID_CONTROL_EFFECT_MODE_AQUA:
                     supportedEffects +=
                         CameraParameters::EFFECT_AQUA;
                     break;
@@ -399,33 +426,35 @@ status_t Parameters::initialize(const CameraMetadata *info) {
         params.set(CameraParameters::KEY_SUPPORTED_EFFECTS, supportedEffects);
     }
 
-    antibandingMode = ANDROID_CONTROL_AE_ANTIBANDING_AUTO;
+    antibandingMode = ANDROID_CONTROL_AE_ANTIBANDING_MODE_AUTO;
     params.set(CameraParameters::KEY_ANTIBANDING,
             CameraParameters::ANTIBANDING_AUTO);
 
     camera_metadata_ro_entry_t availableAntibandingModes =
-        staticInfo(ANDROID_CONTROL_AE_AVAILABLE_ANTIBANDING_MODES);
-    if (!availableAntibandingModes.count) return NO_INIT;
-    {
+        staticInfo(ANDROID_CONTROL_AE_AVAILABLE_ANTIBANDING_MODES, 0, 0, false);
+    if (!availableAntibandingModes.count) {
+        params.set(CameraParameters::KEY_SUPPORTED_ANTIBANDING,
+                CameraParameters::ANTIBANDING_OFF);
+    } else {
         String8 supportedAntibanding;
         bool addComma = false;
         for (size_t i=0; i < availableAntibandingModes.count; i++) {
             if (addComma) supportedAntibanding += ",";
             addComma = true;
             switch (availableAntibandingModes.data.u8[i]) {
-                case ANDROID_CONTROL_AE_ANTIBANDING_OFF:
+                case ANDROID_CONTROL_AE_ANTIBANDING_MODE_OFF:
                     supportedAntibanding +=
                         CameraParameters::ANTIBANDING_OFF;
                     break;
-                case ANDROID_CONTROL_AE_ANTIBANDING_50HZ:
+                case ANDROID_CONTROL_AE_ANTIBANDING_MODE_50HZ:
                     supportedAntibanding +=
                         CameraParameters::ANTIBANDING_50HZ;
                     break;
-                case ANDROID_CONTROL_AE_ANTIBANDING_60HZ:
+                case ANDROID_CONTROL_AE_ANTIBANDING_MODE_60HZ:
                     supportedAntibanding +=
                         CameraParameters::ANTIBANDING_60HZ;
                     break;
-                case ANDROID_CONTROL_AE_ANTIBANDING_AUTO:
+                case ANDROID_CONTROL_AE_ANTIBANDING_MODE_AUTO:
                     supportedAntibanding +=
                         CameraParameters::ANTIBANDING_AUTO;
                     break;
@@ -446,9 +475,10 @@ status_t Parameters::initialize(const CameraMetadata *info) {
             CameraParameters::SCENE_MODE_AUTO);
 
     camera_metadata_ro_entry_t availableSceneModes =
-        staticInfo(ANDROID_CONTROL_AVAILABLE_SCENE_MODES);
-    if (!availableSceneModes.count) return NO_INIT;
-    {
+        staticInfo(ANDROID_CONTROL_AVAILABLE_SCENE_MODES, 0, 0, false);
+    if (!availableSceneModes.count) {
+        params.remove(CameraParameters::KEY_SCENE_MODE);
+    } else {
         String8 supportedSceneModes(CameraParameters::SCENE_MODE_AUTO);
         bool addComma = true;
         bool noSceneModes = false;
@@ -534,18 +564,22 @@ status_t Parameters::initialize(const CameraMetadata *info) {
         if (!noSceneModes) {
             params.set(CameraParameters::KEY_SUPPORTED_SCENE_MODES,
                     supportedSceneModes);
+        } else {
+            params.remove(CameraParameters::KEY_SCENE_MODE);
         }
     }
 
+    bool isFlashAvailable = false;
     camera_metadata_ro_entry_t flashAvailable =
-        staticInfo(ANDROID_FLASH_AVAILABLE, 1, 1);
-    if (!flashAvailable.count) return NO_INIT;
+        staticInfo(ANDROID_FLASH_INFO_AVAILABLE, 0, 1, false);
+    if (flashAvailable.count) {
+        isFlashAvailable = flashAvailable.data.u8[0];
+    }
 
     camera_metadata_ro_entry_t availableAeModes =
-        staticInfo(ANDROID_CONTROL_AE_AVAILABLE_MODES);
-    if (!availableAeModes.count) return NO_INIT;
+        staticInfo(ANDROID_CONTROL_AE_AVAILABLE_MODES, 0, 0, false);
 
-    if (flashAvailable.data.u8[0]) {
+    if (isFlashAvailable) {
         flashMode = Parameters::FLASH_MODE_OFF;
         params.set(CameraParameters::KEY_FLASH_MODE,
                 CameraParameters::FLASH_MODE_OFF);
@@ -557,7 +591,7 @@ status_t Parameters::initialize(const CameraMetadata *info) {
             "," + CameraParameters::FLASH_MODE_TORCH;
         for (size_t i=0; i < availableAeModes.count; i++) {
             if (availableAeModes.data.u8[i] ==
-                    ANDROID_CONTROL_AE_ON_AUTO_FLASH_REDEYE) {
+                    ANDROID_CONTROL_AE_MODE_ON_AUTO_FLASH_REDEYE) {
                 supportedFlashModes = supportedFlashModes + "," +
                     CameraParameters::FLASH_MODE_RED_EYE;
                 break;
@@ -574,14 +608,12 @@ status_t Parameters::initialize(const CameraMetadata *info) {
     }
 
     camera_metadata_ro_entry_t minFocusDistance =
-        staticInfo(ANDROID_LENS_MINIMUM_FOCUS_DISTANCE, 1, 1);
-    if (!minFocusDistance.count) return NO_INIT;
+        staticInfo(ANDROID_LENS_INFO_MINIMUM_FOCUS_DISTANCE, 0, 1, false);
 
     camera_metadata_ro_entry_t availableAfModes =
-        staticInfo(ANDROID_CONTROL_AF_AVAILABLE_MODES);
-    if (!availableAfModes.count) return NO_INIT;
+        staticInfo(ANDROID_CONTROL_AF_AVAILABLE_MODES, 0, 0, false);
 
-    if (minFocusDistance.data.f[0] == 0) {
+    if (!minFocusDistance.count || minFocusDistance.data.f[0] == 0) {
         // Fixed-focus lens
         focusMode = Parameters::FOCUS_MODE_FIXED;
         params.set(CameraParameters::KEY_FOCUS_MODE,
@@ -599,28 +631,28 @@ status_t Parameters::initialize(const CameraMetadata *info) {
             if (addComma) supportedFocusModes += ",";
             addComma = true;
             switch (availableAfModes.data.u8[i]) {
-                case ANDROID_CONTROL_AF_AUTO:
+                case ANDROID_CONTROL_AF_MODE_AUTO:
                     supportedFocusModes +=
                         CameraParameters::FOCUS_MODE_AUTO;
                     break;
-                case ANDROID_CONTROL_AF_MACRO:
+                case ANDROID_CONTROL_AF_MODE_MACRO:
                     supportedFocusModes +=
                         CameraParameters::FOCUS_MODE_MACRO;
                     break;
-                case ANDROID_CONTROL_AF_CONTINUOUS_VIDEO:
+                case ANDROID_CONTROL_AF_MODE_CONTINUOUS_VIDEO:
                     supportedFocusModes +=
                         CameraParameters::FOCUS_MODE_CONTINUOUS_VIDEO;
                     break;
-                case ANDROID_CONTROL_AF_CONTINUOUS_PICTURE:
+                case ANDROID_CONTROL_AF_MODE_CONTINUOUS_PICTURE:
                     supportedFocusModes +=
                         CameraParameters::FOCUS_MODE_CONTINUOUS_PICTURE;
                     break;
-                case ANDROID_CONTROL_AF_EDOF:
+                case ANDROID_CONTROL_AF_MODE_EDOF:
                     supportedFocusModes +=
                         CameraParameters::FOCUS_MODE_EDOF;
                     break;
                 // Not supported in old API
-                case ANDROID_CONTROL_AF_OFF:
+                case ANDROID_CONTROL_AF_MODE_OFF:
                     addComma = false;
                     break;
                 default:
@@ -651,21 +683,19 @@ status_t Parameters::initialize(const CameraMetadata *info) {
     focusingAreas.add(Parameters::Area(0,0,0,0,0));
 
     camera_metadata_ro_entry_t availableFocalLengths =
-        staticInfo(ANDROID_LENS_AVAILABLE_FOCAL_LENGTHS);
+        staticInfo(ANDROID_LENS_INFO_AVAILABLE_FOCAL_LENGTHS, 0, 0, false);
     if (!availableFocalLengths.count) return NO_INIT;
 
     float minFocalLength = availableFocalLengths.data.f[0];
     params.setFloat(CameraParameters::KEY_FOCAL_LENGTH, minFocalLength);
 
-    camera_metadata_ro_entry_t sensorSize =
-        staticInfo(ANDROID_SENSOR_PHYSICAL_SIZE, 2, 2);
-    if (!sensorSize.count) return NO_INIT;
+    float horizFov, vertFov;
+    res = calculatePictureFovs(&horizFov, &vertFov);
+    if (res != OK) {
+        ALOGE("%s: Can't calculate field of views!", __FUNCTION__);
+        return res;
+    }
 
-    // The fields of view here assume infinity focus, maximum wide angle
-    float horizFov = 180 / M_PI *
-            2 * atanf(sensorSize.data.f[0] / (2 * minFocalLength));
-    float vertFov  = 180 / M_PI *
-            2 * atanf(sensorSize.data.f[1] / (2 * minFocalLength));
     params.setFloat(CameraParameters::KEY_HORIZONTAL_VIEW_ANGLE, horizFov);
     params.setFloat(CameraParameters::KEY_VERTICAL_VIEW_ANGLE, vertFov);
 
@@ -674,7 +704,7 @@ status_t Parameters::initialize(const CameraMetadata *info) {
                 exposureCompensation);
 
     camera_metadata_ro_entry_t exposureCompensationRange =
-        staticInfo(ANDROID_CONTROL_AE_EXP_COMPENSATION_RANGE, 2, 2);
+        staticInfo(ANDROID_CONTROL_AE_COMPENSATION_RANGE, 2, 2);
     if (!exposureCompensationRange.count) return NO_INIT;
 
     params.set(CameraParameters::KEY_MAX_EXPOSURE_COMPENSATION,
@@ -683,7 +713,7 @@ status_t Parameters::initialize(const CameraMetadata *info) {
             exposureCompensationRange.data.i32[0]);
 
     camera_metadata_ro_entry_t exposureCompensationStep =
-        staticInfo(ANDROID_CONTROL_AE_EXP_COMPENSATION_STEP, 1, 1);
+        staticInfo(ANDROID_CONTROL_AE_COMPENSATION_STEP, 1, 1);
     if (!exposureCompensationStep.count) return NO_INIT;
 
     params.setFloat(CameraParameters::KEY_EXPOSURE_COMPENSATION_STEP,
@@ -713,7 +743,7 @@ status_t Parameters::initialize(const CameraMetadata *info) {
     params.set(CameraParameters::KEY_MAX_ZOOM, NUM_ZOOM_STEPS - 1);
 
     camera_metadata_ro_entry_t maxDigitalZoom =
-        staticInfo(ANDROID_SCALER_AVAILABLE_MAX_ZOOM, /*minCount*/1, /*maxCount*/1);
+        staticInfo(ANDROID_SCALER_AVAILABLE_MAX_DIGITAL_ZOOM, /*minCount*/1, /*maxCount*/1);
     if (!maxDigitalZoom.count) return NO_INIT;
 
     {
@@ -759,8 +789,8 @@ status_t Parameters::initialize(const CameraMetadata *info) {
             CameraParameters::FALSE);
 
     camera_metadata_ro_entry_t availableVideoStabilizationModes =
-        staticInfo(ANDROID_CONTROL_AVAILABLE_VIDEO_STABILIZATION_MODES);
-    if (!availableVideoStabilizationModes.count) return NO_INIT;
+        staticInfo(ANDROID_CONTROL_AVAILABLE_VIDEO_STABILIZATION_MODES, 0, 0,
+                false);
 
     if (availableVideoStabilizationModes.count > 1) {
         params.set(CameraParameters::KEY_VIDEO_STABILIZATION_SUPPORTED,
@@ -778,13 +808,17 @@ status_t Parameters::initialize(const CameraMetadata *info) {
 
     enableFocusMoveMessages = false;
     afTriggerCounter = 1;
+    afStateCounter = 0;
     currentAfTriggerId = -1;
     afInMotion = false;
 
     precaptureTriggerCounter = 1;
 
+    takePictureCounter = 0;
+
     previewCallbackFlags = 0;
     previewCallbackOneShot = false;
+    previewCallbackSurface = false;
 
     char value[PROPERTY_VALUE_MAX];
     property_get("camera.disable_zsl_mode", value, "0");
@@ -811,31 +845,67 @@ String8 Parameters::get() const {
 status_t Parameters::buildFastInfo() {
 
     camera_metadata_ro_entry_t activeArraySize =
-        staticInfo(ANDROID_SENSOR_ACTIVE_ARRAY_SIZE, 2, 2);
+        staticInfo(ANDROID_SENSOR_INFO_ACTIVE_ARRAY_SIZE, 2, 4);
     if (!activeArraySize.count) return NO_INIT;
-    int32_t arrayWidth = activeArraySize.data.i32[0];
-    int32_t arrayHeight = activeArraySize.data.i32[1];
+    int32_t arrayWidth;
+    int32_t arrayHeight;
+    if (activeArraySize.count == 2) {
+        ALOGW("%s: Camera %d: activeArraySize is missing xmin/ymin!",
+                __FUNCTION__, cameraId);
+        arrayWidth = activeArraySize.data.i32[0];
+        arrayHeight = activeArraySize.data.i32[1];
+    } else if (activeArraySize.count == 4) {
+        arrayWidth = activeArraySize.data.i32[2];
+        arrayHeight = activeArraySize.data.i32[3];
+    } else return NO_INIT;
+
+    // We'll set the target FPS range for still captures to be as wide
+    // as possible to give the HAL maximum latitude for exposure selection
+    camera_metadata_ro_entry_t availableFpsRanges =
+        staticInfo(ANDROID_CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES, 2);
+    if (availableFpsRanges.count < 2 || availableFpsRanges.count % 2 != 0) {
+        return NO_INIT;
+    }
+
+    int32_t bestStillCaptureFpsRange[2] = {
+        availableFpsRanges.data.i32[0], availableFpsRanges.data.i32[1]
+    };
+    int32_t curRange =
+            bestStillCaptureFpsRange[1] - bestStillCaptureFpsRange[0];
+    for (size_t i = 2; i < availableFpsRanges.count; i += 2) {
+        int32_t nextRange =
+                availableFpsRanges.data.i32[i + 1] -
+                availableFpsRanges.data.i32[i];
+        if ( (nextRange > curRange) ||       // Maximize size of FPS range first
+                (nextRange == curRange &&    // Then minimize low-end FPS
+                 bestStillCaptureFpsRange[0] > availableFpsRanges.data.i32[i])) {
+
+            bestStillCaptureFpsRange[0] = availableFpsRanges.data.i32[i];
+            bestStillCaptureFpsRange[1] = availableFpsRanges.data.i32[i + 1];
+            curRange = nextRange;
+        }
+    }
 
     camera_metadata_ro_entry_t availableFaceDetectModes =
-        staticInfo(ANDROID_STATS_AVAILABLE_FACE_DETECT_MODES);
-    if (!availableFaceDetectModes.count) return NO_INIT;
+        staticInfo(ANDROID_STATISTICS_INFO_AVAILABLE_FACE_DETECT_MODES, 0, 0,
+                false);
 
     uint8_t bestFaceDetectMode =
-        ANDROID_STATS_FACE_DETECTION_OFF;
+        ANDROID_STATISTICS_FACE_DETECT_MODE_OFF;
     for (size_t i = 0 ; i < availableFaceDetectModes.count; i++) {
         switch (availableFaceDetectModes.data.u8[i]) {
-            case ANDROID_STATS_FACE_DETECTION_OFF:
+            case ANDROID_STATISTICS_FACE_DETECT_MODE_OFF:
                 break;
-            case ANDROID_STATS_FACE_DETECTION_SIMPLE:
+            case ANDROID_STATISTICS_FACE_DETECT_MODE_SIMPLE:
                 if (bestFaceDetectMode !=
-                        ANDROID_STATS_FACE_DETECTION_FULL) {
+                        ANDROID_STATISTICS_FACE_DETECT_MODE_FULL) {
                     bestFaceDetectMode =
-                        ANDROID_STATS_FACE_DETECTION_SIMPLE;
+                        ANDROID_STATISTICS_FACE_DETECT_MODE_SIMPLE;
                 }
                 break;
-            case ANDROID_STATS_FACE_DETECTION_FULL:
+            case ANDROID_STATISTICS_FACE_DETECT_MODE_FULL:
                 bestFaceDetectMode =
-                    ANDROID_STATS_FACE_DETECTION_FULL;
+                    ANDROID_STATISTICS_FACE_DETECT_MODE_FULL;
                 break;
             default:
                 ALOGE("%s: Camera %d: Unknown face detect mode %d:",
@@ -845,19 +915,30 @@ status_t Parameters::buildFastInfo() {
         }
     }
 
+    int32_t maxFaces = 0;
     camera_metadata_ro_entry_t maxFacesDetected =
-        staticInfo(ANDROID_STATS_MAX_FACE_COUNT, 1, 1);
-    if (!maxFacesDetected.count) return NO_INIT;
-
-    int32_t maxFaces = maxFacesDetected.data.i32[0];
+        staticInfo(ANDROID_STATISTICS_INFO_MAX_FACE_COUNT, 0, 1, false);
+    if (maxFacesDetected.count) {
+        maxFaces = maxFacesDetected.data.i32[0];
+    }
 
     camera_metadata_ro_entry_t availableSceneModes =
-        staticInfo(ANDROID_CONTROL_AVAILABLE_SCENE_MODES);
+        staticInfo(ANDROID_CONTROL_AVAILABLE_SCENE_MODES, 0, 0, false);
     camera_metadata_ro_entry_t sceneModeOverrides =
-        staticInfo(ANDROID_CONTROL_SCENE_MODE_OVERRIDES);
+        staticInfo(ANDROID_CONTROL_SCENE_MODE_OVERRIDES, 0, 0, false);
     camera_metadata_ro_entry_t minFocusDistance =
-        staticInfo(ANDROID_LENS_MINIMUM_FOCUS_DISTANCE);
-    bool fixedLens = (minFocusDistance.data.f[0] == 0);
+        staticInfo(ANDROID_LENS_INFO_MINIMUM_FOCUS_DISTANCE, 0, 0, false);
+    bool fixedLens = minFocusDistance.count == 0 ||
+        minFocusDistance.data.f[0] == 0;
+
+    camera_metadata_ro_entry_t availableFocalLengths =
+        staticInfo(ANDROID_LENS_INFO_AVAILABLE_FOCAL_LENGTHS);
+    if (!availableFocalLengths.count) return NO_INIT;
+
+    camera_metadata_ro_entry_t availableFormats =
+        staticInfo(ANDROID_SCALER_AVAILABLE_FORMATS);
+    if (!availableFormats.count) return NO_INIT;
+
 
     if (sceneModeOverrides.count > 0) {
         // sceneModeOverrides is defined to have 3 entries for each scene mode,
@@ -877,16 +958,16 @@ status_t Parameters::buildFastInfo() {
             uint8_t aeMode =
                     sceneModeOverrides.data.u8[i * kModesPerSceneMode + 0];
             switch(aeMode) {
-                case ANDROID_CONTROL_AE_ON:
+                case ANDROID_CONTROL_AE_MODE_ON:
                     modes.flashMode = FLASH_MODE_OFF;
                     break;
-                case ANDROID_CONTROL_AE_ON_AUTO_FLASH:
+                case ANDROID_CONTROL_AE_MODE_ON_AUTO_FLASH:
                     modes.flashMode = FLASH_MODE_AUTO;
                     break;
-                case ANDROID_CONTROL_AE_ON_ALWAYS_FLASH:
+                case ANDROID_CONTROL_AE_MODE_ON_ALWAYS_FLASH:
                     modes.flashMode = FLASH_MODE_ON;
                     break;
-                case ANDROID_CONTROL_AE_ON_AUTO_FLASH_REDEYE:
+                case ANDROID_CONTROL_AE_MODE_ON_AUTO_FLASH_REDEYE:
                     modes.flashMode = FLASH_MODE_RED_EYE;
                     break;
                 default:
@@ -900,15 +981,15 @@ status_t Parameters::buildFastInfo() {
             uint8_t afMode =
                     sceneModeOverrides.data.u8[i * kModesPerSceneMode + 2];
             switch(afMode) {
-                case ANDROID_CONTROL_AF_OFF:
+                case ANDROID_CONTROL_AF_MODE_OFF:
                     modes.focusMode = fixedLens ?
                             FOCUS_MODE_FIXED : FOCUS_MODE_INFINITY;
                     break;
-                case ANDROID_CONTROL_AF_AUTO:
-                case ANDROID_CONTROL_AF_MACRO:
-                case ANDROID_CONTROL_AF_CONTINUOUS_VIDEO:
-                case ANDROID_CONTROL_AF_CONTINUOUS_PICTURE:
-                case ANDROID_CONTROL_AF_EDOF:
+                case ANDROID_CONTROL_AF_MODE_AUTO:
+                case ANDROID_CONTROL_AF_MODE_MACRO:
+                case ANDROID_CONTROL_AF_MODE_CONTINUOUS_VIDEO:
+                case ANDROID_CONTROL_AF_MODE_CONTINUOUS_PICTURE:
+                case ANDROID_CONTROL_AF_MODE_EDOF:
                     modes.focusMode = static_cast<focusMode_t>(afMode);
                     break;
                 default:
@@ -924,8 +1005,31 @@ status_t Parameters::buildFastInfo() {
 
     fastInfo.arrayWidth = arrayWidth;
     fastInfo.arrayHeight = arrayHeight;
+    fastInfo.bestStillCaptureFpsRange[0] = bestStillCaptureFpsRange[0];
+    fastInfo.bestStillCaptureFpsRange[1] = bestStillCaptureFpsRange[1];
     fastInfo.bestFaceDetectMode = bestFaceDetectMode;
     fastInfo.maxFaces = maxFaces;
+
+    // Find smallest (widest-angle) focal length to use as basis of still
+    // picture FOV reporting.
+    fastInfo.minFocalLength = availableFocalLengths.data.f[0];
+    for (size_t i = 1; i < availableFocalLengths.count; i++) {
+        if (fastInfo.minFocalLength > availableFocalLengths.data.f[i]) {
+            fastInfo.minFocalLength = availableFocalLengths.data.f[i];
+        }
+    }
+
+    // Check if the HAL supports HAL_PIXEL_FORMAT_YCbCr_420_888
+    fastInfo.useFlexibleYuv = false;
+    for (size_t i = 0; i < availableFormats.count; i++) {
+        if (availableFormats.data.i32[i] == HAL_PIXEL_FORMAT_YCbCr_420_888) {
+            fastInfo.useFlexibleYuv = true;
+            break;
+        }
+    }
+    ALOGV("Camera %d: Flexible YUV %s supported",
+            cameraId, fastInfo.useFlexibleYuv ? "is" : "is not");
+
     return OK;
 }
 
@@ -946,15 +1050,19 @@ status_t Parameters::buildQuirks() {
     ALOGV_IF(quirks.meteringCropRegion, "Camera %d: Quirk meteringCropRegion"
                 " enabled", cameraId);
 
+    entry = info->find(ANDROID_QUIRKS_USE_PARTIAL_RESULT);
+    quirks.partialResults = (entry.count != 0 && entry.data.u8[0] == 1);
+    ALOGV_IF(quirks.partialResults, "Camera %d: Quirk usePartialResult"
+                " enabled", cameraId);
+
     return OK;
 }
 
 camera_metadata_ro_entry_t Parameters::staticInfo(uint32_t tag,
-        size_t minCount, size_t maxCount) const {
-    status_t res;
+        size_t minCount, size_t maxCount, bool required) const {
     camera_metadata_ro_entry_t entry = info->find(tag);
 
-    if (CC_UNLIKELY( entry.count == 0 )) {
+    if (CC_UNLIKELY( entry.count == 0 ) && required) {
         const char* tagSection = get_camera_metadata_section_name(tag);
         if (tagSection == NULL) tagSection = "<unknown>";
         const char* tagName = get_camera_metadata_tag_name(tag);
@@ -1006,15 +1114,13 @@ status_t Parameters::set(const String8& paramString) {
                     validatedParams.previewWidth, validatedParams.previewHeight);
             return BAD_VALUE;
         }
-        camera_metadata_ro_entry_t availablePreviewSizes =
-            staticInfo(ANDROID_SCALER_AVAILABLE_PROCESSED_SIZES);
-        for (i = 0; i < availablePreviewSizes.count; i += 2 ) {
-            if ((availablePreviewSizes.data.i32[i] ==
+        for (i = 0; i < availablePreviewSizes.size(); i++) {
+            if ((availablePreviewSizes[i].width ==
                     validatedParams.previewWidth) &&
-                (availablePreviewSizes.data.i32[i+1] ==
+                (availablePreviewSizes[i].height ==
                     validatedParams.previewHeight)) break;
         }
-        if (i == availablePreviewSizes.count) {
+        if (i == availablePreviewSizes.size()) {
             ALOGE("%s: Requested preview size %d x %d is not supported",
                     __FUNCTION__, validatedParams.previewWidth,
                     validatedParams.previewHeight);
@@ -1025,20 +1131,73 @@ status_t Parameters::set(const String8& paramString) {
     // RECORDING_HINT (always supported)
     validatedParams.recordingHint = boolFromString(
         newParams.get(CameraParameters::KEY_RECORDING_HINT) );
-    bool recordingHintChanged = validatedParams.recordingHint != recordingHint;
-    ALOGV_IF(recordingHintChanged, "%s: Recording hint changed to %d",
-            __FUNCTION__, recordingHintChanged);
+    IF_ALOGV() { // Avoid unused variable warning
+        bool recordingHintChanged =
+                validatedParams.recordingHint != recordingHint;
+        if (recordingHintChanged) {
+            ALOGV("%s: Recording hint changed to %d",
+                  __FUNCTION__, validatedParams.recordingHint);
+        }
+    }
 
     // PREVIEW_FPS_RANGE
-    bool fpsRangeChanged = false;
+
+    /**
+     * Use the single FPS value if it was set later than the range.
+     * Otherwise, use the range value.
+     */
+    bool fpsUseSingleValue;
+    {
+        const char *fpsRange, *fpsSingle;
+
+        fpsRange = newParams.get(CameraParameters::KEY_PREVIEW_FRAME_RATE);
+        fpsSingle = newParams.get(CameraParameters::KEY_PREVIEW_FPS_RANGE);
+
+        /**
+         * Pick either the range or the single key if only one was set.
+         *
+         * If both are set, pick the one that has greater set order.
+         */
+        if (fpsRange == NULL && fpsSingle == NULL) {
+            ALOGE("%s: FPS was not set. One of %s or %s must be set.",
+                  __FUNCTION__, CameraParameters::KEY_PREVIEW_FRAME_RATE,
+                  CameraParameters::KEY_PREVIEW_FPS_RANGE);
+            return BAD_VALUE;
+        } else if (fpsRange == NULL) {
+            fpsUseSingleValue = true;
+            ALOGV("%s: FPS range not set, using FPS single value",
+                  __FUNCTION__);
+        } else if (fpsSingle == NULL) {
+            fpsUseSingleValue = false;
+            ALOGV("%s: FPS single not set, using FPS range value",
+                  __FUNCTION__);
+        } else {
+            int fpsKeyOrder;
+           // res = newParams.compareSetOrder(
+            //        CameraParameters::KEY_PREVIEW_FRAME_RATE,
+            //        CameraParameters::KEY_PREVIEW_FPS_RANGE,
+            //        &fpsKeyOrder);
+            LOG_ALWAYS_FATAL_IF(res != OK, "Impossibly bad FPS keys");
+
+            fpsUseSingleValue = (fpsKeyOrder > 0);
+
+        }
+
+        ALOGV("%s: Preview FPS value is used from '%s'",
+              __FUNCTION__, fpsUseSingleValue ? "single" : "range");
+    }
     newParams.getPreviewFpsRange(&validatedParams.previewFpsRange[0],
             &validatedParams.previewFpsRange[1]);
+
     validatedParams.previewFpsRange[0] /= kFpsToApiScale;
     validatedParams.previewFpsRange[1] /= kFpsToApiScale;
 
-    if (validatedParams.previewFpsRange[0] != previewFpsRange[0] ||
-            validatedParams.previewFpsRange[1] != previewFpsRange[1]) {
-        fpsRangeChanged = true;
+    // Ignore the FPS range if the FPS single has higher precedence
+    if (!fpsUseSingleValue) {
+        ALOGV("%s: Preview FPS range (%d, %d)", __FUNCTION__,
+                validatedParams.previewFpsRange[0],
+                validatedParams.previewFpsRange[1]);
+
         camera_metadata_ro_entry_t availablePreviewFpsRanges =
             staticInfo(ANDROID_CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES, 2);
         for (i = 0; i < availablePreviewFpsRanges.count; i += 2) {
@@ -1055,10 +1214,6 @@ status_t Parameters::set(const String8& paramString) {
                     validatedParams.previewFpsRange[1]);
             return BAD_VALUE;
         }
-        validatedParams.previewFps =
-            fpsFromRange(validatedParams.previewFpsRange[0],
-                         validatedParams.previewFpsRange[1]);
-        newParams.setPreviewFrameRate(validatedParams.previewFps);
     }
 
     // PREVIEW_FORMAT
@@ -1072,24 +1227,34 @@ status_t Parameters::set(const String8& paramString) {
         }
         camera_metadata_ro_entry_t availableFormats =
             staticInfo(ANDROID_SCALER_AVAILABLE_FORMATS);
-        for (i = 0; i < availableFormats.count; i++) {
-            if (availableFormats.data.i32[i] == validatedParams.previewFormat)
-                break;
-        }
-        if (i == availableFormats.count) {
-            ALOGE("%s: Requested preview format %s (0x%x) is not supported",
-                    __FUNCTION__, newParams.getPreviewFormat(),
-                    validatedParams.previewFormat);
-            return BAD_VALUE;
+        // If using flexible YUV, always support NV21/YV12. Otherwise, check
+        // HAL's list.
+        if (! (fastInfo.useFlexibleYuv &&
+                (validatedParams.previewFormat ==
+                        HAL_PIXEL_FORMAT_YCrCb_420_SP ||
+                 validatedParams.previewFormat ==
+                        HAL_PIXEL_FORMAT_YV12) ) ) {
+            // Not using flexible YUV format, so check explicitly
+            for (i = 0; i < availableFormats.count; i++) {
+                if (availableFormats.data.i32[i] ==
+                        validatedParams.previewFormat) break;
+            }
+            if (i == availableFormats.count) {
+                ALOGE("%s: Requested preview format %s (0x%x) is not supported",
+                        __FUNCTION__, newParams.getPreviewFormat(),
+                        validatedParams.previewFormat);
+                return BAD_VALUE;
+            }
         }
     }
 
-    // PREVIEW_FRAME_RATE
-    // Deprecated, only use if the preview fps range is unchanged this time.
-    // The single-value FPS is the same as the minimum of the range.
-    if (!fpsRangeChanged) {
-        validatedParams.previewFps = newParams.getPreviewFrameRate();
-        if (validatedParams.previewFps != previewFps || recordingHintChanged) {
+    // PREVIEW_FRAME_RATE Deprecated
+    // - Use only if the single FPS value was set later than the FPS range
+    if (fpsUseSingleValue) {
+        int previewFps = newParams.getPreviewFrameRate();
+        ALOGV("%s: Preview FPS single value requested: %d",
+              __FUNCTION__, previewFps);
+        {
             camera_metadata_ro_entry_t availableFrameRates =
                 staticInfo(ANDROID_CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES);
             /**
@@ -1102,8 +1267,8 @@ status_t Parameters::set(const String8& paramString) {
               * Either way, in case of multiple ranges, break the tie by
               * selecting the smaller range.
               */
-            int targetFps = validatedParams.previewFps;
-            // all ranges which have targetFps
+
+            // all ranges which have previewFps
             Vector<Range> candidateRanges;
             for (i = 0; i < availableFrameRates.count; i+=2) {
                 Range r = {
@@ -1111,13 +1276,13 @@ status_t Parameters::set(const String8& paramString) {
                             availableFrameRates.data.i32[i+1]
                 };
 
-                if (r.min <= targetFps && targetFps <= r.max) {
+                if (r.min <= previewFps && previewFps <= r.max) {
                     candidateRanges.push(r);
                 }
             }
             if (candidateRanges.isEmpty()) {
                 ALOGE("%s: Requested preview frame rate %d is not supported",
-                        __FUNCTION__, validatedParams.previewFps);
+                        __FUNCTION__, previewFps);
                 return BAD_VALUE;
             }
             // most applicable range with targetFps
@@ -1156,11 +1321,35 @@ status_t Parameters::set(const String8& paramString) {
                 validatedParams.previewFpsRange[1],
                 validatedParams.recordingHint);
         }
-        newParams.set(CameraParameters::KEY_PREVIEW_FPS_RANGE,
-                String8::format("%d,%d",
-                        validatedParams.previewFpsRange[0] * kFpsToApiScale,
-                        validatedParams.previewFpsRange[1] * kFpsToApiScale));
+    }
 
+    /**
+     * Update Preview FPS and Preview FPS ranges based on
+     * what we actually set.
+     *
+     * This updates the API-visible (Camera.Parameters#getParameters) values of
+     * the FPS fields, not only the internal versions.
+     *
+     * Order matters: The value that was set last takes precedence.
+     * - If the client does a setParameters(getParameters()) we retain
+     *   the same order for preview FPS.
+     */
+    if (!fpsUseSingleValue) {
+        // Set fps single, then fps range (range wins)
+        newParams.setPreviewFrameRate(
+                fpsFromRange(/*min*/validatedParams.previewFpsRange[0],
+                             /*max*/validatedParams.previewFpsRange[1]));
+        //newParams.setPreviewFpsRange(
+        //        validatedParams.previewFpsRange[0] * kFpsToApiScale,
+        //        validatedParams.previewFpsRange[1] * kFpsToApiScale);
+    } else {
+        // Set fps range, then fps single (single wins)
+        //newParams.setPreviewFpsRange(
+        //        validatedParams.previewFpsRange[0] * kFpsToApiScale,
+        //        validatedParams.previewFpsRange[1] * kFpsToApiScale);
+        // Set this to the same value, but with higher priority
+        newParams.setPreviewFrameRate(
+                newParams.getPreviewFrameRate());
     }
 
     // PICTURE_SIZE
@@ -1208,23 +1397,24 @@ status_t Parameters::set(const String8& paramString) {
     }
 
     // JPEG_THUMBNAIL_QUALITY
-    validatedParams.jpegThumbQuality =
-            newParams.getInt(CameraParameters::KEY_JPEG_THUMBNAIL_QUALITY);
-    if (validatedParams.jpegThumbQuality < 0 ||
-            validatedParams.jpegThumbQuality > 100) {
+    int quality = newParams.getInt(CameraParameters::KEY_JPEG_THUMBNAIL_QUALITY);
+    // also makes sure quality fits in uint8_t
+    if (quality < 0 || quality > 100) {
         ALOGE("%s: Requested JPEG thumbnail quality %d is not supported",
-                __FUNCTION__, validatedParams.jpegThumbQuality);
+                __FUNCTION__, quality);
         return BAD_VALUE;
     }
+    validatedParams.jpegThumbQuality = quality;
 
     // JPEG_QUALITY
-    validatedParams.jpegQuality =
-            newParams.getInt(CameraParameters::KEY_JPEG_QUALITY);
-    if (validatedParams.jpegQuality < 0 || validatedParams.jpegQuality > 100) {
+    quality = newParams.getInt(CameraParameters::KEY_JPEG_QUALITY);
+    // also makes sure quality fits in uint8_t
+    if (quality < 0 || quality > 100) {
         ALOGE("%s: Requested JPEG quality %d is not supported",
-                __FUNCTION__, validatedParams.jpegQuality);
+                __FUNCTION__, quality);
         return BAD_VALUE;
     }
+    validatedParams.jpegQuality = quality;
 
     // ROTATION
     validatedParams.jpegRotation =
@@ -1364,7 +1554,7 @@ status_t Parameters::set(const String8& paramString) {
 
     if (validatedParams.flashMode != flashMode) {
         camera_metadata_ro_entry_t flashAvailable =
-            staticInfo(ANDROID_FLASH_AVAILABLE, 1, 1);
+            staticInfo(ANDROID_FLASH_INFO_AVAILABLE, 1, 1);
         if (!flashAvailable.data.u8[0] &&
                 validatedParams.flashMode != Parameters::FLASH_MODE_OFF) {
             ALOGE("%s: Requested flash mode \"%s\" is not supported: "
@@ -1401,15 +1591,15 @@ status_t Parameters::set(const String8& paramString) {
                 fastInfo.sceneModeOverrides.
                         valueFor(validatedParams.sceneMode).wbMode;
     } else {
-        validatedParams.wbMode = ANDROID_CONTROL_AWB_OFF;
+        validatedParams.wbMode = ANDROID_CONTROL_AWB_MODE_OFF;
     }
-    if (validatedParams.wbMode == ANDROID_CONTROL_AWB_OFF) {
+    if (validatedParams.wbMode == ANDROID_CONTROL_AWB_MODE_OFF) {
         validatedParams.wbMode = wbModeStringToEnum(
             newParams.get(CameraParameters::KEY_WHITE_BALANCE) );
     }
     if (validatedParams.wbMode != wbMode) {
         camera_metadata_ro_entry_t availableWbModes =
-            staticInfo(ANDROID_CONTROL_AWB_AVAILABLE_MODES);
+            staticInfo(ANDROID_CONTROL_AWB_AVAILABLE_MODES, 0, 0, false);
         for (i = 0; i < availableWbModes.count; i++) {
             if (validatedParams.wbMode == availableWbModes.data.u8[i]) break;
         }
@@ -1440,8 +1630,9 @@ status_t Parameters::set(const String8& paramString) {
         validatedParams.currentAfTriggerId = -1;
         if (validatedParams.focusMode != Parameters::FOCUS_MODE_FIXED) {
             camera_metadata_ro_entry_t minFocusDistance =
-                staticInfo(ANDROID_LENS_MINIMUM_FOCUS_DISTANCE);
-            if (minFocusDistance.data.f[0] == 0) {
+                staticInfo(ANDROID_LENS_INFO_MINIMUM_FOCUS_DISTANCE, 0, 0,
+                        false);
+            if (minFocusDistance.count && minFocusDistance.data.f[0] == 0) {
                 ALOGE("%s: Requested focus mode \"%s\" is not available: "
                         "fixed focus lens",
                         __FUNCTION__,
@@ -1490,7 +1681,7 @@ status_t Parameters::set(const String8& paramString) {
     validatedParams.exposureCompensation =
         newParams.getInt(CameraParameters::KEY_EXPOSURE_COMPENSATION);
     camera_metadata_ro_entry_t exposureCompensationRange =
-        staticInfo(ANDROID_CONTROL_AE_EXP_COMPENSATION_RANGE);
+        staticInfo(ANDROID_CONTROL_AE_COMPENSATION_RANGE);
     if ((validatedParams.exposureCompensation <
             exposureCompensationRange.data.i32[0]) ||
         (validatedParams.exposureCompensation >
@@ -1541,15 +1732,13 @@ status_t Parameters::set(const String8& paramString) {
                     __FUNCTION__);
             return BAD_VALUE;
         }
-        camera_metadata_ro_entry_t availableVideoSizes =
-            staticInfo(ANDROID_SCALER_AVAILABLE_PROCESSED_SIZES);
-        for (i = 0; i < availableVideoSizes.count; i += 2 ) {
-            if ((availableVideoSizes.data.i32[i] ==
+        for (i = 0; i < availablePreviewSizes.size(); i++) {
+            if ((availablePreviewSizes[i].width ==
                     validatedParams.videoWidth) &&
-                (availableVideoSizes.data.i32[i+1] ==
+                (availablePreviewSizes[i].height ==
                     validatedParams.videoHeight)) break;
         }
-        if (i == availableVideoSizes.count) {
+        if (i == availablePreviewSizes.size()) {
             ALOGE("%s: Requested video size %d x %d is not supported",
                     __FUNCTION__, validatedParams.videoWidth,
                     validatedParams.videoHeight);
@@ -1561,15 +1750,35 @@ status_t Parameters::set(const String8& paramString) {
     validatedParams.videoStabilization = boolFromString(
         newParams.get(CameraParameters::KEY_VIDEO_STABILIZATION) );
     camera_metadata_ro_entry_t availableVideoStabilizationModes =
-        staticInfo(ANDROID_CONTROL_AVAILABLE_VIDEO_STABILIZATION_MODES);
+        staticInfo(ANDROID_CONTROL_AVAILABLE_VIDEO_STABILIZATION_MODES, 0, 0,
+                false);
     if (validatedParams.videoStabilization &&
             availableVideoStabilizationModes.count == 1) {
         ALOGE("%s: Video stabilization not supported", __FUNCTION__);
     }
 
+    // LIGHTFX
+   // validatedParams.lightFx = lightFxStringToEnum(
+    //    newParams.get(CameraParameters::KEY_LIGHTFX));
+
     /** Update internal parameters */
 
     *this = validatedParams;
+
+    /** Update external parameters calculated from the internal ones */
+
+    // HORIZONTAL/VERTICAL FIELD OF VIEW
+    float horizFov, vertFov;
+    res = calculatePictureFovs(&horizFov, &vertFov);
+    if (res != OK) {
+        ALOGE("%s: Can't calculate FOVs", __FUNCTION__);
+        // continue so parameters are at least consistent
+    }
+    newParams.setFloat(CameraParameters::KEY_HORIZONTAL_VIEW_ANGLE,
+            horizFov);
+    newParams.setFloat(CameraParameters::KEY_VERTICAL_VIEW_ANGLE,
+            vertFov);
+    ALOGV("Current still picture FOV: %f x %f deg", horizFov, vertFov);
 
     // Need to flatten again in case of overrides
     paramsFlattened = newParams.flatten();
@@ -1582,13 +1791,48 @@ status_t Parameters::updateRequest(CameraMetadata *request) const {
     ATRACE_CALL();
     status_t res;
 
-    uint8_t metadataMode = ANDROID_REQUEST_METADATA_FULL;
+    /**
+     * Mixin default important security values
+     * - android.led.transmit = defaulted ON
+     */
+    camera_metadata_ro_entry_t entry = staticInfo(ANDROID_LED_AVAILABLE_LEDS,
+                                                  /*minimumCount*/0,
+                                                  /*maximumCount*/0,
+                                                  /*required*/false);
+    for(size_t i = 0; i < entry.count; ++i) {
+        uint8_t led = entry.data.u8[i];
+
+        switch(led) {
+            // Transmit LED is unconditionally on when using
+            // the android.hardware.Camera API
+            case ANDROID_LED_AVAILABLE_LEDS_TRANSMIT: {
+                uint8_t transmitDefault = ANDROID_LED_TRANSMIT_ON;
+                res = request->update(ANDROID_LED_TRANSMIT,
+                                      &transmitDefault, 1);
+                if (res != OK) return res;
+                break;
+            }
+        }
+    }
+
+    /**
+     * Construct metadata from parameters
+     */
+
+    uint8_t metadataMode = ANDROID_REQUEST_METADATA_MODE_FULL;
     res = request->update(ANDROID_REQUEST_METADATA_MODE,
             &metadataMode, 1);
     if (res != OK) return res;
 
-    res = request->update(ANDROID_CONTROL_AE_TARGET_FPS_RANGE,
-            previewFpsRange, 2);
+    camera_metadata_entry_t intent =
+            request->find(ANDROID_CONTROL_CAPTURE_INTENT);
+    if (intent.data.u8[0] == ANDROID_CONTROL_CAPTURE_INTENT_STILL_CAPTURE) {
+        res = request->update(ANDROID_CONTROL_AE_TARGET_FPS_RANGE,
+                fastInfo.bestStillCaptureFpsRange, 2);
+    } else {
+        res = request->update(ANDROID_CONTROL_AE_TARGET_FPS_RANGE,
+                previewFpsRange, 2);
+    }
     if (res != OK) return res;
 
     uint8_t reqWbLock = autoWhiteBalanceLock ?
@@ -1609,9 +1853,9 @@ status_t Parameters::updateRequest(CameraMetadata *request) const {
     // to the other.
     bool sceneModeActive =
             sceneMode != (uint8_t)ANDROID_CONTROL_SCENE_MODE_UNSUPPORTED;
-    uint8_t reqControlMode = ANDROID_CONTROL_AUTO;
+    uint8_t reqControlMode = ANDROID_CONTROL_MODE_AUTO;
     if (enableFaceDetect || sceneModeActive) {
-        reqControlMode = ANDROID_CONTROL_USE_SCENE_MODE;
+        reqControlMode = ANDROID_CONTROL_MODE_USE_SCENE_MODE;
     }
     res = request->update(ANDROID_CONTROL_MODE,
             &reqControlMode, 1);
@@ -1625,21 +1869,21 @@ status_t Parameters::updateRequest(CameraMetadata *request) const {
             &reqSceneMode, 1);
     if (res != OK) return res;
 
-    uint8_t reqFlashMode = ANDROID_FLASH_OFF;
-    uint8_t reqAeMode = ANDROID_CONTROL_AE_OFF;
+    uint8_t reqFlashMode = ANDROID_FLASH_MODE_OFF;
+    uint8_t reqAeMode = ANDROID_CONTROL_AE_MODE_OFF;
     switch (flashMode) {
         case Parameters::FLASH_MODE_OFF:
-            reqAeMode = ANDROID_CONTROL_AE_ON; break;
+            reqAeMode = ANDROID_CONTROL_AE_MODE_ON; break;
         case Parameters::FLASH_MODE_AUTO:
-            reqAeMode = ANDROID_CONTROL_AE_ON_AUTO_FLASH; break;
+            reqAeMode = ANDROID_CONTROL_AE_MODE_ON_AUTO_FLASH; break;
         case Parameters::FLASH_MODE_ON:
-            reqAeMode = ANDROID_CONTROL_AE_ON_ALWAYS_FLASH; break;
+            reqAeMode = ANDROID_CONTROL_AE_MODE_ON_ALWAYS_FLASH; break;
         case Parameters::FLASH_MODE_TORCH:
-            reqAeMode = ANDROID_CONTROL_AE_ON;
-            reqFlashMode = ANDROID_FLASH_TORCH;
+            reqAeMode = ANDROID_CONTROL_AE_MODE_ON;
+            reqFlashMode = ANDROID_FLASH_MODE_TORCH;
             break;
         case Parameters::FLASH_MODE_RED_EYE:
-            reqAeMode = ANDROID_CONTROL_AE_ON_AUTO_FLASH_REDEYE; break;
+            reqAeMode = ANDROID_CONTROL_AE_MODE_ON_AUTO_FLASH_REDEYE; break;
         default:
             ALOGE("%s: Camera %d: Unknown flash mode %d", __FUNCTION__,
                     cameraId, flashMode);
@@ -1663,7 +1907,7 @@ status_t Parameters::updateRequest(CameraMetadata *request) const {
     if (res != OK) return res;
 
     float reqFocusDistance = 0; // infinity focus in diopters
-    uint8_t reqFocusMode = ANDROID_CONTROL_AF_OFF;
+    uint8_t reqFocusMode = ANDROID_CONTROL_AF_MODE_OFF;
     switch (focusMode) {
         case Parameters::FOCUS_MODE_AUTO:
         case Parameters::FOCUS_MODE_MACRO:
@@ -1674,7 +1918,7 @@ status_t Parameters::updateRequest(CameraMetadata *request) const {
             break;
         case Parameters::FOCUS_MODE_INFINITY:
         case Parameters::FOCUS_MODE_FIXED:
-            reqFocusMode = ANDROID_CONTROL_AF_OFF;
+            reqFocusMode = ANDROID_CONTROL_AF_MODE_OFF;
             break;
         default:
                 ALOGE("%s: Camera %d: Unknown focus mode %d", __FUNCTION__,
@@ -1690,52 +1934,52 @@ status_t Parameters::updateRequest(CameraMetadata *request) const {
 
     size_t reqFocusingAreasSize = focusingAreas.size() * 5;
     int32_t *reqFocusingAreas = new int32_t[reqFocusingAreasSize];
-    for (size_t i = 0; i < reqFocusingAreasSize; i += 5) {
-        if (focusingAreas[i].weight != 0) {
+    for (size_t i = 0, j = 0; i < reqFocusingAreasSize; i += 5, j++) {
+        if (focusingAreas[j].weight != 0) {
             reqFocusingAreas[i + 0] =
-                    normalizedXToArray(focusingAreas[i].left);
+                    normalizedXToArray(focusingAreas[j].left);
             reqFocusingAreas[i + 1] =
-                    normalizedYToArray(focusingAreas[i].top);
+                    normalizedYToArray(focusingAreas[j].top);
             reqFocusingAreas[i + 2] =
-                    normalizedXToArray(focusingAreas[i].right);
+                    normalizedXToArray(focusingAreas[j].right);
             reqFocusingAreas[i + 3] =
-                    normalizedYToArray(focusingAreas[i].bottom);
+                    normalizedYToArray(focusingAreas[j].bottom);
         } else {
             reqFocusingAreas[i + 0] = 0;
             reqFocusingAreas[i + 1] = 0;
             reqFocusingAreas[i + 2] = 0;
             reqFocusingAreas[i + 3] = 0;
         }
-        reqFocusingAreas[i + 4] = focusingAreas[i].weight;
+        reqFocusingAreas[i + 4] = focusingAreas[j].weight;
     }
     res = request->update(ANDROID_CONTROL_AF_REGIONS,
             reqFocusingAreas, reqFocusingAreasSize);
     if (res != OK) return res;
     delete[] reqFocusingAreas;
 
-    res = request->update(ANDROID_CONTROL_AE_EXP_COMPENSATION,
+    res = request->update(ANDROID_CONTROL_AE_EXPOSURE_COMPENSATION,
             &exposureCompensation, 1);
     if (res != OK) return res;
 
     size_t reqMeteringAreasSize = meteringAreas.size() * 5;
     int32_t *reqMeteringAreas = new int32_t[reqMeteringAreasSize];
-    for (size_t i = 0; i < reqMeteringAreasSize; i += 5) {
-        if (meteringAreas[i].weight != 0) {
+    for (size_t i = 0, j = 0; i < reqMeteringAreasSize; i += 5, j++) {
+        if (meteringAreas[j].weight != 0) {
             reqMeteringAreas[i + 0] =
-                normalizedXToArray(meteringAreas[i].left);
+                normalizedXToArray(meteringAreas[j].left);
             reqMeteringAreas[i + 1] =
-                normalizedYToArray(meteringAreas[i].top);
+                normalizedYToArray(meteringAreas[j].top);
             reqMeteringAreas[i + 2] =
-                normalizedXToArray(meteringAreas[i].right);
+                normalizedXToArray(meteringAreas[j].right);
             reqMeteringAreas[i + 3] =
-                normalizedYToArray(meteringAreas[i].bottom);
+                normalizedYToArray(meteringAreas[j].bottom);
         } else {
             reqMeteringAreas[i + 0] = 0;
             reqMeteringAreas[i + 1] = 0;
             reqMeteringAreas[i + 2] = 0;
             reqMeteringAreas[i + 3] = 0;
         }
-        reqMeteringAreas[i + 4] = meteringAreas[i].weight;
+        reqMeteringAreas[i + 4] = meteringAreas[j].weight;
     }
     res = request->update(ANDROID_CONTROL_AE_REGIONS,
             reqMeteringAreas, reqMeteringAreasSize);
@@ -1749,22 +1993,27 @@ status_t Parameters::updateRequest(CameraMetadata *request) const {
             CropRegion::OUTPUT_PREVIEW     |
             CropRegion::OUTPUT_VIDEO       |
             CropRegion::OUTPUT_PICTURE    ));
-    int32_t reqCropRegion[3] = { crop.left, crop.top, crop.width };
+    int32_t reqCropRegion[4] = {
+        static_cast<int32_t>(crop.left),
+        static_cast<int32_t>(crop.top),
+        static_cast<int32_t>(crop.width),
+        static_cast<int32_t>(crop.height)
+    };
     res = request->update(ANDROID_SCALER_CROP_REGION,
-            reqCropRegion, 3);
+            reqCropRegion, 4);
     if (res != OK) return res;
 
     uint8_t reqVstabMode = videoStabilization ?
-            ANDROID_CONTROL_VIDEO_STABILIZATION_ON :
-            ANDROID_CONTROL_VIDEO_STABILIZATION_OFF;
+            ANDROID_CONTROL_VIDEO_STABILIZATION_MODE_ON :
+            ANDROID_CONTROL_VIDEO_STABILIZATION_MODE_OFF;
     res = request->update(ANDROID_CONTROL_VIDEO_STABILIZATION_MODE,
             &reqVstabMode, 1);
     if (res != OK) return res;
 
     uint8_t reqFaceDetectMode = enableFaceDetect ?
             fastInfo.bestFaceDetectMode :
-            (uint8_t)ANDROID_STATS_FACE_DETECTION_OFF;
-    res = request->update(ANDROID_STATS_FACE_DETECT_MODE,
+            (uint8_t)ANDROID_STATISTICS_FACE_DETECT_MODE_OFF;
+    res = request->update(ANDROID_STATISTICS_FACE_DETECT_MODE,
             &reqFaceDetectMode, 1);
     if (res != OK) return res;
 
@@ -1888,43 +2137,43 @@ const char* Parameters::formatEnumToString(int format) {
 int Parameters::wbModeStringToEnum(const char *wbMode) {
     return
         !wbMode ?
-            ANDROID_CONTROL_AWB_AUTO :
+            ANDROID_CONTROL_AWB_MODE_AUTO :
         !strcmp(wbMode, CameraParameters::WHITE_BALANCE_AUTO) ?
-            ANDROID_CONTROL_AWB_AUTO :
+            ANDROID_CONTROL_AWB_MODE_AUTO :
         !strcmp(wbMode, CameraParameters::WHITE_BALANCE_INCANDESCENT) ?
-            ANDROID_CONTROL_AWB_INCANDESCENT :
+            ANDROID_CONTROL_AWB_MODE_INCANDESCENT :
         !strcmp(wbMode, CameraParameters::WHITE_BALANCE_FLUORESCENT) ?
-            ANDROID_CONTROL_AWB_FLUORESCENT :
+            ANDROID_CONTROL_AWB_MODE_FLUORESCENT :
         !strcmp(wbMode, CameraParameters::WHITE_BALANCE_WARM_FLUORESCENT) ?
-            ANDROID_CONTROL_AWB_WARM_FLUORESCENT :
+            ANDROID_CONTROL_AWB_MODE_WARM_FLUORESCENT :
         !strcmp(wbMode, CameraParameters::WHITE_BALANCE_DAYLIGHT) ?
-            ANDROID_CONTROL_AWB_DAYLIGHT :
+            ANDROID_CONTROL_AWB_MODE_DAYLIGHT :
         !strcmp(wbMode, CameraParameters::WHITE_BALANCE_CLOUDY_DAYLIGHT) ?
-            ANDROID_CONTROL_AWB_CLOUDY_DAYLIGHT :
+            ANDROID_CONTROL_AWB_MODE_CLOUDY_DAYLIGHT :
         !strcmp(wbMode, CameraParameters::WHITE_BALANCE_TWILIGHT) ?
-            ANDROID_CONTROL_AWB_TWILIGHT :
+            ANDROID_CONTROL_AWB_MODE_TWILIGHT :
         !strcmp(wbMode, CameraParameters::WHITE_BALANCE_SHADE) ?
-            ANDROID_CONTROL_AWB_SHADE :
+            ANDROID_CONTROL_AWB_MODE_SHADE :
         -1;
 }
 
 const char* Parameters::wbModeEnumToString(uint8_t wbMode) {
     switch (wbMode) {
-        case ANDROID_CONTROL_AWB_AUTO:
+        case ANDROID_CONTROL_AWB_MODE_AUTO:
             return CameraParameters::WHITE_BALANCE_AUTO;
-        case ANDROID_CONTROL_AWB_INCANDESCENT:
+        case ANDROID_CONTROL_AWB_MODE_INCANDESCENT:
             return CameraParameters::WHITE_BALANCE_INCANDESCENT;
-        case ANDROID_CONTROL_AWB_FLUORESCENT:
+        case ANDROID_CONTROL_AWB_MODE_FLUORESCENT:
             return CameraParameters::WHITE_BALANCE_FLUORESCENT;
-        case ANDROID_CONTROL_AWB_WARM_FLUORESCENT:
+        case ANDROID_CONTROL_AWB_MODE_WARM_FLUORESCENT:
             return CameraParameters::WHITE_BALANCE_WARM_FLUORESCENT;
-        case ANDROID_CONTROL_AWB_DAYLIGHT:
+        case ANDROID_CONTROL_AWB_MODE_DAYLIGHT:
             return CameraParameters::WHITE_BALANCE_DAYLIGHT;
-        case ANDROID_CONTROL_AWB_CLOUDY_DAYLIGHT:
+        case ANDROID_CONTROL_AWB_MODE_CLOUDY_DAYLIGHT:
             return CameraParameters::WHITE_BALANCE_CLOUDY_DAYLIGHT;
-        case ANDROID_CONTROL_AWB_TWILIGHT:
+        case ANDROID_CONTROL_AWB_MODE_TWILIGHT:
             return CameraParameters::WHITE_BALANCE_TWILIGHT;
-        case ANDROID_CONTROL_AWB_SHADE:
+        case ANDROID_CONTROL_AWB_MODE_SHADE:
             return CameraParameters::WHITE_BALANCE_SHADE;
         default:
             ALOGE("%s: Unknown AWB mode enum: %d",
@@ -1936,40 +2185,40 @@ const char* Parameters::wbModeEnumToString(uint8_t wbMode) {
 int Parameters::effectModeStringToEnum(const char *effectMode) {
     return
         !effectMode ?
-            ANDROID_CONTROL_EFFECT_OFF :
+            ANDROID_CONTROL_EFFECT_MODE_OFF :
         !strcmp(effectMode, CameraParameters::EFFECT_NONE) ?
-            ANDROID_CONTROL_EFFECT_OFF :
+            ANDROID_CONTROL_EFFECT_MODE_OFF :
         !strcmp(effectMode, CameraParameters::EFFECT_MONO) ?
-            ANDROID_CONTROL_EFFECT_MONO :
+            ANDROID_CONTROL_EFFECT_MODE_MONO :
         !strcmp(effectMode, CameraParameters::EFFECT_NEGATIVE) ?
-            ANDROID_CONTROL_EFFECT_NEGATIVE :
+            ANDROID_CONTROL_EFFECT_MODE_NEGATIVE :
         !strcmp(effectMode, CameraParameters::EFFECT_SOLARIZE) ?
-            ANDROID_CONTROL_EFFECT_SOLARIZE :
+            ANDROID_CONTROL_EFFECT_MODE_SOLARIZE :
         !strcmp(effectMode, CameraParameters::EFFECT_SEPIA) ?
-            ANDROID_CONTROL_EFFECT_SEPIA :
+            ANDROID_CONTROL_EFFECT_MODE_SEPIA :
         !strcmp(effectMode, CameraParameters::EFFECT_POSTERIZE) ?
-            ANDROID_CONTROL_EFFECT_POSTERIZE :
+            ANDROID_CONTROL_EFFECT_MODE_POSTERIZE :
         !strcmp(effectMode, CameraParameters::EFFECT_WHITEBOARD) ?
-            ANDROID_CONTROL_EFFECT_WHITEBOARD :
+            ANDROID_CONTROL_EFFECT_MODE_WHITEBOARD :
         !strcmp(effectMode, CameraParameters::EFFECT_BLACKBOARD) ?
-            ANDROID_CONTROL_EFFECT_BLACKBOARD :
+            ANDROID_CONTROL_EFFECT_MODE_BLACKBOARD :
         !strcmp(effectMode, CameraParameters::EFFECT_AQUA) ?
-            ANDROID_CONTROL_EFFECT_AQUA :
+            ANDROID_CONTROL_EFFECT_MODE_AQUA :
         -1;
 }
 
 int Parameters::abModeStringToEnum(const char *abMode) {
     return
         !abMode ?
-            ANDROID_CONTROL_AE_ANTIBANDING_AUTO :
+            ANDROID_CONTROL_AE_ANTIBANDING_MODE_AUTO :
         !strcmp(abMode, CameraParameters::ANTIBANDING_AUTO) ?
-            ANDROID_CONTROL_AE_ANTIBANDING_AUTO :
+            ANDROID_CONTROL_AE_ANTIBANDING_MODE_AUTO :
         !strcmp(abMode, CameraParameters::ANTIBANDING_OFF) ?
-            ANDROID_CONTROL_AE_ANTIBANDING_OFF :
+            ANDROID_CONTROL_AE_ANTIBANDING_MODE_OFF :
         !strcmp(abMode, CameraParameters::ANTIBANDING_50HZ) ?
-            ANDROID_CONTROL_AE_ANTIBANDING_50HZ :
+            ANDROID_CONTROL_AE_ANTIBANDING_MODE_50HZ :
         !strcmp(abMode, CameraParameters::ANTIBANDING_60HZ) ?
-            ANDROID_CONTROL_AE_ANTIBANDING_60HZ :
+            ANDROID_CONTROL_AE_ANTIBANDING_MODE_60HZ :
         -1;
 }
 
@@ -2094,6 +2343,18 @@ const char *Parameters::focusModeEnumToString(focusMode_t focusMode) {
     }
 }
 
+Parameters::Parameters::lightFxMode_t Parameters::lightFxStringToEnum(
+        const char *lightFxMode) {
+    return
+        !lightFxMode ?
+            Parameters::LIGHTFX_NONE :
+        //!strcmp(lightFxMode, CameraParameters::LIGHTFX_LOWLIGHT) ?
+        //    Parameters::LIGHTFX_LOWLIGHT :
+        //!strcmp(lightFxMode, CameraParameters::LIGHTFX_HDR) ?
+        //    Parameters::LIGHTFX_HDR :
+        Parameters::LIGHTFX_NONE;
+}
+
 status_t Parameters::parseAreas(const char *areasCStr,
         Vector<Parameters::Area> *areas) {
     static const size_t NUM_FIELDS = 5;
@@ -2196,7 +2457,7 @@ int Parameters::cropXToArray(int x) const {
 
     CropRegion previewCrop = calculateCropRegion(CropRegion::OUTPUT_PREVIEW);
     ALOG_ASSERT(x < previewCrop.width, "Crop-relative X coordinate = '%d' "
-                    "is out of bounds (upper = %d)", x, previewCrop.width);
+                    "is out of bounds (upper = %f)", x, previewCrop.width);
 
     int ret = x + previewCrop.left;
 
@@ -2212,7 +2473,7 @@ int Parameters::cropYToArray(int y) const {
 
     CropRegion previewCrop = calculateCropRegion(CropRegion::OUTPUT_PREVIEW);
     ALOG_ASSERT(y < previewCrop.height, "Crop-relative Y coordinate = '%d' is "
-                "out of bounds (upper = %d)", y, previewCrop.height);
+                "out of bounds (upper = %f)", y, previewCrop.height);
 
     int ret = y + previewCrop.top;
 
@@ -2305,6 +2566,64 @@ int Parameters::normalizedYToArray(int y) const {
     return cropYToArray(normalizedYToCrop(y));
 }
 
+status_t Parameters::getFilteredPreviewSizes(Size limit, Vector<Size> *sizes) {
+    if (info == NULL) {
+        ALOGE("%s: Static metadata is not initialized", __FUNCTION__);
+        return NO_INIT;
+    }
+    if (sizes == NULL) {
+        ALOGE("%s: Input size is null", __FUNCTION__);
+        return BAD_VALUE;
+    }
+
+    const size_t SIZE_COUNT = sizeof(Size) / sizeof(int);
+    camera_metadata_ro_entry_t availableProcessedSizes =
+        staticInfo(ANDROID_SCALER_AVAILABLE_PROCESSED_SIZES, SIZE_COUNT);
+    if (availableProcessedSizes.count < SIZE_COUNT) return BAD_VALUE;
+
+    Size previewSize;
+    for (size_t i = 0; i < availableProcessedSizes.count; i += SIZE_COUNT) {
+        previewSize.width = availableProcessedSizes.data.i32[i];
+        previewSize.height = availableProcessedSizes.data.i32[i+1];
+            // Need skip the preview sizes that are too large.
+            if (previewSize.width <= limit.width &&
+                    previewSize.height <= limit.height) {
+                sizes->push(previewSize);
+            }
+    }
+    if (sizes->isEmpty()) {
+        ALOGE("generated preview size list is empty!!");
+        return BAD_VALUE;
+    }
+    return OK;
+}
+
+Parameters::Size Parameters::getMaxSizeForRatio(
+        float ratio, const int32_t* sizeArray, size_t count) {
+    ALOG_ASSERT(sizeArray != NULL, "size array shouldn't be NULL");
+    ALOG_ASSERT(count >= 2 && count % 2 == 0, "count must be a positive even number");
+
+    Size maxSize = {0, 0};
+    for (size_t i = 0; i < count; i += 2) {
+        if (sizeArray[i] > 0 && sizeArray[i+1] > 0) {
+            float curRatio = static_cast<float>(sizeArray[i]) / sizeArray[i+1];
+            if (fabs(curRatio - ratio) < ASPECT_RATIO_TOLERANCE && maxSize.width < sizeArray[i]) {
+                maxSize.width = sizeArray[i];
+                maxSize.height = sizeArray[i+1];
+            }
+        }
+    }
+
+    if (maxSize.width == 0 || maxSize.height == 0) {
+        maxSize.width = sizeArray[0];
+        maxSize.height = sizeArray[1];
+        ALOGW("Unable to find the size to match the given aspect ratio %f."
+                "Fall back to %d x %d", ratio, maxSize.width, maxSize.height);
+    }
+
+    return maxSize;
+}
+
 Parameters::CropRegion Parameters::calculateCropRegion(
                             Parameters::CropRegion::Outputs outputs) const {
 
@@ -2314,7 +2633,7 @@ Parameters::CropRegion Parameters::calculateCropRegion(
     // chosen to maximize its area on the sensor
 
     camera_metadata_ro_entry_t maxDigitalZoom =
-            staticInfo(ANDROID_SCALER_AVAILABLE_MAX_ZOOM);
+            staticInfo(ANDROID_SCALER_AVAILABLE_MAX_DIGITAL_ZOOM);
     // For each zoom step by how many pixels more do we change the zoom
     float zoomIncrement = (maxDigitalZoom.data.f[0] - 1) /
             (NUM_ZOOM_STEPS-1);
@@ -2347,10 +2666,14 @@ Parameters::CropRegion Parameters::calculateCropRegion(
     float minOutputWidth, minOutputHeight, minOutputRatio;
     {
         float outputSizes[][2] = {
-            { previewWidth,     previewHeight },
-            { videoWidth,       videoHeight },
-            { jpegThumbSize[0], jpegThumbSize[1] },
-            { pictureWidth,     pictureHeight },
+            { static_cast<float>(previewWidth),
+              static_cast<float>(previewHeight) },
+            { static_cast<float>(videoWidth),
+              static_cast<float>(videoHeight) },
+            { static_cast<float>(jpegThumbSize[0]),
+              static_cast<float>(jpegThumbSize[1]) },
+            { static_cast<float>(pictureWidth),
+              static_cast<float>(pictureHeight) },
         };
 
         minOutputWidth = outputSizes[0][0];
@@ -2414,7 +2737,84 @@ Parameters::CropRegion Parameters::calculateCropRegion(
     return crop;
 }
 
-int32_t Parameters::fpsFromRange(int32_t min, int32_t max) const {
+status_t Parameters::calculatePictureFovs(float *horizFov, float *vertFov)
+        const {
+    camera_metadata_ro_entry_t sensorSize =
+            staticInfo(ANDROID_SENSOR_INFO_PHYSICAL_SIZE, 2, 2);
+    if (!sensorSize.count) return NO_INIT;
+
+    float arrayAspect = static_cast<float>(fastInfo.arrayWidth) /
+            fastInfo.arrayHeight;
+    float stillAspect = static_cast<float>(pictureWidth) / pictureHeight;
+    ALOGV("Array aspect: %f, still aspect: %f", arrayAspect, stillAspect);
+
+    // The crop factors from the full sensor array to the still picture crop
+    // region
+    float horizCropFactor = 1.f;
+    float vertCropFactor = 1.f;
+
+    /**
+     * Need to calculate the still image field of view based on the total pixel
+     * array field of view, and the relative aspect ratios of the pixel array
+     * and output streams.
+     *
+     * Special treatment for quirky definition of crop region and relative
+     * stream cropping.
+     */
+    if (quirks.meteringCropRegion) {
+        // Use max of preview and video as first crop
+        float previewAspect = static_cast<float>(previewWidth) / previewHeight;
+        float videoAspect = static_cast<float>(videoWidth) / videoHeight;
+        if (videoAspect > previewAspect) {
+            previewAspect = videoAspect;
+        }
+        // First crop sensor to preview aspect ratio
+        if (arrayAspect < previewAspect) {
+            vertCropFactor = arrayAspect / previewAspect;
+        } else {
+            horizCropFactor = previewAspect / arrayAspect;
+        }
+        // Second crop to still aspect ratio
+        if (stillAspect < previewAspect) {
+            horizCropFactor *= stillAspect / previewAspect;
+        } else {
+            vertCropFactor *= previewAspect / stillAspect;
+        }
+    } else {
+        /**
+         * Crop are just a function of just the still/array relative aspect
+         * ratios. Since each stream will maximize its area within the crop
+         * region, and for FOV we assume a full-sensor crop region, we only ever
+         * crop the FOV either vertically or horizontally, never both.
+         */
+        horizCropFactor = (arrayAspect > stillAspect) ?
+                (stillAspect / arrayAspect) : 1.f;
+        vertCropFactor = (arrayAspect < stillAspect) ?
+                (arrayAspect / stillAspect) : 1.f;
+    }
+    ALOGV("Horiz crop factor: %f, vert crop fact: %f",
+            horizCropFactor, vertCropFactor);
+    /**
+     * Basic field of view formula is:
+     *   angle of view = 2 * arctangent ( d / 2f )
+     * where d is the physical sensor dimension of interest, and f is
+     * the focal length. This only applies to rectilinear sensors, for focusing
+     * at distances >> f, etc.
+     */
+    if (horizFov != NULL) {
+        *horizFov = 180 / M_PI * 2 *
+                atanf(horizCropFactor * sensorSize.data.f[0] /
+                        (2 * fastInfo.minFocalLength));
+    }
+    if (vertFov != NULL) {
+        *vertFov = 180 / M_PI * 2 *
+                atanf(vertCropFactor * sensorSize.data.f[1] /
+                        (2 * fastInfo.minFocalLength));
+    }
+    return OK;
+}
+
+int32_t Parameters::fpsFromRange(int32_t /*min*/, int32_t max) const {
     return max;
 }
 

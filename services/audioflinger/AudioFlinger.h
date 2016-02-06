@@ -237,6 +237,8 @@ public:
 
     virtual int32_t getPrimaryOutputSamplingRate();
     virtual int32_t getPrimaryOutputFrameCount();
+	
+	virtual status_t setLowRamDevice(bool isLowRamDevice);
 
     virtual     status_t    onTransact(
                                 uint32_t code,
@@ -855,6 +857,8 @@ private:
                     void        setMainBuffer(int16_t *buffer) { mMainBuffer = buffer; }
                     int16_t     *mainBuffer() const { return mMainBuffer; }
                     int         auxEffectId() const { return mAuxEffectId; }
+					
+					status_t    getTimestamp(AudioTimestamp& timestamp);
 
         // implement FastMixerState::VolumeProvider interface
             virtual uint32_t    getVolumeLR();
@@ -1576,6 +1580,7 @@ private:
                                              int64_t pts);
         virtual status_t    setMediaTimeTransform(const LinearTransform& xform,
                                                   int target);
+        virtual status_t    getTimestamp(AudioTimestamp& timestamp);
         virtual status_t onTransact(
             uint32_t code, const Parcel& data, Parcel* reply, uint32_t flags);
     private:
@@ -2283,6 +2288,16 @@ private:
     // for use from destructor
     status_t    closeOutput_nonvirtual(audio_io_handle_t output);
     status_t    closeInput_nonvirtual(audio_io_handle_t input);
+	
+	bool    mIsLowRamDevice;
+	bool    mIsDeviceTypeKnown;
+	
+public:
+    // This method reads from a variable without mLock, but the variable is updated under mLock.  So
+    // we might read a stale value, or a value that's inconsistent with respect to other variables.
+    // In this case, it's safe because the return value isn't used for making an important decision.
+    // The reason we don't want to take mLock is because it could block the caller for a long time.
+    bool    isLowRamDevice() const { return mIsLowRamDevice; }
 };
 
 

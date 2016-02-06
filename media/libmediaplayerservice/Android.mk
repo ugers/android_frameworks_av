@@ -23,6 +23,7 @@ include $(CLEAR_VARS)
 LOCAL_SRC_FILES:=               \
     ActivityManager.cpp         \
     Crypto.cpp                  \
+    Drm.cpp                     \
     HDCP.cpp                    \
     MediaPlayerFactory.cpp      \
     MediaPlayerService.cpp      \
@@ -31,6 +32,7 @@ LOCAL_SRC_FILES:=               \
     MidiFile.cpp                \
     MidiMetadataRetriever.cpp   \
     RemoteDisplay.cpp           \
+    SharedLibrary.cpp           \
     CedarPlayer.cpp       	\
     StagefrightPlayer.cpp       \
     StagefrightRecorder.cpp     \

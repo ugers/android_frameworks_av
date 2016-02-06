@@ -320,7 +320,7 @@ status_t StagefrightRecorder::setCamera(const sp<ICamera> &camera,
     return OK;
 }
 
-status_t StagefrightRecorder::setPreviewSurface(const sp<Surface> &surface) {
+status_t StagefrightRecorder::setPreviewSurface(const sp<IGraphicBufferProducer> &surface) {
     ALOGV("setPreviewSurface: %p", surface.get());
     mPreviewSurface = surface;
 
@@ -824,6 +824,12 @@ status_t StagefrightRecorder::setParameters(const String8 &params) {
 
 status_t StagefrightRecorder::setListener(const sp<IMediaRecorderClient> &listener) {
     mListener = listener;
+
+    return OK;
+}
+
+status_t StagefrightRecorder::setClientName(const String16& clientName) {
+    mClientName = clientName;
 
     return OK;
 }

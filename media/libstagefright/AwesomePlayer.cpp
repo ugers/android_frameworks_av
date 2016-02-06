@@ -62,7 +62,7 @@
 #endif
 
 #include <gui/IGraphicBufferProducer.h>
-#include <gui/SurfaceTextureClient.h>
+#include <gui/Surface.h>
 
 #include <media/stagefright/foundation/AMessage.h>
 
@@ -1366,7 +1366,7 @@ status_t AwesomePlayer::setSurfaceTexture(const sp<IGraphicBufferProducer> &buff
 
     status_t err;
     if (bufferProducer != NULL) {
-        err = setNativeWindow_l(new SurfaceTextureClient(bufferProducer));
+        err = setNativeWindow_l(new Surface(bufferProducer));
     } else {
         err = setNativeWindow_l(NULL);
     }

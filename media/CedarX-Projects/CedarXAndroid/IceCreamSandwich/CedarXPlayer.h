@@ -43,7 +43,6 @@ struct MediaBuffer;
 struct MediaExtractor;
 struct MediaSource;
 struct NuCachedSource2;
-struct ISurfaceTexture;
 
 struct ALooper;
 struct AwesomePlayer;
@@ -143,7 +142,7 @@ struct CedarXPlayer { //don't touch this struct any more, you can extend members
     bool isPlaying() const;
 
     status_t setSurface(const sp<Surface> &surface);
-    status_t setSurfaceTexture(const sp<ISurfaceTexture> &surfaceTexture);
+    status_t setSurfaceTexture(const sp<IGraphicBufferProducer> &surfaceTexture);
     void setAudioSink(const sp<MediaPlayerBase::AudioSink> &audioSink);
     status_t setLooping(bool shouldLoop);
 

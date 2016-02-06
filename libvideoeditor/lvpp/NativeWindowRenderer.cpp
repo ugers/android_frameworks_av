@@ -21,7 +21,7 @@
 #include <GLES2/gl2ext.h>
 #include <cutils/log.h>
 #include <gui/GLConsumer.h>
-#include <gui/SurfaceTextureClient.h>
+#include <gui/Surface.h>
 #include <media/stagefright/MediaBuffer.h>
 #include <media/stagefright/MetaData.h>
 #include <media/stagefright/foundation/ADebug.h>
@@ -316,7 +316,7 @@ NativeWindowRenderer::~NativeWindowRenderer() {
 
 void NativeWindowRenderer::render(RenderInput* input) {
     sp<GLConsumer> ST = input->mST;
-    sp<SurfaceTextureClient> STC = input->mSTC;
+    sp<Surface> STC = input->mSTC;
 
     if (input->mIsExternalBuffer) {
         queueExternalBuffer(STC.get(), input->mBuffer,
@@ -568,8 +568,9 @@ void NativeWindowRenderer::destroyRenderInput(RenderInput* input) {
 RenderInput::RenderInput(NativeWindowRenderer* renderer, GLuint textureId)
     : mRenderer(renderer)
     , mTextureId(textureId) {
-    mST = new GLConsumer(mTextureId);
-    mSTC = new SurfaceTextureClient(mST->getBufferQueue());
+    sp<BufferQueue> bq = new BufferQueue();
+    mST = new GLConsumer(bq, mTextureId);
+    mSTC = new Surface(bq);
     native_window_connect(mSTC.get(), NATIVE_WINDOW_API_MEDIA);
 }
 

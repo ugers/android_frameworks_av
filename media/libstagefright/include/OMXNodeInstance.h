@@ -65,6 +65,11 @@ struct OMXNodeInstance {
             OMX_U32 portIndex, const sp<GraphicBuffer> &graphicBuffer,
             OMX::buffer_id *buffer);
 
+    status_t createInputSurface(
+            OMX_U32 portIndex, sp<IGraphicBufferProducer> *bufferProducer);
+
+    status_t signalEndOfInputStream();
+
     status_t allocateBuffer(
             OMX_U32 portIndex, size_t size, OMX::buffer_id *buffer,
             void **buffer_data);
@@ -82,8 +87,19 @@ struct OMXNodeInstance {
             OMX_U32 rangeOffset, OMX_U32 rangeLength,
             OMX_U32 flags, OMX_TICKS timestamp);
 
+    status_t emptyDirectBuffer(
+            OMX_BUFFERHEADERTYPE *header,
+            OMX_U32 rangeOffset, OMX_U32 rangeLength,
+            OMX_U32 flags, OMX_TICKS timestamp);
+
     status_t getExtensionIndex(
             const char *parameterName, OMX_INDEXTYPE *index);
+
+    status_t setInternalOption(
+            OMX_U32 portIndex,
+            IOMX::InternalOptionType type,
+            const void *data,
+            size_t size);
 
     void onMessage(const omx_message &msg);
     void onObserverDied(OMXMaster *master);
@@ -131,6 +147,8 @@ private:
             OMX_IN OMX_HANDLETYPE hComponent,
             OMX_IN OMX_PTR pAppData,
             OMX_IN OMX_BUFFERHEADERTYPE *pBuffer);
+
+    status_t storeMetaDataInBuffers_l(OMX_U32 portIndex, OMX_BOOL enable);
 
     OMXNodeInstance(const OMXNodeInstance &);
     OMXNodeInstance &operator=(const OMXNodeInstance &);

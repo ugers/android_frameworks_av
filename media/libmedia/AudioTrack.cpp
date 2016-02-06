@@ -54,7 +54,7 @@ namespace android {
 
 // static
 status_t AudioTrack::getMinFrameCount(
-        int* frameCount,
+        size_t* frameCount,
         audio_stream_type_t streamType,
         uint32_t sampleRate)
 {
@@ -73,7 +73,7 @@ status_t AudioTrack::getMinFrameCount(
     if (AudioSystem::getOutputSamplingRate(&afSampleRate, streamType) != NO_ERROR) {
         return NO_INIT;
     }
-    int afFrameCount = 0;
+    size_t afFrameCount = 0;
     if (AudioSystem::getOutputFrameCount(&afFrameCount, streamType) != NO_ERROR) {
         return NO_INIT;
     }
@@ -123,7 +123,10 @@ AudioTrack::AudioTrack(
         callback_t cbf,
         void* user,
         int notificationFrames,
-        int sessionId)
+        int sessionId,
+        transfer_type transferType,
+        const audio_offload_info_t *offloadInfo,
+        int uid)
     : mStatus(NO_INIT),
       mIsTimed(false),
       mPreviousPriority(ANDROID_PRIORITY_NORMAL),
@@ -225,16 +228,25 @@ status_t AudioTrack::set(
         uint32_t sampleRate,
         audio_format_t format,
         audio_channel_mask_t channelMask,
-        int frameCount,
+        int frameCountInt,
         audio_output_flags_t flags,
         callback_t cbf,
         void* user,
         int notificationFrames,
         const sp<IMemory>& sharedBuffer,
         bool threadCanCallJava,
-        int sessionId)
+        int sessionId,
+        transfer_type transferType,
+        const audio_offload_info_t *offloadInfo,
+        int uid)
 {
-
+    // FIXME "int" here is legacy and will be replaced by size_t later
+    if (frameCountInt < 0) {
+        ALOGE("Invalid frame count %d", frameCountInt);
+        return BAD_VALUE;
+    }
+    size_t frameCount = frameCountInt;
+	
     ALOGV_IF(sharedBuffer != 0, "sharedBuffer: %p, size: %d", sharedBuffer->pointer(), sharedBuffer->size());
 
     ALOGV("set() streamType %d frameCount %d flags %04x", streamType, frameCount, flags);
@@ -955,7 +967,7 @@ status_t AudioTrack::createTrack_l(
             // Same comment as below about ignoring frameCount parameter for set()
             frameCount = sharedBuffer->size();
         } else if (frameCount == 0) {
-            int afFrameCount;
+            size_t afFrameCount;
             if (AudioSystem::getFrameCount(output, streamType, &afFrameCount) != NO_ERROR) {
                 return NO_INIT;
             }
@@ -987,11 +999,11 @@ status_t AudioTrack::createTrack_l(
     } else if (!(flags & AUDIO_OUTPUT_FLAG_FAST)) {
 
         // FIXME move these calculations and associated checks to server
-        int afSampleRate = 0;
+        uint32_t afSampleRate = 0;
         if (AudioSystem::getSamplingRate(output, streamType, &afSampleRate) != NO_ERROR) {
             return NO_INIT;
         }
-        int afFrameCount = 0;
+        size_t afFrameCount = 0;
         if (AudioSystem::getFrameCount(output, streamType, &afFrameCount) != NO_ERROR) {
             return NO_INIT;
         }
@@ -1606,6 +1618,23 @@ status_t AudioTrack::restoreTrack_l(audio_track_cblk_t*& cblk, bool fromStart)
     ALOGW_IF(result != NO_ERROR, "restoreTrack_l() error %d TID %d", result, gettid());
 
     return result;
+}
+
+status_t AudioTrack::getTimestamp(AudioTimestamp& timestamp)
+{
+    AutoMutex lock(mLock);
+    // FIXME not implemented for fast tracks; should use proxy and SSQ
+    if (mFlags & AUDIO_OUTPUT_FLAG_FAST) {
+        return INVALID_OPERATION;
+    }
+    //if (mState != STATE_ACTIVE && mState != STATE_PAUSED) {
+    //    return INVALID_OPERATION;
+    //}
+    status_t status = mAudioTrack->getTimestamp(timestamp);
+    //if (status == NO_ERROR) {
+    //    timestamp.mPosition += mProxy->getEpoch();
+    //}
+    return status;
 }
 
 status_t AudioTrack::dump(int fd, const Vector<String16>& args) const

@@ -20,7 +20,7 @@
 
 #include <utils/Log.h>
 #include <utils/Trace.h>
-#include <gui/SurfaceTextureClient.h>
+#include <gui/Surface.h>
 #include <media/hardware/MetadataBufferType.h>
 
 #include "StreamingProcessor.h"
@@ -278,14 +278,13 @@ status_t StreamingProcessor::updateRecordingStream(const Parameters &params) {
         // Create CPU buffer queue endpoint. We need one more buffer here so that we can
         // always acquire and free a buffer when the heap is full; otherwise the consumer
         // will have buffers in flight we'll never clear out.
-        mRecordingConsumer = new BufferItemConsumer(
+		sp<BufferQueue> bq = new BufferQueue();
+        mRecordingConsumer = new BufferItemConsumer(bq,
                 GRALLOC_USAGE_HW_VIDEO_ENCODER,
-                mRecordingHeapCount + 1,
-                true);
+                mRecordingHeapCount + 1);
         mRecordingConsumer->setFrameAvailableListener(this);
         mRecordingConsumer->setName(String8("Camera2-RecordingConsumer"));
-        mRecordingWindow = new SurfaceTextureClient(
-            mRecordingConsumer->getProducerInterface());
+        mRecordingWindow = new Surface(bq);
         // Allocate memory later, since we don't know buffer size until receipt
     }
 
@@ -475,7 +474,7 @@ void StreamingProcessor::onFrameAvailable() {
         SharedParameters::Lock l(client->getParameters());
         Mutex::Autolock m(mMutex);
         BufferItemConsumer::BufferItem imgBuffer;
-        res = mRecordingConsumer->acquireBuffer(&imgBuffer);
+        res = mRecordingConsumer->acquireBuffer(&imgBuffer, 0);
         if (res != OK) {
             ALOGE("%s: Camera %d: Error receiving recording buffer: %s (%d)",
                     __FUNCTION__, client->getCameraId(), strerror(-res), res);

@@ -153,8 +153,15 @@ BASIC_TYPE(Pointer,ptrValue,void *)
 
 #undef BASIC_TYPE
 
-void AMessage::setString(
+/*void AMessage::setString(
         const char *name, const char *s, ssize_t len) {
+    Item *item = allocateItem(name);
+    item->mType = kTypeString;
+    item->u.stringValue = new AString(s, len < 0 ? strlen(s) : len);
+}*/
+
+void AMessage::setString(
+        const char *name, const char *s, long len) {
     Item *item = allocateItem(name);
     item->mType = kTypeString;
     item->u.stringValue = new AString(s, len < 0 ? strlen(s) : len);

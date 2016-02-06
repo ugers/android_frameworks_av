@@ -46,16 +46,20 @@ public:
     // allow other processes to use this ICamera interface
     virtual status_t        unlock() = 0;
 
-    // pass the buffered Surface to the camera service
-    virtual status_t        setPreviewDisplay(const sp<Surface>& surface) = 0;
-
     // pass the buffered IGraphicBufferProducer to the camera service
-    virtual status_t        setPreviewTexture(
+    virtual status_t        setPreviewTarget(
             const sp<IGraphicBufferProducer>& bufferProducer) = 0;
-
+			
     // set the preview callback flag to affect how the received frames from
-    // preview are handled.
+    // preview are handled. Enabling preview callback flags disables any active
+    // preview callback surface set by setPreviewCallbackTarget().
     virtual void            setPreviewCallbackFlag(int flag) = 0;
+    // set a buffer interface to use for client-received preview frames instead
+    // of preview callback buffers. Passing a valid interface here disables any
+    // active preview callbacks set by setPreviewCallbackFlag(). Passing NULL
+    // disables the use of the callback target.
+    virtual status_t        setPreviewCallbackTarget(
+            const sp<IGraphicBufferProducer>& callbackProducer) = 0;
 
     // start preview mode, must call setPreviewDisplay first
     virtual status_t        startPreview() = 0;

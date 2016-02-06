@@ -345,6 +345,18 @@ status_t OMX::useGraphicBuffer(
             port_index, graphicBuffer, buffer);
 }
 
+status_t OMX::createInputSurface(
+        node_id node, OMX_U32 port_index,
+        sp<IGraphicBufferProducer> *bufferProducer) {
+	// Maybe not needed? Disable it for now...
+    return OK;
+}
+
+status_t OMX::signalEndOfInputStream(node_id node) {
+	// Maybe not needed? Disable it for now...
+    return OK;
+}
+
 status_t OMX::allocateBuffer(
         node_id node, OMX_U32 port_index, size_t size,
         buffer_id *buffer, void **buffer_data) {
@@ -383,6 +395,16 @@ status_t OMX::getExtensionIndex(
         OMX_INDEXTYPE *index) {
     return findInstance(node)->getExtensionIndex(
             parameter_name, index);
+}
+
+status_t OMX::setInternalOption(
+        node_id node,
+        OMX_U32 port_index,
+        InternalOptionType type,
+        const void *data,
+        size_t size) {
+	// Maybe not needed? Disable it for now...
+    return OK;
 }
 
 OMX_ERRORTYPE OMX::OnEvent(

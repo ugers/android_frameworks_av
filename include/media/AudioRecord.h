@@ -98,10 +98,19 @@ public:
      *  - BAD_VALUE: unsupported configuration
      */
 
-     static status_t getMinFrameCount(int* frameCount,
+     static status_t getMinFrameCount(size_t* frameCount,
                                       uint32_t sampleRate,
                                       audio_format_t format,
                                       audio_channel_mask_t channelMask);
+
+    /* How data is transferred from AudioRecord
+     */
+    enum transfer_type {
+        TRANSFER_DEFAULT,   // not specified explicitly; determine from other parameters
+        TRANSFER_CALLBACK,  // callback EVENT_MORE_DATA
+        TRANSFER_OBTAIN,    // FIXME deprecated: call obtainBuffer() and releaseBuffer()
+        TRANSFER_SYNC,      // synchronous read()
+    };
 
     /* Constructs an uninitialized AudioRecord. No connection with
      * AudioFlinger takes place.
@@ -147,24 +156,31 @@ public:
                         ~AudioRecord();
 
 
-    /* Initialize an uninitialized AudioRecord.
+    /* Initialize an AudioRecord that was created using the AudioRecord() constructor.
+     * Don't call set() more than once, or after an AudioRecord() constructor that takes parameters.
      * Returned status (from utils/Errors.h) can be:
      *  - NO_ERROR: successful intialization
-     *  - INVALID_OPERATION: AudioRecord is already intitialized or record device is already in use
+     *  - INVALID_OPERATION: AudioRecord is already initialized or record device is already in use
      *  - BAD_VALUE: invalid parameter (channels, format, sampleRate...)
      *  - NO_INIT: audio server or audio hardware not initialized
      *  - PERMISSION_DENIED: recording is not allowed for the requesting process
-     * */
-            status_t    set(audio_source_t inputSource = AUDIO_SOURCE_DEFAULT,
-                            uint32_t sampleRate = 0,
-                            audio_format_t format = AUDIO_FORMAT_DEFAULT,
-                            audio_channel_mask_t channelMask = AUDIO_CHANNEL_IN_MONO,
+     *
+     * Parameters not listed in the AudioRecord constructors above:
+     *
+     * threadCanCallJava:  Whether callbacks are made from an attached thread and thus can call JNI.
+     */
+            status_t    set(audio_source_t inputSource,
+                            uint32_t sampleRate,
+                            audio_format_t format,
+                            audio_channel_mask_t channelMask,
                             int frameCount      = 0,
                             callback_t cbf = NULL,
                             void* user = NULL,
                             int notificationFrames = 0,
                             bool threadCanCallJava = false,
-                            int sessionId = 0);
+                            int sessionId = 0,
+                            transfer_type transferType = TRANSFER_DEFAULT,
+                            audio_input_flags_t flags = AUDIO_INPUT_FLAG_NONE);
 
 
     /* Result of constructing the AudioRecord. This must be checked

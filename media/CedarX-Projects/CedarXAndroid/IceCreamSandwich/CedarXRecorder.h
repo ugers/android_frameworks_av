@@ -39,7 +39,7 @@ public:
     status_t setMediaSource(const sp<MediaSource>& mediasource, int type);
     status_t setParamVideoCameraId(int32_t cameraId);
     status_t setListener(const sp<IMediaRecorderClient>& listener);
-    status_t setPreviewSurface(const sp<Surface>& surface);
+    status_t setPreviewSurface(const sp<IGraphicBufferProducer>& surface);
     status_t queueBuffer(int index, int addr_y, int addr_c, int64_t timestamp);
     status_t prepare();
     status_t start();
@@ -166,7 +166,7 @@ private:
 		
     sp<Camera> mCamera;
 	sp<ICameraRecordingProxy> mCameraProxy;
-    sp<Surface> mPreviewSurface;
+    sp<IGraphicBufferProducer> mPreviewSurface;
     sp<IMediaRecorderClient> mListener;
 
     output_format mOutputFormat;

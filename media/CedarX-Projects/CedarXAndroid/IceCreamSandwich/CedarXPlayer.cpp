@@ -55,8 +55,7 @@
 #include <surfaceflinger/ISurfaceComposer.h>
 #endif
 
-#include <gui/ISurfaceTexture.h>
-#include <gui/SurfaceTextureClient.h>
+#include <gui/Surface.h>
 
 #include <include_sft/StreamingSource.h>
 
@@ -749,7 +748,7 @@ status_t CedarXPlayer::setSurface(const sp<Surface> &surface) {
     return setNativeWindow_l(surface);
 }
 
-status_t CedarXPlayer::setSurfaceTexture(const sp<ISurfaceTexture> &surfaceTexture) {
+status_t CedarXPlayer::setSurfaceTexture(const sp<IGraphicBufferProducer> &surfaceTexture) {
     //Mutex::Autolock autoLock(mLock);
 
     //mSurface.clear();
@@ -758,7 +757,7 @@ status_t CedarXPlayer::setSurfaceTexture(const sp<ISurfaceTexture> &surfaceTextu
 
     status_t err;
     if (surfaceTexture != NULL) {
-        err = setNativeWindow_l(new SurfaceTextureClient(surfaceTexture));
+        err = setNativeWindow_l(new Surface(surfaceTexture));
     } else {
         err = setNativeWindow_l(NULL);
     }
@@ -1058,7 +1057,7 @@ status_t CedarXPlayer::prepareAsync() {
 	Mutex::Autolock autoLock(mLock);
 	int  outputSetting = 0;
 	int  disable_media_type = 0;
-	char prop_value[4];
+	char prop_value[128];
 
 	if ((mFlags & PREPARING) || (mPlayer == NULL)) {
 		return UNKNOWN_ERROR; // async prepare already pending

@@ -9,6 +9,7 @@ LOCAL_SHARED_LIBRARIES := \
 	libcameraservice \
 	libmediaplayerservice \
 	libutils \
+	liblog \
 	libbinder
 
 ifeq ($(BOARD_USE_SECTVOUT),true)

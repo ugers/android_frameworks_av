@@ -79,15 +79,7 @@ status_t MPEG2TSSource::stop() {
 }
 
 sp<MetaData> MPEG2TSSource::getFormat() {
-    sp<MetaData> meta = mImpl->getFormat();
-
-    int64_t durationUs;
-    if (mExtractor->mLiveSession != NULL
-            && mExtractor->mLiveSession->getDuration(&durationUs) == OK) {
-        meta->setInt64(kKeyDuration, durationUs);
-    }
-
-    return meta;
+    return mImpl->getFormat();
 }
 
 status_t MPEG2TSSource::read(
@@ -223,25 +215,10 @@ void MPEG2TSExtractor::setLiveSession(const sp<LiveSession> &liveSession) {
 }
 
 void MPEG2TSExtractor::seekTo(int64_t seekTimeUs) {
-    Mutex::Autolock autoLock(mLock);
-
-    if (mLiveSession == NULL) {
-        return;
-    }
-
-    mLiveSession->seekTo(seekTimeUs);
 }
 
 uint32_t MPEG2TSExtractor::flags() const {
-    Mutex::Autolock autoLock(mLock);
-
-    uint32_t flags = CAN_PAUSE;
-
-    if (mLiveSession != NULL && mLiveSession->isSeekable()) {
-        flags |= CAN_SEEK_FORWARD | CAN_SEEK_BACKWARD | CAN_SEEK;
-    }
-
-    return flags;
+    return CAN_PAUSE;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

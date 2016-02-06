@@ -37,7 +37,7 @@ namespace android {
 
 // static
 status_t AudioRecord::getMinFrameCount(
-        int* frameCount,
+        size_t* frameCount,
         uint32_t sampleRate,
         audio_format_t format,
         audio_channel_mask_t channelMask)
@@ -125,13 +125,21 @@ status_t AudioRecord::set(
         uint32_t sampleRate,
         audio_format_t format,
         audio_channel_mask_t channelMask,
-        int frameCount,
+        int frameCountInt,
         callback_t cbf,
         void* user,
         int notificationFrames,
         bool threadCanCallJava,
-        int sessionId)
+        int sessionId,
+        transfer_type transferType,
+        audio_input_flags_t flags)
 {
+    // FIXME "int" here is legacy and will be replaced by size_t later
+    if (frameCountInt < 0) {
+        ALOGE("Invalid frame count %d", frameCountInt);
+        return BAD_VALUE;
+    }
+    size_t frameCount = frameCountInt;
 
     ALOGV("set(): sampleRate %d, channelMask %#x, frameCount %d",sampleRate, channelMask, frameCount);
 
@@ -234,7 +242,7 @@ status_t AudioRecord::set(
     int minFrameCount = 2 * inputBuffSizeInBytes / frameSizeInBytes;
 #else
     // validate framecount
-    int minFrameCount = 0;
+    size_t minFrameCount = 0;
     status = getMinFrameCount(&minFrameCount, sampleRate, format, channelMask);
     if (status != NO_ERROR) {
         return status;

@@ -26,7 +26,7 @@
 #include <utils/Trace.h>
 
 #include "JpegProcessor.h"
-#include <gui/SurfaceTextureClient.h>
+#include <gui/Surface.h>
 #include "../Camera2Device.h"
 #include "../Camera2Client.h"
 
@@ -79,11 +79,11 @@ status_t JpegProcessor::updateStream(const Parameters &params) {
 
     if (mCaptureConsumer == 0) {
         // Create CPU buffer queue endpoint
-        mCaptureConsumer = new CpuConsumer(1);
+		sp<BufferQueue> bq = new BufferQueue();
+        mCaptureConsumer = new CpuConsumer(bq, 1);
         mCaptureConsumer->setFrameAvailableListener(this);
         mCaptureConsumer->setName(String8("Camera2Client::CaptureConsumer"));
-        mCaptureWindow = new SurfaceTextureClient(
-            mCaptureConsumer->getProducerInterface());
+        mCaptureWindow = new Surface(bq);
         // Create memory for API consumption
         mCaptureHeap = new MemoryHeapBase(maxJpegSize.data.i32[0], 0,
                                        "Camera2Client::CaptureHeap");

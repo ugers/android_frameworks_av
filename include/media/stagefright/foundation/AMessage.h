@@ -49,7 +49,8 @@ struct AMessage : public RefBase {
     void setFloat(const char *name, float value);
     void setDouble(const char *name, double value);
     void setPointer(const char *name, void *value);
-    void setString(const char *name, const char *s, ssize_t len = -1);
+    //void setString(const char *name, const char *s, ssize_t len = -1);
+	void setString(const char *name, const char *s, long len = -1);
     void setObject(const char *name, const sp<RefBase> &obj);
     void setBuffer(const char *name, const sp<ABuffer> &buffer);
     void setMessage(const char *name, const sp<AMessage> &obj);

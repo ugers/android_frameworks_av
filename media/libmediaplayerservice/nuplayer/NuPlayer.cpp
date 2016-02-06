@@ -142,9 +142,16 @@ void NuPlayer::setDataSource(int fd, int64_t offset, int64_t length) {
 
 void NuPlayer::setVideoSurfaceTexture(const sp<IGraphicBufferProducer> &bufferProducer) {
     sp<AMessage> msg = new AMessage(kWhatSetVideoNativeWindow, id());
-    sp<SurfaceTextureClient> surfaceTextureClient(bufferProducer != NULL ?
-                new SurfaceTextureClient(bufferProducer) : NULL);
-    msg->setObject("native-window", new NativeWindowWrapper(surfaceTextureClient));
+
+    if (bufferProducer == NULL) {
+        msg->setObject("native-window", NULL);
+    } else {
+        msg->setObject(
+                "native-window",
+                new NativeWindowWrapper(
+                    new Surface(bufferProducer)));
+    }
+
     msg->post();
 }
 

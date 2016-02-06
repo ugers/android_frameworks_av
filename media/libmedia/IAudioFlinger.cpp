@@ -80,6 +80,7 @@ enum {
     LOAD_HW_MODULE,
     GET_PRIMARY_OUTPUT_SAMPLING_RATE,
     GET_PRIMARY_OUTPUT_FRAME_COUNT,
+    SET_LOW_RAM_DEVICE,
 #ifdef QCOM_HARDWARE
     CREATE_DIRECT_TRACK
 #endif
@@ -767,6 +768,15 @@ public:
         Parcel data, reply;
         data.writeInterfaceToken(IAudioFlinger::getInterfaceDescriptor());
         remote()->transact(GET_PRIMARY_OUTPUT_FRAME_COUNT, data, &reply);
+        return reply.readInt32();
+    }
+	
+    virtual status_t setLowRamDevice(bool isLowRamDevice)
+    {
+        Parcel data, reply;
+        data.writeInterfaceToken(IAudioFlinger::getInterfaceDescriptor());
+        data.writeInt32((int) isLowRamDevice);
+        remote()->transact(SET_LOW_RAM_DEVICE, data, &reply);
         return reply.readInt32();
     }
 

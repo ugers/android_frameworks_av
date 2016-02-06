@@ -40,6 +40,8 @@ enum {
     ENABLE_GRAPHIC_BUFFERS,
     USE_BUFFER,
     USE_GRAPHIC_BUFFER,
+    CREATE_INPUT_SURFACE,
+    SIGNAL_END_OF_INPUT_STREAM,
     STORE_META_DATA_IN_BUFFERS,
     ALLOC_BUFFER,
     ALLOC_BUFFER_WITH_BACKUP,
@@ -49,6 +51,7 @@ enum {
     GET_EXTENSION_INDEX,
     OBSERVER_ON_MSG,
     GET_GRAPHIC_BUFFER_USAGE,
+    SET_INTERNAL_OPTION,
 };
 
 class BpOMX : public BpInterface<IOMX> {
@@ -280,6 +283,45 @@ public:
         return err;
     }
 
+    virtual status_t createInputSurface(
+            node_id node, OMX_U32 port_index,
+            sp<IGraphicBufferProducer> *bufferProducer) {
+        Parcel data, reply;
+        status_t err;
+        data.writeInterfaceToken(IOMX::getInterfaceDescriptor());
+        data.writeIntPtr((intptr_t)node);
+        data.writeInt32(port_index);
+        err = remote()->transact(CREATE_INPUT_SURFACE, data, &reply);
+        if (err != OK) {
+            ALOGW("binder transaction failed: %d", err);
+            return err;
+        }
+
+        err = reply.readInt32();
+        if (err != OK) {
+            return err;
+        }
+
+        *bufferProducer = IGraphicBufferProducer::asInterface(
+                reply.readStrongBinder());
+
+        return err;
+    }
+
+    virtual status_t signalEndOfInputStream(node_id node) {
+        Parcel data, reply;
+        status_t err;
+        data.writeInterfaceToken(IOMX::getInterfaceDescriptor());
+        data.writeIntPtr((intptr_t)node);
+        err = remote()->transact(SIGNAL_END_OF_INPUT_STREAM, data, &reply);
+        if (err != OK) {
+            ALOGW("binder transaction failed: %d", err);
+            return err;
+        }
+
+        return reply.readInt32();
+    }
+
     virtual status_t storeMetaDataInBuffers(
             node_id node, OMX_U32 port_index, OMX_BOOL enable) {
         Parcel data, reply;
@@ -397,6 +439,24 @@ public:
         }
 
         return err;
+    }
+
+    virtual status_t setInternalOption(
+            node_id node,
+            OMX_U32 port_index,
+            InternalOptionType type,
+            const void *optionData,
+            size_t size) {
+        Parcel data, reply;
+        data.writeInterfaceToken(IOMX::getInterfaceDescriptor());
+        data.writeIntPtr((intptr_t)node);
+        data.writeInt32(port_index);
+        data.writeInt32(size);
+        data.write(optionData, size);
+        data.writeInt32(type);
+        remote()->transact(SET_INTERNAL_OPTION, data, &reply);
+
+        return reply.readInt32();
     }
 };
 
@@ -521,6 +581,14 @@ status_t BnOMX::onTransact(
                 case SET_CONFIG:
                     err = setConfig(node, index, params, size);
                     break;
+                case SET_INTERNAL_OPTION:
+                {
+                    InternalOptionType type =
+                        (InternalOptionType)data.readInt32();
+
+                    err = setInternalOption(node, index, type, params, size);
+                    break;
+                }
                 default:
                     TRESPASS();
             }

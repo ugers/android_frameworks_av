@@ -24,6 +24,7 @@
 #include <media/IAudioFlinger.h>
 #include <media/IAudioTrack.h>
 #include <media/AudioSystem.h>
+#include <media/AudioTimestamp.h>
 
 #include <utils/RefBase.h>
 #include <utils/Errors.h>
@@ -66,6 +67,9 @@ public:
         EVENT_MARKER = 3,           // Playback head is at the specified marker position (See setMarkerPosition()).
         EVENT_NEW_POS = 4,          // Playback head is at a new position (See setPositionUpdatePeriod()).
         EVENT_BUFFER_END = 5,       // Playback head is at the end of the buffer.
+        EVENT_NEW_TIMESTAMP = 8,    // Delivered periodically and when there's a significant change
+                                    // in the mapping from frame position to presentation time.
+                                    // See AudioTimestamp for the information included with event.
     };
 
     /* Client should declare Buffer on the stack and pass address to obtainBuffer()
@@ -123,9 +127,19 @@ public:
      *  - NO_INIT: audio server or audio hardware not initialized
      */
 
-     static status_t getMinFrameCount(int* frameCount,
+     static status_t getMinFrameCount(size_t* frameCount,
                                       audio_stream_type_t streamType = AUDIO_STREAM_DEFAULT,
                                       uint32_t sampleRate = 0);
+
+    /* How data is transferred to AudioTrack
+     */
+    enum transfer_type {
+        TRANSFER_DEFAULT,   // not specified explicitly; determine from the other parameters
+        TRANSFER_CALLBACK,  // callback EVENT_MORE_DATA
+        TRANSFER_OBTAIN,    // FIXME deprecated: call obtainBuffer() and releaseBuffer()
+        TRANSFER_SYNC,      // synchronous write()
+        TRANSFER_SHARED,    // shared memory
+    };
 
     /* Constructs an uninitialized AudioTrack. No connection with
      * AudioFlinger takes place.
@@ -161,15 +175,18 @@ public:
      */
 
                         AudioTrack( audio_stream_type_t streamType,
-                                    uint32_t sampleRate  = 0,
-                                    audio_format_t format = AUDIO_FORMAT_DEFAULT,
-                                    audio_channel_mask_t channelMask = 0,
+                                    uint32_t sampleRate,
+                                    audio_format_t format,
+                                    audio_channel_mask_t,
                                     int frameCount       = 0,
                                     audio_output_flags_t flags = AUDIO_OUTPUT_FLAG_NONE,
                                     callback_t cbf       = NULL,
                                     void* user           = NULL,
                                     int notificationFrames = 0,
-                                    int sessionId        = 0);
+                                    int sessionId        = 0,
+                                    transfer_type transferType = TRANSFER_DEFAULT,
+                                    const audio_offload_info_t *offloadInfo = NULL,
+                                    int uid = -1);
 
                         // DEPRECATED
                         explicit AudioTrack( int streamType,
@@ -209,17 +226,25 @@ public:
                         ~AudioTrack();
 
 
-    /* Initialize an uninitialized AudioTrack.
+    /* Initialize an AudioTrack that was created using the AudioTrack() constructor.
+     * Don't call set() more than once, or after the AudioTrack() constructors that take parameters.
      * Returned status (from utils/Errors.h) can be:
      *  - NO_ERROR: successful initialization
      *  - INVALID_OPERATION: AudioTrack is already initialized
      *  - BAD_VALUE: invalid parameter (channelMask, format, sampleRate...)
      *  - NO_INIT: audio server or audio hardware not initialized
-     * */
-            status_t    set(audio_stream_type_t streamType = AUDIO_STREAM_DEFAULT,
-                            uint32_t sampleRate = 0,
-                            audio_format_t format = AUDIO_FORMAT_DEFAULT,
-                            audio_channel_mask_t channelMask = 0,
+     * If status is not equal to NO_ERROR, don't call any other APIs on this AudioTrack.
+     * If sharedBuffer is non-0, the frameCount parameter is ignored and
+     * replaced by the shared buffer's total allocated size in frame units.
+     *
+     * Parameters not listed in the AudioTrack constructors above:
+     *
+     * threadCanCallJava:  Whether callbacks are made from an attached thread and thus can call JNI.
+     */
+            status_t    set(audio_stream_type_t streamType,
+                            uint32_t sampleRate,
+                            audio_format_t format,
+                            audio_channel_mask_t channelMask,
                             int frameCount      = 0,
                             audio_output_flags_t flags = AUDIO_OUTPUT_FLAG_NONE,
                             callback_t cbf      = NULL,
@@ -227,7 +252,10 @@ public:
                             int notificationFrames = 0,
                             const sp<IMemory>& sharedBuffer = 0,
                             bool threadCanCallJava = false,
-                            int sessionId       = 0);
+                            int sessionId       = 0,
+                            transfer_type transferType = TRANSFER_DEFAULT,
+                            const audio_offload_info_t *offloadInfo = NULL,
+                            int uid = -1);
 
 
     /* Result of constructing the AudioTrack. This must be checked
@@ -459,6 +487,16 @@ public:
      * Dumps the state of an audio track.
      */
             status_t dump(int fd, const Vector<String16>& args) const;
+			
+    /* Poll for a timestamp on demand.
+     * Use if EVENT_NEW_TIMESTAMP is not delivered often enough for your needs,
+     * or if you need to get the most recent timestamp outside of the event callback handler.
+     * Caution: calling this method too often may be inefficient;
+     * if you need a high resolution mapping between frame position and presentation time,
+     * consider implementing that at application level, based on the low resolution timestamps.
+     * Returns NO_ERROR if timestamp is valid.
+     */
+      virtual status_t    getTimestamp(AudioTimestamp& timestamp);
 
 #ifdef QCOM_HARDWARE
             virtual void notify(int msg);
@@ -519,7 +557,7 @@ protected:
 
     float                   mVolume[2];
     float                   mSendLevel;
-    uint32_t                mFrameCount;
+    size_t                  mFrameCount;
 
     audio_track_cblk_t*     mCblk;
     audio_format_t          mFormat;

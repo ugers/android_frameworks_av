@@ -34,6 +34,10 @@ public:
         GET_CAMERA_INFO,
         CONNECT
     };
+	
+    enum {
+        USE_CALLING_UID = -1
+    };
 
 public:
     DECLARE_META_INTERFACE(CameraService);

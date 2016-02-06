@@ -136,6 +136,10 @@ typedef struct _MediaPlayer_TrackInfo{
 #define MEDIAPLAYER_CMD_GET_BD_FOLDER_PLAY_MODE   1
 #define MEDIAPLAYER_CMD_SET_STREAMING_TYPE        2
 #define MEDIAPLAYER_CMD_QUERY_HWLAYER_RENDER	  3
+#define MEDIAPLAYER_CMD_RELEASE_SURFACE_BYHAND    4
+#define MEDIAPLAYER_CMD_SET_PRESENTANTION_SCREEN  5
+#define MEDIAPLAYER_CMD_GET_PRESENTANTION_SCREEN  6
+#define MEDIAPLAYER_CMD_IS_PLAYINGVIDEO           7
 // mediaplayer global interface list
 #define MEDIAPLAYER_GLOBAL_CMD_TEST               0
 #define MEDIAPLAYER_CMD_IS_ROTATABLE              1000     //add by Bevis. Check if the video rotatable.

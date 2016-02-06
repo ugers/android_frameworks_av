@@ -38,7 +38,7 @@ CameraSourceTimeLapse *CameraSourceTimeLapse::CreateFromCamera(
         int32_t cameraId,
         Size videoSize,
         int32_t videoFrameRate,
-        const sp<Surface>& surface,
+        const sp<IGraphicBufferProducer>& surface,
         int64_t timeBetweenFrameCaptureUs) {
 
     CameraSourceTimeLapse *source = new
@@ -61,7 +61,7 @@ CameraSourceTimeLapse::CameraSourceTimeLapse(
         int32_t cameraId,
         Size videoSize,
         int32_t videoFrameRate,
-        const sp<Surface>& surface,
+        const sp<IGraphicBufferProducer>& surface,
         int64_t timeBetweenFrameCaptureUs)
     : CameraSource(camera, proxy, cameraId, videoSize, videoFrameRate, surface, true),
       mTimeBetweenTimeLapseVideoFramesUs(1E6/videoFrameRate),

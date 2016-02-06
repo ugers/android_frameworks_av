@@ -87,6 +87,8 @@
 #include <media/nbaio/PipeReader.h>
 #include <media/nbaio/SourceAudioBufferProvider.h>
 
+#include <private/android_filesystem_config.h>
+
 #include "SchedulingPolicyService.h"
 #ifdef SRS_PROCESSING
 #include "srs_processing.h"
@@ -252,7 +254,9 @@ AudioFlinger::AudioFlinger()
       mMasterMute(false),
       mNextUniqueId(1),
       mMode(AUDIO_MODE_INVALID),
-      mBtNrecIsOff(false)
+      mBtNrecIsOff(false),
+	  mIsLowRamDevice(true),
+	  mIsDeviceTypeKnown(false)
 #ifdef QCOM_HARDWARE
       ,mAllChainsLocked(false)
 #endif
@@ -1787,7 +1791,7 @@ void AudioFlinger::ThreadBase::acquireWakeLock_l()
         sp<IBinder> binder = new BBinder();
         status_t status = mPowerManager->acquireWakeLock(POWERMANAGER_PARTIAL_WAKE_LOCK,
                                                          binder,
-                                                         String16(mName));
+                                                         String16(mName), String16(""));
         if (status == NO_ERROR) {
             mWakeLockToken = binder;
         }
@@ -5287,6 +5291,38 @@ void AudioFlinger::PlaybackThread::Track::mute(bool muted)
     mMute = muted;
 }
 
+status_t AudioFlinger::PlaybackThread::Track::getTimestamp(AudioTimestamp& timestamp)
+{
+    // Client should implement this using SSQ; the unpresented frame count in latch is irrelevant
+    /*if (isFastTrack()) {
+        return INVALID_OPERATION;
+    }
+    sp<ThreadBase> thread = mThread.promote();
+    if (thread == 0) {
+        return INVALID_OPERATION;
+    }
+    Mutex::Autolock _l(thread->mLock);
+    PlaybackThread *playbackThread = (PlaybackThread *)thread.get();
+    if (!isOffloaded()) {
+        if (!playbackThread->mLatchQValid) {
+            return INVALID_OPERATION;
+        }
+        uint32_t unpresentedFrames =
+                ((int64_t) playbackThread->mLatchQ.mUnpresentedFrames * mSampleRate) /
+                playbackThread->mSampleRate;
+        uint32_t framesWritten = mAudioTrackServerProxy->framesReleased();
+        if (framesWritten < unpresentedFrames) {
+            return INVALID_OPERATION;
+        }
+        timestamp.mPosition = framesWritten - unpresentedFrames;
+        timestamp.mTime = playbackThread->mLatchQ.mTimestamp.mTime;
+        return NO_ERROR;
+    }
+
+    return playbackThread->getTimestamp_l(timestamp);*/
+	return 0; // TODO: Fix this
+}
+
 status_t AudioFlinger::PlaybackThread::Track::attachAuxEffect(int EffectId)
 {
     status_t status = DEAD_OBJECT;
@@ -6835,6 +6871,11 @@ status_t AudioFlinger::TrackHandle::setMediaTimeTransform(
         xform, static_cast<TimedAudioTrack::TargetTimeline>(target));
 }
 
+status_t AudioFlinger::TrackHandle::getTimestamp(AudioTimestamp& timestamp)
+{
+    return mTrack->getTimestamp(timestamp);
+}
+
 status_t AudioFlinger::TrackHandle::onTransact(
     uint32_t code, const Parcel& data, Parcel* reply, uint32_t flags)
 {
@@ -7977,6 +8018,23 @@ int32_t AudioFlinger::getPrimaryOutputFrameCount()
     Mutex::Autolock _l(mLock);
     PlaybackThread *thread = primaryPlaybackThread_l();
     return thread != NULL ? thread->frameCountHAL() : 0;
+}
+
+// ----------------------------------------------------------------------------
+
+status_t AudioFlinger::setLowRamDevice(bool isLowRamDevice)
+{
+    uid_t uid = IPCThreadState::self()->getCallingUid();
+    if (uid != AID_SYSTEM) {
+        return PERMISSION_DENIED;
+    }
+    Mutex::Autolock _l(mLock);
+    if (mIsDeviceTypeKnown) {
+        return INVALID_OPERATION;
+    }
+    mIsLowRamDevice = isLowRamDevice;
+    mIsDeviceTypeKnown = true;
+    return NO_ERROR;
 }
 
 // ----------------------------------------------------------------------------

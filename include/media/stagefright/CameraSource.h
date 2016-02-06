@@ -73,7 +73,7 @@ public:
                                           int32_t cameraId,
                                           Size videoSize,
                                           int32_t frameRate,
-                                          const sp<Surface>& surface,
+                                          const sp<IGraphicBufferProducer>& surface,
                                           bool storeMetaDataInVideoBuffers = false);
 
     virtual ~CameraSource();
@@ -145,7 +145,7 @@ protected:
     sp<Camera>   mCamera;
     sp<ICameraRecordingProxy>   mCameraRecordingProxy;
     sp<DeathNotifier> mDeathNotifier;
-    sp<Surface>  mSurface;
+    sp<IGraphicBufferProducer>  mSurface;
     sp<MetaData> mMeta;
 
     int64_t mStartTimeUs;
@@ -160,7 +160,7 @@ protected:
     CameraSource(const sp<ICamera>& camera, const sp<ICameraRecordingProxy>& proxy,
                  int32_t cameraId,
                  Size videoSize, int32_t frameRate,
-                 const sp<Surface>& surface,
+                 const sp<IGraphicBufferProducer>& surface,
                  bool storeMetaDataInVideoBuffers);
 
     virtual void startCameraRecording();

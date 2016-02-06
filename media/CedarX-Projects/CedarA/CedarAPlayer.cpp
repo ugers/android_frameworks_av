@@ -38,13 +38,11 @@
 	#include <surfaceflinger/ISurface.h>
 	#else
 	#include <surfaceflinger/Surface.h>
-	#include <gui/ISurfaceTexture.h>
 	#include <gui/SurfaceTextureClient.h>
 	#include <surfaceflinger/ISurfaceComposer.h>
 	#endif
 #else
-#include <gui/ISurfaceTexture.h>
-#include <gui/SurfaceTextureClient.h>
+#include <gui/Surface.h>
 #include <media/stagefright/foundation/ADebug.h>
 #endif
 
@@ -279,7 +277,7 @@ status_t CedarAPlayer::setSurface(const sp<Surface> &surface) {
 }
 #endif
 
-status_t CedarAPlayer::setSurfaceTexture(const sp<ISurfaceTexture> &surfaceTexture) {
+status_t CedarAPlayer::setSurfaceTexture(const sp<IGraphicBufferProducer> &surfaceTexture) {
     //Mutex::Autolock autoLock(mLock);
     return OK;
 }

@@ -35,7 +35,7 @@ public:
 
     virtual status_t setCamera(const sp<ICamera>& camera,
                                const sp<ICameraRecordingProxy>& proxy) = 0;
-    virtual status_t setPreviewSurface(const sp<Surface>& surface) = 0;
+    virtual status_t setPreviewSurface(const sp<IGraphicBufferProducer>& surface) = 0;
     virtual status_t setVideoSource(int vs) = 0;
     virtual status_t setAudioSource(int as) = 0;
     virtual status_t setOutputFormat(int of) = 0;
@@ -47,6 +47,7 @@ public:
     virtual status_t setVideoFrameRate(int frames_per_second) = 0;
     virtual status_t setParameters(const String8& params) = 0;
     virtual status_t setListener(const sp<IMediaRecorderClient>& listener) = 0;
+    virtual status_t setClientName(const String16& clientName) = 0;
     virtual status_t prepare() = 0;
     virtual status_t getMaxAmplitude(int* max) = 0;
     virtual status_t start() = 0;

@@ -2175,8 +2175,6 @@ audio_effect_library_t AUDIO_EFFECT_LIBRARY_INFO_SYM = {
     version : EFFECT_LIBRARY_API_VERSION,
     name : "Reverb Library",
     implementor : "NXP Software Ltd.",
-    query_num_effects : android::EffectQueryNumberEffects,
-    query_effect : android::EffectQueryEffect,
     create_effect : android::EffectCreate,
     release_effect : android::EffectRelease,
     get_descriptor : android::EffectGetDescriptor,

@@ -65,7 +65,7 @@ status_t CedarAPlayerWrapper::getParameter(int key, Parcel *reply) {
 }
 
 status_t CedarAPlayerWrapper::setVideoSurfaceTexture(
-        const sp<ISurfaceTexture> &surfaceTexture) {
+        const sp<IGraphicBufferProducer> &surfaceTexture) {
     ALOGV("setVideoSurfaceTexture");
 
     return mPlayer->setSurfaceTexture(surfaceTexture);

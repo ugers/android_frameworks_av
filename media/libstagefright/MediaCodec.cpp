@@ -22,7 +22,7 @@
 
 #include "include/SoftwareRenderer.h"
 
-#include <gui/SurfaceTextureClient.h>
+#include <gui/Surface.h>
 #include <media/ICrypto.h>
 #include <media/stagefright/foundation/ABuffer.h>
 #include <media/stagefright/foundation/ADebug.h>
@@ -30,6 +30,7 @@
 #include <media/stagefright/foundation/AString.h>
 #include <media/stagefright/foundation/hexdump.h>
 #include <media/stagefright/ACodec.h>
+#include <media/stagefright/BufferProducerWrapper.h>
 #include <media/stagefright/MediaErrors.h>
 #include <media/stagefright/MetaData.h>
 #include <media/stagefright/NativeWindowWrapper.h>
@@ -132,7 +133,7 @@ status_t MediaCodec::init(const char *name, bool nameIsType, bool encoder) {
 
 status_t MediaCodec::configure(
         const sp<AMessage> &format,
-        const sp<SurfaceTextureClient> &nativeWindow,
+        const sp<Surface> &nativeWindow,
         const sp<ICrypto> &crypto,
         uint32_t flags) {
     sp<AMessage> msg = new AMessage(kWhatConfigure, id());
@@ -152,6 +153,26 @@ status_t MediaCodec::configure(
 
     sp<AMessage> response;
     return PostAndAwaitResponse(msg, &response);
+}
+
+status_t MediaCodec::createInputSurface(
+        sp<IGraphicBufferProducer>* bufferProducer) {
+    sp<AMessage> msg = new AMessage(kWhatCreateInputSurface, id());
+
+    sp<AMessage> response;
+    status_t err = PostAndAwaitResponse(msg, &response);
+    if (err == NO_ERROR) {
+        // unwrap the sp<IGraphicBufferProducer>
+        sp<RefBase> obj;
+        bool found = response->findObject("input-surface", &obj);
+        CHECK(found);
+        sp<BufferProducerWrapper> wrapper(
+                static_cast<BufferProducerWrapper*>(obj.get()));
+        *bufferProducer = wrapper->getBufferProducer();
+    } else {
+        ALOGW("createInputSurface failed, err=%d", err);
+    }
+    return err;
 }
 
 status_t MediaCodec::start() {
@@ -288,6 +309,13 @@ status_t MediaCodec::releaseOutputBuffer(size_t index) {
     return PostAndAwaitResponse(msg, &response);
 }
 
+status_t MediaCodec::signalEndOfInputStream() {
+    sp<AMessage> msg = new AMessage(kWhatSignalEndOfInputStream, id());
+
+    sp<AMessage> response;
+    return PostAndAwaitResponse(msg, &response);
+}
+
 status_t MediaCodec::getOutputFormat(sp<AMessage> *format) const {
     sp<AMessage> msg = new AMessage(kWhatGetOutputFormat, id());
 
@@ -298,6 +326,20 @@ status_t MediaCodec::getOutputFormat(sp<AMessage> *format) const {
     }
 
     CHECK(response->findMessage("format", format));
+
+    return OK;
+}
+
+status_t MediaCodec::getName(AString *name) const {
+    sp<AMessage> msg = new AMessage(kWhatGetName, id());
+
+    sp<AMessage> response;
+    status_t err;
+    if ((err = PostAndAwaitResponse(msg, &response)) != OK) {
+        return err;
+    }
+
+    CHECK(response->findString("name", name));
 
     return OK;
 }
@@ -534,16 +576,15 @@ void MediaCodec::onMessageReceived(const sp<AMessage> &msg) {
                     CHECK_EQ(mState, INITIALIZING);
                     setState(INITIALIZED);
 
-                    AString componentName;
-                    CHECK(msg->findString("componentName", &componentName));
+                    CHECK(msg->findString("componentName", &mComponentName));
 
-                    if (componentName.startsWith("OMX.google.")) {
+                    if (mComponentName.startsWith("OMX.google.")) {
                         mFlags |= kFlagIsSoftwareCodec;
                     } else {
                         mFlags &= ~kFlagIsSoftwareCodec;
                     }
 
-                    if (componentName.endsWith(".secure")) {
+                    if (mComponentName.endsWith(".secure")) {
                         mFlags |= kFlagIsSecure;
                     } else {
                         mFlags &= ~kFlagIsSecure;
@@ -868,6 +909,25 @@ void MediaCodec::onMessageReceived(const sp<AMessage> &msg) {
             break;
         }
 
+        case kWhatCreateInputSurface:
+        {
+            uint32_t replyID;
+            CHECK(msg->senderAwaitsResponse(&replyID));
+
+            // Must be configured, but can't have been started yet.
+            if (mState != CONFIGURED) {
+                sp<AMessage> response = new AMessage;
+                response->setInt32("err", INVALID_OPERATION);
+
+                response->postReply(replyID);
+                break;
+            }
+
+            mReplyID = replyID;
+            mCodec->initiateCreateInputSurface();
+            break;
+        }
+
         case kWhatStart:
         {
             uint32_t replyID;
@@ -1080,6 +1140,24 @@ void MediaCodec::onMessageReceived(const sp<AMessage> &msg) {
             break;
         }
 
+        case kWhatSignalEndOfInputStream:
+        {
+            uint32_t replyID;
+            CHECK(msg->senderAwaitsResponse(&replyID));
+
+            if (mState != STARTED || (mFlags & kFlagStickyError)) {
+                sp<AMessage> response = new AMessage;
+                response->setInt32("err", INVALID_OPERATION);
+
+                response->postReply(replyID);
+                break;
+            }
+
+            mReplyID = replyID;
+            mCodec->signalEndOfInputStream();
+            break;
+        }
+
         case kWhatGetBuffers:
         {
             uint32_t replyID;
@@ -1171,6 +1249,42 @@ void MediaCodec::onMessageReceived(const sp<AMessage> &msg) {
             break;
         }
 
+        case kWhatGetName:
+        {
+            uint32_t replyID;
+            CHECK(msg->senderAwaitsResponse(&replyID));
+
+            if (mComponentName.empty()) {
+                sp<AMessage> response = new AMessage;
+                response->setInt32("err", INVALID_OPERATION);
+
+                response->postReply(replyID);
+                break;
+            }
+
+            sp<AMessage> response = new AMessage;
+            response->setString("name", mComponentName.c_str());
+            response->postReply(replyID);
+            break;
+        }
+
+        case kWhatSetParameters:
+        {
+            uint32_t replyID;
+            CHECK(msg->senderAwaitsResponse(&replyID));
+
+            sp<AMessage> params;
+            CHECK(msg->findMessage("params", &params));
+
+            status_t err = onSetParameters(params);
+
+            sp<AMessage> response = new AMessage;
+            response->setInt32("err", err);
+
+            response->postReply(replyID);
+            break;
+        }
+
         default:
             TRESPASS();
     }
@@ -1238,6 +1352,10 @@ void MediaCodec::setState(State newState) {
         mFlags &= ~kFlagStickyError;
 
         mActivityNotify.clear();
+    }
+	
+    if (newState == UNINITIALIZED) {
+        mComponentName.clear();
     }
 
     mState = newState;
@@ -1473,7 +1591,7 @@ ssize_t MediaCodec::dequeuePortBuffer(int32_t portIndex) {
 }
 
 status_t MediaCodec::setNativeWindow(
-        const sp<SurfaceTextureClient> &surfaceTextureClient) {
+        const sp<Surface> &surfaceTextureClient) {
     status_t err;
 
     if (mNativeWindow != NULL) {
@@ -1518,6 +1636,20 @@ void MediaCodec::postActivityNotificationIfPossible() {
         mActivityNotify->post();
         mActivityNotify.clear();
     }
+}
+
+status_t MediaCodec::setParameters(const sp<AMessage> &params) {
+    sp<AMessage> msg = new AMessage(kWhatSetParameters, id());
+    msg->setMessage("params", params);
+
+    sp<AMessage> response;
+    return PostAndAwaitResponse(msg, &response);
+}
+
+status_t MediaCodec::onSetParameters(const sp<AMessage> &params) {
+    mCodec->signalSetParameters(params);
+
+    return OK;
 }
 
 }  // namespace android

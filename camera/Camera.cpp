@@ -116,7 +116,8 @@ status_t Camera::getCameraInfo(int cameraId,
     return cs->getCameraInfo(cameraId, cameraInfo);
 }
 
-sp<Camera> Camera::connect(int cameraId)
+sp<Camera> Camera::connect(int cameraId, const String16& clientPackageName,
+        int clientUid)
 {
     ALOGV("connect");
     sp<Camera> c = new Camera();
@@ -170,32 +171,14 @@ status_t Camera::unlock()
     return c->unlock();
 }
 
-// pass the buffered Surface to the camera service
-status_t Camera::setPreviewDisplay(const sp<Surface>& surface)
-{
-    ALOGV("setPreviewDisplay(%p)", surface.get());
-    sp <ICamera> c = mCamera;
-    if (c == 0) return NO_INIT;
-    if (surface != 0) {
-        return c->setPreviewDisplay(surface);
-    } else {
-        ALOGD("app passed NULL surface");
-        return c->setPreviewDisplay(0);
-    }
-}
-
 // pass the buffered IGraphicBufferProducer to the camera service
-status_t Camera::setPreviewTexture(const sp<IGraphicBufferProducer>& bufferProducer)
+status_t Camera::setPreviewTarget(const sp<IGraphicBufferProducer>& bufferProducer)
 {
-    ALOGV("setPreviewTexture(%p)", bufferProducer.get());
+    ALOGV("setPreviewTarget(%p)", bufferProducer.get());
     sp <ICamera> c = mCamera;
     if (c == 0) return NO_INIT;
-    if (bufferProducer != 0) {
-        return c->setPreviewTexture(bufferProducer);
-    } else {
-        ALOGD("app passed NULL surface");
-        return c->setPreviewTexture(0);
-    }
+    ALOGD_IF(bufferProducer == 0, "app passed NULL surface");
+    return c->setPreviewTarget(bufferProducer);
 }
 
 // start preview mode
@@ -216,7 +199,7 @@ status_t Camera::storeMetaDataInBuffers(bool enabled)
     return c->storeMetaDataInBuffers(enabled);
 }
 
-// start recording mode, must call setPreviewDisplay first
+// start recording mode, must call setPreviewTarget first
 status_t Camera::startRecording()
 {
     ALOGV("startRecording");
@@ -345,6 +328,14 @@ void Camera::setPreviewCallbackFlags(int flag)
     sp <ICamera> c = mCamera;
     if (c == 0) return;
     mCamera->setPreviewCallbackFlag(flag);
+}
+
+status_t Camera::setPreviewCallbackTarget(
+        const sp<IGraphicBufferProducer>& callbackProducer)
+{
+    sp <ICamera> c = mCamera;
+    if (c == 0) return NO_INIT;
+    return c->setPreviewCallbackTarget(callbackProducer);
 }
 
 // callback from camera service

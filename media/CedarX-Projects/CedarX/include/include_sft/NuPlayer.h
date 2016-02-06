@@ -21,7 +21,7 @@
 #include <media/MediaPlayerInterface.h>
 #include <media/stagefright/foundation/AHandler.h>
 #include <media/stagefright/NativeWindowWrapper.h>
-#include <gui/SurfaceTextureClient.h>
+#include <gui/Surface.h>
 #if (CEDARX_ANDROID_VERSION < 7)
 #include <surfaceflinger/Surface.h>
 #else
@@ -46,7 +46,7 @@ struct NuPlayer : public AHandler {
     void setDataSource(
             const char *url, const KeyedVector<String8, String8> *headers);
 
-    void setVideoSurfaceTexture(const sp<ISurfaceTexture> &surfaceTexture);
+    void setVideoSurfaceTexture(const sp<IGraphicBufferProducer> &surfaceTexture);
     void setAudioSink(const sp<MediaPlayerBase::AudioSink> &sink);
     void start();
 

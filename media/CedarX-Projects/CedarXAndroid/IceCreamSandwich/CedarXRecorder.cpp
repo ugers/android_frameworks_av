@@ -21,8 +21,6 @@
 #else
 #include <media/stagefright/foundation/ADebug.h>
 #include <MetadataBufferType.h>
-#include <gui/ISurfaceTexture.h>
-#include <gui/SurfaceTextureClient.h>
 #include <gui/Surface.h>
 #endif
 
@@ -39,6 +37,8 @@
 #include <include_writer/recorde_writer.h>
 
 #define F_LOG 	LOGV("%s, line: %d", __FUNCTION__, __LINE__);
+
+#define AUDIO_SOURCE_AF 8
 
 #if (CEDARX_ANDROID_VERSION < 7)
 #define OUTPUT_FORMAT_RAW 10
@@ -353,7 +353,8 @@ status_t CedarXRecorder::isCameraAvailable(
 {
     if (camera == 0) 
 	{
-        mCamera = Camera::connect(cameraId);
+		// TODO: FIX THAT
+        //mCamera = Camera::connect(cameraId);
         if (mCamera == 0) 
 		{
 			return -EBUSY;
@@ -380,10 +381,10 @@ status_t CedarXRecorder::isCameraAvailable(
 
     // This CHECK is good, since we just passed the lock/unlock
     // check earlier by calling mCamera->setParameters().
-    if (mPreviewSurface != NULL)
+    /*if (mPreviewSurface != NULL)
     {
     	CHECK_EQ((status_t)OK, mCamera->setPreviewDisplay(mPreviewSurface));
-    }
+    }*/ // TODO: FIX THAT
 
 #if (CEDARX_ANDROID_VERSION == 6 && CEDARX_ADAPTER_VERSION == 4)
     mCamera->storeMetaDataInBuffers(true);
@@ -398,7 +399,7 @@ status_t CedarXRecorder::isCameraAvailable(
 }
 
 
-status_t CedarXRecorder::setPreviewSurface(const sp<Surface>& surface)
+status_t CedarXRecorder::setPreviewSurface(const sp<IGraphicBufferProducer>& surface)
 {
     LOGV("setPreviewSurface: %p", surface.get());
     mPreviewSurface = surface;
@@ -704,7 +705,7 @@ status_t CedarXRecorder::CreateAudioRecorder()
 #endif
 
 #if ((CEDARX_ANDROID_VERSION == 8) || (CEDARX_ANDROID_VERSION == 9))
-    int minFrameCount;
+    size_t minFrameCount;
 
     status_t status = AudioRecord::getMinFrameCount(&minFrameCount,
                                            mSampleRate,

@@ -32,6 +32,7 @@
 namespace android {
 
 struct ICrypto;
+struct IDrm;
 struct IHDCP;
 class IMediaRecorder;
 class IOMX;
@@ -55,11 +56,13 @@ public:
     virtual sp<IMediaRecorder> createMediaRecorder(pid_t pid) = 0;
     virtual sp<IMediaMetadataRetriever> createMetadataRetriever(pid_t pid) = 0;
     virtual sp<IMediaPlayer> create(pid_t pid, const sp<IMediaPlayerClient>& client, int audioSessionId = 0) = 0;
+	virtual sp<IMediaPlayer> create(const sp<IMediaPlayerClient>& client, int audioSessionId = 0) = 0;
 
     virtual sp<IMemory>         decode(const char* url, uint32_t *pSampleRate, int* pNumChannels, audio_format_t* pFormat) = 0;
     virtual sp<IMemory>         decode(int fd, int64_t offset, int64_t length, uint32_t *pSampleRate, int* pNumChannels, audio_format_t* pFormat) = 0;
     virtual sp<IOMX>            getOMX() = 0;
     virtual sp<ICrypto>         makeCrypto() = 0;
+    virtual sp<IDrm>            makeDrm() = 0;
     virtual sp<IHDCP>           makeHDCP() = 0;
 
     // Connects to a remote display.
@@ -95,6 +98,10 @@ public:
 
     virtual void addBatteryData(uint32_t params) = 0;
     virtual status_t pullBatteryData(Parcel* reply) = 0;
+
+    virtual status_t updateProxyConfig(
+            const char *host, int32_t port, const char *exclusionList) = 0;
+
     /* add by Gary. start {{----------------------------------- */
     virtual status_t        setScreen(int screen) = 0;
     virtual status_t        getScreen(int *screen) = 0;

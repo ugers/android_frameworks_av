@@ -28,6 +28,8 @@
 #include <media/stagefright/foundation/ADebug.h>
 #include <media/stagefright/MediaErrors.h>
 
+static const OMX_U32 kPortIndexInput = 0;
+
 namespace android {
 
 struct BufferMeta {
@@ -354,7 +356,12 @@ status_t OMXNodeInstance::storeMetaDataInBuffers(
         OMX_U32 portIndex,
         OMX_BOOL enable) {
     Mutex::Autolock autolock(mLock);
+    return storeMetaDataInBuffers_l(portIndex, enable);
+}
 
+status_t OMXNodeInstance::storeMetaDataInBuffers_l(
+        OMX_U32 portIndex,
+        OMX_BOOL enable) {
     OMX_INDEXTYPE index;
     OMX_STRING name = const_cast<OMX_STRING>(
             "OMX.google.android.index.storeMetaDataInBuffers");
@@ -362,6 +369,7 @@ status_t OMXNodeInstance::storeMetaDataInBuffers(
     OMX_ERRORTYPE err = OMX_GetExtensionIndex(mHandle, name, &index);
     if (err != OMX_ErrorNone) {
         ALOGE("OMX_GetExtensionIndex %s failed", name);
+
         return StatusFromOMXError(err);
     }
 
@@ -647,6 +655,26 @@ status_t OMXNodeInstance::emptyBuffer(
     buffer_meta->CopyToOMX(header);
 
     OMX_ERRORTYPE err = OMX_EmptyThisBuffer(mHandle, header);
+
+    return StatusFromOMXError(err);
+}
+
+// like emptyBuffer, but the data is already in header->pBuffer
+status_t OMXNodeInstance::emptyDirectBuffer(
+        OMX_BUFFERHEADERTYPE *header,
+        OMX_U32 rangeOffset, OMX_U32 rangeLength,
+        OMX_U32 flags, OMX_TICKS timestamp) {
+    Mutex::Autolock autoLock(mLock);
+
+    header->nFilledLen = rangeLength;
+    header->nOffset = rangeOffset;
+    header->nFlags = flags;
+    header->nTimeStamp = timestamp;
+
+    OMX_ERRORTYPE err = OMX_EmptyThisBuffer(mHandle, header);
+    if (err != OMX_ErrorNone) {
+        ALOGW("emptyDirectBuffer failed, OMX err=0x%x", err);
+    }
 
     return StatusFromOMXError(err);
 }

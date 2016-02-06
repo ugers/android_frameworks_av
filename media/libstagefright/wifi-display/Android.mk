@@ -27,6 +27,7 @@ LOCAL_C_INCLUDES:= \
 LOCAL_SHARED_LIBRARIES:= \
         libbinder                       \
         libcutils                       \
+        liblog                          \
         libgui                          \
         libmedia                        \
         libstagefright                  \
@@ -55,6 +56,7 @@ LOCAL_SHARED_LIBRARIES:= \
         libstagefright_foundation       \
         libstagefright_wfd              \
         libutils                        \
+        liblog                          \
 
 LOCAL_MODULE:= wfd
 
@@ -81,6 +83,7 @@ LOCAL_SHARED_LIBRARIES:= \
         libstagefright_foundation       \
         libstagefright_wfd              \
         libutils                        \
+        liblog                          \
 
 LOCAL_MODULE:= udptest
 

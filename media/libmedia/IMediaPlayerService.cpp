@@ -21,6 +21,7 @@
 #include <binder/Parcel.h>
 #include <binder/IMemory.h>
 #include <media/ICrypto.h>
+#include <media/IDrm.h>
 #include <media/IHDCP.h>
 #include <media/IMediaPlayerService.h>
 #include <media/IMediaRecorder.h>
@@ -42,10 +43,12 @@ enum {
     CREATE_METADATA_RETRIEVER,
     GET_OMX,
     MAKE_CRYPTO,
+    MAKE_DRM,
     MAKE_HDCP,
     ADD_BATTERY_DATA,
     PULL_BATTERY_DATA,
     LISTEN_FOR_REMOTE_DISPLAY,
+    UPDATE_PROXY_CONFIG,
     /* add by Gary. start {{----------------------------------- */
     SET_SCREEN,
     GET_SCREEN,
@@ -110,6 +113,17 @@ public:
         return interface_cast<IMediaPlayer>(reply.readStrongBinder());
     }
 
+    virtual sp<IMediaPlayer> create(
+            const sp<IMediaPlayerClient>& client, int audioSessionId) {
+        Parcel data, reply;
+        data.writeInterfaceToken(IMediaPlayerService::getInterfaceDescriptor());
+        data.writeStrongBinder(client->asBinder());
+        data.writeInt32(audioSessionId);
+
+        remote()->transact(CREATE, data, &reply);
+        return interface_cast<IMediaPlayer>(reply.readStrongBinder());
+    }
+
     virtual sp<IMediaRecorder> createMediaRecorder(pid_t pid)
     {
         Parcel data, reply;
@@ -159,6 +173,13 @@ public:
         return interface_cast<ICrypto>(reply.readStrongBinder());
     }
 
+    virtual sp<IDrm> makeDrm() {
+        Parcel data, reply;
+        data.writeInterfaceToken(IMediaPlayerService::getInterfaceDescriptor());
+        remote()->transact(MAKE_DRM, data, &reply);
+        return interface_cast<IDrm>(reply.readStrongBinder());
+    }
+
     virtual sp<IHDCP> makeHDCP() {
         Parcel data, reply;
         data.writeInterfaceToken(IMediaPlayerService::getInterfaceDescriptor());
@@ -188,6 +209,25 @@ public:
         data.writeString8(iface);
         remote()->transact(LISTEN_FOR_REMOTE_DISPLAY, data, &reply);
         return interface_cast<IRemoteDisplay>(reply.readStrongBinder());
+    }
+
+    virtual status_t updateProxyConfig(
+            const char *host, int32_t port, const char *exclusionList) {
+        Parcel data, reply;
+
+        data.writeInterfaceToken(IMediaPlayerService::getInterfaceDescriptor());
+        if (host == NULL) {
+            data.writeInt32(0);
+        } else {
+            data.writeInt32(1);
+            data.writeCString(host);
+            data.writeInt32(port);
+            data.writeCString(exclusionList);
+        }
+
+        remote()->transact(UPDATE_PROXY_CONFIG, data, &reply);
+
+        return reply.readInt32();
     }
 
     /* add by Gary. start {{----------------------------------- */
@@ -467,6 +507,23 @@ status_t BnMediaPlayerService::onTransact(
             sp<IRemoteDisplay> display(listenForRemoteDisplay(client, iface));
             reply->writeStrongBinder(display->asBinder());
             return NO_ERROR;
+        } break;
+        case UPDATE_PROXY_CONFIG: {
+            CHECK_INTERFACE(IMediaPlayerService, data, reply);
+
+            const char *host = NULL;
+            int32_t port = 0;
+            const char *exclusionList = NULL;
+
+            if (data.readInt32()) {
+                host = data.readCString();
+                port = data.readInt32();
+                exclusionList = data.readCString();
+            }
+
+            reply->writeInt32(updateProxyConfig(host, port, exclusionList));
+
+            return OK;
         } break;
         /* add by Gary. start {{----------------------------------- */
         case SET_SCREEN: {

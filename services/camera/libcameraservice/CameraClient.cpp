@@ -18,7 +18,6 @@
 //#define LOG_NDEBUG 0
 
 #include <cutils/properties.h>
-#include <gui/SurfaceTextureClient.h>
 #include <gui/Surface.h>
 
 #include "CameraClient.h"
@@ -322,9 +321,10 @@ status_t CameraClient::setPreviewWindow(const sp<IBinder>& binder,
 status_t CameraClient::setPreviewDisplay(const sp<Surface>& surface) {
     LOG1("setPreviewDisplay(%p) (pid %d)", surface.get(), getCallingPid());
 
-    sp<IBinder> binder(surface != 0 ? surface->asBinder() : 0);
-    sp<ANativeWindow> window(surface);
-    return setPreviewWindow(binder, window);
+    //sp<IBinder> binder(surface != 0 ? surface->asBinder() : 0);
+    //sp<ANativeWindow> window(surface);
+    //return setPreviewWindow(binder, window);
+	return 0;
 }
 
 // set the SurfaceTextureClient that the preview will use
@@ -337,7 +337,25 @@ status_t CameraClient::setPreviewTexture(
     sp<ANativeWindow> window;
     if (bufferProducer != 0) {
         binder = bufferProducer->asBinder();
-        window = new SurfaceTextureClient(bufferProducer);
+        window = new Surface(bufferProducer, true);
+    }
+    return setPreviewWindow(binder, window);
+}
+
+// set the buffer consumer that the preview will use
+status_t CameraClient::setPreviewTarget(
+        const sp<IGraphicBufferProducer>& bufferProducer) {
+    LOG1("setPreviewTarget(%p) (pid %d)", bufferProducer.get(),
+            getCallingPid());
+
+    sp<IBinder> binder;
+    sp<ANativeWindow> window;
+    if (bufferProducer != 0) {
+        binder = bufferProducer->asBinder();
+        // Using controlledByApp flag to ensure that the buffer queue remains in
+        // async mode for the old camera API, where many applications depend
+        // on that behavior.
+        window = new Surface(bufferProducer, /*controlledByApp*/ true);
     }
     return setPreviewWindow(binder, window);
 }
@@ -355,6 +373,13 @@ void CameraClient::setPreviewCallbackFlag(int callback_flag) {
     } else {
         disableMsgType(CAMERA_MSG_PREVIEW_FRAME);
     }
+}
+
+status_t CameraClient::setPreviewCallbackTarget(
+        const sp<IGraphicBufferProducer>& callbackProducer) {
+    (void)callbackProducer;
+    ALOGE("%s: Unimplemented!", __FUNCTION__);
+    return INVALID_OPERATION;
 }
 
 // start preview mode

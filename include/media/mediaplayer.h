@@ -242,6 +242,10 @@ public:
             status_t        getParameter(int key, Parcel* reply);
             status_t        setRetransmitEndpoint(const char* addrString, uint16_t port);
             status_t        setNextMediaPlayer(const sp<MediaPlayer>& player);
+
+            status_t updateProxyConfig(
+                    const char *host, int32_t port, const char *exclusionList);
+
             /* add by Gary. start {{----------------------------------- */
             static  status_t        setScreen(int screen);
             static  status_t        getScreen(int *screen);

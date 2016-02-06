@@ -90,7 +90,7 @@ status_t MediaRecorderClient::setCamera(const sp<ICamera>& camera,
     return mRecorder->setCamera(camera, proxy);
 }
 
-status_t MediaRecorderClient::setPreviewSurface(const sp<Surface>& surface)
+status_t MediaRecorderClient::setPreviewSurface(const sp<IGraphicBufferProducer>& surface)
 {
     ALOGV("setPreviewSurface");
     Mutex::Autolock lock(mLock);
@@ -343,6 +343,16 @@ status_t MediaRecorderClient::setListener(const sp<IMediaRecorderClient>& listen
         return NO_INIT;
     }
     return mRecorder->setListener(listener);
+}
+
+status_t MediaRecorderClient::setClientName(const String16& clientName) {
+    ALOGV("setClientName(%s)", String8(clientName).string());
+    Mutex::Autolock lock(mLock);
+    if (mRecorder == NULL) {
+        ALOGE("recorder is not initialized");
+        return NO_INIT;
+    }
+    return mRecorder->setClientName(clientName);
 }
 
 status_t MediaRecorderClient::dump(int fd, const Vector<String16>& args) const {

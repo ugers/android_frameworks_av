@@ -79,6 +79,14 @@ const sp<IAudioFlinger>& AudioSystem::get_audio_flinger()
     return gAudioFlinger;
 }
 
+/* static */ status_t AudioSystem::checkAudioFlinger()
+{
+    if (defaultServiceManager()->checkService(String16("media.audio_flinger")) != 0) {
+        return NO_ERROR;
+    }
+    return DEAD_OBJECT;
+}
+
 status_t AudioSystem::muteMicrophone(bool state) {
     const sp<IAudioFlinger>& af = AudioSystem::get_audio_flinger();
     if (af == 0) return PERMISSION_DENIED;
@@ -211,10 +219,10 @@ int AudioSystem::logToLinear(float volume)
 
 // DEPRECATED
 status_t AudioSystem::getOutputSamplingRate(int* samplingRate, int streamType) {
-    return getOutputSamplingRate(samplingRate, (audio_stream_type_t)streamType);
+    return getOutputSamplingRate((uint32_t*)samplingRate, (audio_stream_type_t)streamType);
 }
 
-status_t AudioSystem::getOutputSamplingRate(int* samplingRate, audio_stream_type_t streamType)
+status_t AudioSystem::getOutputSamplingRate(uint32_t* samplingRate, audio_stream_type_t streamType)
 {
     audio_io_handle_t output;
 
@@ -232,7 +240,7 @@ status_t AudioSystem::getOutputSamplingRate(int* samplingRate, audio_stream_type
 
 status_t AudioSystem::getSamplingRate(audio_io_handle_t output,
                                       audio_stream_type_t streamType,
-                                      int* samplingRate)
+                                      uint32_t* samplingRate)
 {
     OutputDescriptor *outputDesc;
 
@@ -257,10 +265,10 @@ status_t AudioSystem::getSamplingRate(audio_io_handle_t output,
 
 // DEPRECATED
 status_t AudioSystem::getOutputFrameCount(int* frameCount, int streamType) {
-    return getOutputFrameCount(frameCount, (audio_stream_type_t)streamType);
+    return getOutputFrameCount((size_t*)frameCount, (audio_stream_type_t)streamType);
 }
 
-status_t AudioSystem::getOutputFrameCount(int* frameCount, audio_stream_type_t streamType)
+status_t AudioSystem::getOutputFrameCount(size_t* frameCount, audio_stream_type_t streamType)
 {
     audio_io_handle_t output;
 
@@ -278,7 +286,7 @@ status_t AudioSystem::getOutputFrameCount(int* frameCount, audio_stream_type_t s
 
 status_t AudioSystem::getFrameCount(audio_io_handle_t output,
                                     audio_stream_type_t streamType,
-                                    int* frameCount)
+                                    size_t* frameCount)
 {
     OutputDescriptor *outputDesc;
 
@@ -748,6 +756,16 @@ status_t AudioSystem::isStreamActive(audio_stream_type_t stream, bool* state, ui
     return NO_ERROR;
 }
 
+status_t AudioSystem::isStreamActiveRemotely(audio_stream_type_t stream, bool* state,
+        uint32_t inPastMs)
+{
+    const sp<IAudioPolicyService>& aps = AudioSystem::get_audio_policy_service();
+    if (aps == 0) return PERMISSION_DENIED;
+    if (state == NULL) return BAD_VALUE;
+    *state = aps->isStreamActiveRemotely(stream, inPastMs);
+    return NO_ERROR;
+}
+
 status_t AudioSystem::isSourceActive(audio_source_t stream, bool* state)
 {
     const sp<IAudioPolicyService>& aps = AudioSystem::get_audio_policy_service();
@@ -769,6 +787,13 @@ int32_t AudioSystem::getPrimaryOutputFrameCount()
     const sp<IAudioFlinger>& af = AudioSystem::get_audio_flinger();
     if (af == 0) return 0;
     return af->getPrimaryOutputFrameCount();
+}
+
+status_t AudioSystem::setLowRamDevice(bool isLowRamDevice)
+{
+    const sp<IAudioFlinger>& af = AudioSystem::get_audio_flinger();
+    if (af == 0) return PERMISSION_DENIED;
+    return af->setLowRamDevice(isLowRamDevice);
 }
 
 void AudioSystem::clearAudioConfigCache()

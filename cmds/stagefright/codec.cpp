@@ -36,6 +36,7 @@
 #include <media/stagefright/NuMediaExtractor.h>
 #include <gui/ISurfaceComposer.h>
 #include <gui/SurfaceComposerClient.h>
+#include <gui/Surface.h>
 #include <ui/DisplayInfo.h>
 
 static void usage(const char *me) {
@@ -119,10 +120,10 @@ static int decode(
 
         CHECK(state->mCodec != NULL);
 
-        err = state->mCodec->configure(
+        /*err = state->mCodec->configure(
                 format, isVideo ? surface : NULL,
-                NULL /* crypto */,
-                0 /* flags */);
+                NULL /* crypto *///,
+                //0 /* flags *///);
 
         CHECK_EQ(err, (status_t)OK);
 
@@ -413,7 +414,7 @@ int main(int argc, char **argv) {
         looper->registerHandler(player);
 
         player->setDataSource(argv[0]);
-        player->setSurface(surface->getSurfaceTexture());
+        player->setSurface(surface->getIGraphicBufferProducer());
         player->start();
         sleep(60);
         player->stop();

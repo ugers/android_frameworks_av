@@ -1918,8 +1918,6 @@ audio_effect_library_t AUDIO_EFFECT_LIBRARY_INFO_SYM = {
     version : EFFECT_LIBRARY_API_VERSION,
     name : "Audio Preprocessing Library",
     implementor : "The Android Open Source Project",
-    query_num_effects : PreProcessingLib_QueryNumberEffects,
-    query_effect : PreProcessingLib_QueryEffect,
     create_effect : PreProcessingLib_Create,
     release_effect : PreProcessingLib_Release,
     get_descriptor : PreProcessingLib_GetDescriptor

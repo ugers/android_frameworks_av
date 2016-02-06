@@ -580,8 +580,6 @@ audio_effect_library_t AUDIO_EFFECT_LIBRARY_INFO_SYM = {
     version : EFFECT_LIBRARY_API_VERSION,
     name : "Visualizer Library",
     implementor : "The Android Open Source Project",
-    query_num_effects : VisualizerLib_QueryNumberEffects,
-    query_effect : VisualizerLib_QueryEffect,
     create_effect : VisualizerLib_Create,
     release_effect : VisualizerLib_Release,
     get_descriptor : VisualizerLib_GetDescriptor,

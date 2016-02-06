@@ -381,7 +381,8 @@ void WifiDisplaySource::onMessageReceived(const sp<AMessage> &msg) {
                             mClientInfo.mPlaybackSession->height(),
                             mUsingHDCP
                                 ? IRemoteDisplayClient::kDisplayFlagSecure
-                                : 0);
+                                : 0,
+                            playbackSessionID);
                 }
 
                 if (mState == ABOUT_TO_PLAY) {

@@ -55,6 +55,9 @@ enum {
     ERROR_DRM_DECRYPT                       = DRM_ERROR_BASE - 5,
     ERROR_DRM_CANNOT_HANDLE                 = DRM_ERROR_BASE - 6,
     ERROR_DRM_TAMPER_DETECTED               = DRM_ERROR_BASE - 7,
+    ERROR_DRM_NOT_PROVISIONED               = DRM_ERROR_BASE - 8,
+    ERROR_DRM_DEVICE_REVOKED                = DRM_ERROR_BASE - 9,
+    ERROR_DRM_RESOURCE_BUSY                 = DRM_ERROR_BASE - 10,
 
     ERROR_DRM_VENDOR_MAX                    = DRM_ERROR_BASE - 500,
     ERROR_DRM_VENDOR_MIN                    = DRM_ERROR_BASE - 999,

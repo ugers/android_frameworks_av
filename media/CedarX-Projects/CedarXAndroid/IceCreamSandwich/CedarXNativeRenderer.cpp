@@ -29,7 +29,9 @@
 #endif
 
 #include <ui/GraphicBufferMapper.h>
-#include <gui/ISurfaceTexture.h>
+#include <gui/Surface.h>
+
+#include <system/window.h>
 
 namespace android {
 

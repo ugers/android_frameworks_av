@@ -37,7 +37,7 @@ public:
         int32_t cameraId,
         Size videoSize,
         int32_t videoFrameRate,
-        const sp<Surface>& surface,
+        const sp<IGraphicBufferProducer>& surface,
         int64_t timeBetweenTimeLapseFrameCaptureUs);
 
     virtual ~CameraSourceTimeLapse();
@@ -110,7 +110,7 @@ private:
         int32_t cameraId,
         Size videoSize,
         int32_t videoFrameRate,
-        const sp<Surface>& surface,
+        const sp<IGraphicBufferProducer>& surface,
         int64_t timeBetweenTimeLapseFrameCaptureUs);
 
     // Wrapper over CameraSource::signalBufferReturned() to implement quick stop.

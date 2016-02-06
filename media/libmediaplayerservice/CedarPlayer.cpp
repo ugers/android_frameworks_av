@@ -71,7 +71,7 @@ status_t CedarPlayer::setVideoSurface(const sp<Surface> &surface) {
 }
 
 status_t CedarPlayer::setVideoSurfaceTexture(
-        const sp<ISurfaceTexture> &surfaceTexture) {
+        const sp<IGraphicBufferProducer> &surfaceTexture) {
     ALOGV("setVideoSurfaceTexture");
 
     return mPlayer->setSurfaceTexture(surfaceTexture);

@@ -25,6 +25,7 @@
 #include <binder/IInterface.h>
 #include <binder/IMemory.h>
 #include <utils/LinearTransform.h>
+#include <media/AudioTimestamp.h>
 
 namespace android {
 
@@ -87,6 +88,9 @@ public:
        or Tungsten time. The values for target are defined in AudioTrack.h */
     virtual status_t    setMediaTimeTransform(const LinearTransform& xform,
                                               int target) = 0;
+											  
+    /* Return NO_ERROR if timestamp is valid */
+    virtual status_t    getTimestamp(AudioTimestamp& timestamp) = 0;
 };
 
 // ----------------------------------------------------------------------------

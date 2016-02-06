@@ -70,12 +70,17 @@ public:
 class Camera : public BnCameraClient, public IBinder::DeathRecipient
 {
 public:
+    enum {
+        USE_CALLING_UID = -1
+    };
             // construct a camera client from an existing remote
     static  sp<Camera>  create(const sp<ICamera>& camera);
     static  int32_t     getNumberOfCameras();
     static  status_t    getCameraInfo(int cameraId,
                                       struct CameraInfo* cameraInfo);
-    static  sp<Camera>  connect(int cameraId);
+    static  sp<Camera>  connect(int cameraId,
+                                const String16& clientPackageName,
+                                int clientUid);
             virtual     ~Camera();
             void        init();
 
@@ -86,11 +91,8 @@ public:
 
             status_t    getStatus() { return mStatus; }
 
-            // pass the buffered Surface to the camera service
-            status_t    setPreviewDisplay(const sp<Surface>& surface);
-
             // pass the buffered IGraphicBufferProducer to the camera service
-            status_t    setPreviewTexture(const sp<IGraphicBufferProducer>& bufferProducer);
+            status_t    setPreviewTarget(const sp<IGraphicBufferProducer>& bufferProducer);
 
             // start preview mode, must call setPreviewDisplay first
             status_t    startPreview();
@@ -137,6 +139,8 @@ public:
             void        setListener(const sp<CameraListener>& listener);
             void        setRecordingProxyListener(const sp<ICameraRecordingProxyListener>& listener);
             void        setPreviewCallbackFlags(int preview_callback_flag);
+            status_t    setPreviewCallbackTarget(
+                    const sp<IGraphicBufferProducer>& callbackProducer);
 
             sp<ICameraRecordingProxy> getRecordingProxy();
 

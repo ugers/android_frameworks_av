@@ -30,6 +30,9 @@ static Mutex gLibMutex;
 HTTPBase *(*gLib_createChromiumHTTPDataSource)(uint32_t flags);
 DataSource *(*gLib_createDataUriSource)(const char *uri);
 
+status_t (*gLib_UpdateChromiumHTTPDataSourceProxyConfig)(
+        const char *host, int32_t port, const char *exclusionList);
+
 static bool load_libstagefright_chromium_http() {
     Mutex::Autolock autoLock(gLibMutex);
     void *sym;
@@ -68,6 +71,16 @@ HTTPBase *createChromiumHTTPDataSource(uint32_t flags) {
     }
 
     return gLib_createChromiumHTTPDataSource(flags);
+}
+
+status_t UpdateChromiumHTTPDataSourceProxyConfig(
+        const char *host, int32_t port, const char *exclusionList) {
+    if (!load_libstagefright_chromium_http()) {
+        return INVALID_OPERATION;
+    }
+
+    return gLib_UpdateChromiumHTTPDataSourceProxyConfig(
+            host, port, exclusionList);
 }
 
 DataSource *createDataUriSource(const char *uri) {

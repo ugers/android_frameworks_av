@@ -73,7 +73,7 @@ LOCAL_STATIC_LIBRARIES := \
 
 LOCAL_SHARED_LIBRARIES := \
         libstagefright_omx libstagefright_foundation libutils \
-        libstagefright_amrnb_common
+        libstagefright_amrnb_common liblog
 
 LOCAL_MODULE := libstagefright_soft_amrdec
 LOCAL_MODULE_TAGS := optional

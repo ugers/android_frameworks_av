@@ -83,6 +83,12 @@ struct MuxOMX : public IOMX {
             node_id node, OMX_U32 port_index,
             const sp<GraphicBuffer> &graphicBuffer, buffer_id *buffer);
 
+    virtual status_t createInputSurface(
+            node_id node, OMX_U32 port_index,
+            sp<IGraphicBufferProducer> *bufferProducer);
+
+    virtual status_t signalEndOfInputStream(node_id node);
+
     virtual status_t allocateBuffer(
             node_id node, OMX_U32 port_index, size_t size,
             buffer_id *buffer, void **buffer_data);
@@ -106,6 +112,13 @@ struct MuxOMX : public IOMX {
             node_id node,
             const char *parameter_name,
             OMX_INDEXTYPE *index);
+
+    virtual status_t setInternalOption(
+            node_id node,
+            OMX_U32 port_index,
+            InternalOptionType type,
+            const void *data,
+            size_t size);
 
 private:
     mutable Mutex mLock;
@@ -274,6 +287,18 @@ status_t MuxOMX::useGraphicBuffer(
             node, port_index, graphicBuffer, buffer);
 }
 
+status_t MuxOMX::createInputSurface(
+        node_id node, OMX_U32 port_index,
+        sp<IGraphicBufferProducer> *bufferProducer) {
+    status_t err = getOMX(node)->createInputSurface(
+            node, port_index, bufferProducer);
+    return err;
+}
+
+status_t MuxOMX::signalEndOfInputStream(node_id node) {
+    return getOMX(node)->signalEndOfInputStream(node);
+}
+
 status_t MuxOMX::allocateBuffer(
         node_id node, OMX_U32 port_index, size_t size,
         buffer_id *buffer, void **buffer_data) {
@@ -311,6 +336,15 @@ status_t MuxOMX::getExtensionIndex(
         const char *parameter_name,
         OMX_INDEXTYPE *index) {
     return getOMX(node)->getExtensionIndex(node, parameter_name, index);
+}
+
+status_t MuxOMX::setInternalOption(
+        node_id node,
+        OMX_U32 port_index,
+        InternalOptionType type,
+        const void *data,
+        size_t size) {
+    return getOMX(node)->setInternalOption(node, port_index, type, data, size);
 }
 
 OMXClient::OMXClient() {

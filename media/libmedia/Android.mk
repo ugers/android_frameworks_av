@@ -29,6 +29,8 @@ LOCAL_SRC_FILES:= \
     IAudioTrack.cpp \
     IAudioRecord.cpp \
     ICrypto.cpp \
+    IDrm.cpp \
+    IDrmClient.cpp \
     IHDCP.cpp \
     AudioRecord.cpp \
     AudioSystem.cpp \
@@ -60,7 +62,8 @@ LOCAL_SRC_FILES:= \
     Visualizer.cpp \
     MemoryLeakTrackUtil.cpp \
     SoundPool.cpp \
-    SoundPoolThread.cpp
+    SoundPoolThread.cpp \
+    StringArray.cpp
 
 ifeq ($(BOARD_USES_LIBMEDIA_WITH_AUDIOPARAMETER),true)
 LOCAL_SRC_FILES+= \

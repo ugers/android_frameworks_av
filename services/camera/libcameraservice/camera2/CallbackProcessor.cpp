@@ -22,7 +22,7 @@
 #include <utils/Trace.h>
 
 #include "CallbackProcessor.h"
-#include <gui/SurfaceTextureClient.h>
+#include <gui/Surface.h>
 #include "../Camera2Device.h"
 #include "../Camera2Client.h"
 
@@ -62,11 +62,11 @@ status_t CallbackProcessor::updateStream(const Parameters &params) {
 
     if (mCallbackConsumer == 0) {
         // Create CPU buffer queue endpoint
-        mCallbackConsumer = new CpuConsumer(kCallbackHeapCount);
+		sp<BufferQueue> bq = new BufferQueue();
+        mCallbackConsumer = new CpuConsumer(bq, kCallbackHeapCount);
         mCallbackConsumer->setFrameAvailableListener(this);
         mCallbackConsumer->setName(String8("Camera2Client::CallbackConsumer"));
-        mCallbackWindow = new SurfaceTextureClient(
-            mCallbackConsumer->getProducerInterface());
+        mCallbackWindow = new Surface(bq);
     }
 
     if (mCallbackStreamId != NO_STREAM) {

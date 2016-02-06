@@ -42,7 +42,7 @@
 #include <binder/IServiceManager.h>
 #include <binder/MemoryHeapBase.h>
 #include <binder/MemoryBase.h>
-#include <gui/SurfaceTextureClient.h>
+#include <gui/Surface.h>
 #include <utils/Errors.h>  // for status_t
 #include <utils/String8.h>
 #include <utils/SystemClock.h>
@@ -80,7 +80,9 @@
 #include <OMX.h>
 
 #include "Crypto.h"
+#include "Drm.h"
 #include "HDCP.h"
+#include "HTTPBase.h"
 #include "RemoteDisplay.h"
 #define DEFAULT_SAMPLE_RATE 44100
 
@@ -347,6 +349,31 @@ sp<IMediaPlayer> MediaPlayerService::create(pid_t pid, const sp<IMediaPlayerClie
     return c;
 }
 
+sp<IMediaPlayer> MediaPlayerService::create(const sp<IMediaPlayerClient>& client,
+        int audioSessionId)
+{
+    pid_t pid = IPCThreadState::self()->getCallingPid();
+    int32_t connId = android_atomic_inc(&mNextConnId);
+
+    sp<Client> c = new Client(
+            this, pid, connId, client, audioSessionId,
+            IPCThreadState::self()->getCallingUid());
+
+    ALOGV("Create new client(%d) from pid %d, uid %d, ", connId, pid,
+         IPCThreadState::self()->getCallingUid());
+    /* add by Gary. start {{----------------------------------- */
+    c->setScreen(mScreen);
+    /* add by Gary. end   -----------------------------------}} */
+    c->setSubGate(mGlobalSubGate);  // 2012-03-12, add the global interfaces to control the subtitle gate
+
+    wp<Client> w = c;
+    {
+        Mutex::Autolock lock(mLock);
+        mClients.add(w);
+    }
+    return c;
+}
+
 sp<IOMX> MediaPlayerService::getOMX() {
     Mutex::Autolock autoLock(mLock);
 
@@ -361,6 +388,10 @@ sp<ICrypto> MediaPlayerService::makeCrypto() {
     return new Crypto;
 }
 
+sp<IDrm> MediaPlayerService::makeDrm() {
+    return new Drm;
+}
+
 sp<IHDCP> MediaPlayerService::makeHDCP() {
     return new HDCP;
 }
@@ -372,6 +403,11 @@ sp<IRemoteDisplay> MediaPlayerService::listenForRemoteDisplay(
     }
 
     return new RemoteDisplay(client, iface.string());
+}
+
+status_t MediaPlayerService::updateProxyConfig(
+        const char *host, int32_t port, const char *exclusionList) {
+    return HTTPBase::UpdateProxyConfig(host, port, exclusionList);
 }
 
 status_t MediaPlayerService::AudioCache::dump(int fd, const Vector<String16>& args) const
@@ -868,7 +904,7 @@ status_t MediaPlayerService::Client::setVideoSurfaceTexture(
 
     sp<ANativeWindow> anw;
     if (bufferProducer != NULL) {
-        anw = new SurfaceTextureClient(bufferProducer);
+        anw = new Surface(bufferProducer, true /* controlledByApp */);
         status_t err = native_window_api_connect(anw.get(),
                 NATIVE_WINDOW_API_MEDIA);
 
@@ -2372,8 +2408,8 @@ status_t MediaPlayerService::AudioOutput::open(
     }
     ALOGV("open(%u, %d, 0x%x, %d, %d, %d)", sampleRate, channelCount, channelMask,
             format, bufferCount, mSessionId);
-    int afSampleRate;
-    int afFrameCount;
+    uint32_t afSampleRate;
+    size_t afFrameCount;
     uint32_t frameCount;
 
     if (AudioSystem::getOutputFrameCount(&afFrameCount, mStreamType) != NO_ERROR) {

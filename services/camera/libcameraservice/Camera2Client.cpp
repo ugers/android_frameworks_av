@@ -22,7 +22,6 @@
 #include <utils/Trace.h>
 
 #include <cutils/properties.h>
-#include <gui/SurfaceTextureClient.h>
 #include <gui/Surface.h>
 #include "camera2/Parameters.h"
 #include "Camera2Client.h"
@@ -185,7 +184,7 @@ status_t Camera2Client::dump(int fd, const Vector<String16>& args) {
                 p.gpsProcessingMethod.string());
     }
 
-    result.append("    White balance mode: ");
+    /*result.append("    White balance mode: ");
     switch (p.wbMode) {
         CASE_APPEND_ENUM(ANDROID_CONTROL_AWB_AUTO)
         CASE_APPEND_ENUM(ANDROID_CONTROL_AWB_INCANDESCENT)
@@ -276,7 +275,7 @@ status_t Camera2Client::dump(int fd, const Vector<String16>& args) {
         CASE_APPEND_ENUM(ANDROID_CONTROL_AF_STATE_FOCUSED_LOCKED)
         CASE_APPEND_ENUM(ANDROID_CONTROL_AF_STATE_NOT_FOCUSED_LOCKED)
         default: result.append("UNKNOWN\n");
-    }
+    }*/
 
     result.append("    Focusing areas:\n");
     for (size_t i = 0; i < p.focusingAreas.size(); i++) {
@@ -483,6 +482,26 @@ status_t Camera2Client::unlock() {
     return EBUSY;
 }
 
+status_t Camera2Client::setPreviewTarget(
+        const sp<IGraphicBufferProducer>& bufferProducer) {
+    ATRACE_CALL();
+    ALOGV("%s: E", __FUNCTION__);
+    Mutex::Autolock icl(mICameraLock);
+    status_t res;
+    if ( (res = checkPid(__FUNCTION__) ) != OK) return res;
+
+    sp<IBinder> binder;
+    sp<ANativeWindow> window;
+    if (bufferProducer != 0) {
+        binder = bufferProducer->asBinder();
+        // Using controlledByApp flag to ensure that the buffer queue remains in
+        // async mode for the old camera API, where many applications depend
+        // on that behavior.
+        window = new Surface(bufferProducer, /*controlledByApp*/ true);
+    }
+    return setPreviewWindowL(binder, window);
+}
+
 status_t Camera2Client::setPreviewDisplay(
         const sp<Surface>& surface) {
     ATRACE_CALL();
@@ -494,11 +513,11 @@ status_t Camera2Client::setPreviewDisplay(
     sp<IBinder> binder;
     sp<ANativeWindow> window;
     if (surface != 0) {
-        binder = surface->asBinder();
+        //binder = surface->asBinder();
         window = surface;
     }
 
-    return setPreviewWindowL(binder,window);
+    return 0;
 }
 
 status_t Camera2Client::setPreviewTexture(
@@ -513,7 +532,7 @@ status_t Camera2Client::setPreviewTexture(
     sp<ANativeWindow> window;
     if (bufferProducer != 0) {
         binder = bufferProducer->asBinder();
-        window = new SurfaceTextureClient(bufferProducer);
+        window = new Surface(bufferProducer, true);
     }
     return setPreviewWindowL(binder, window);
 }
@@ -608,6 +627,58 @@ void Camera2Client::setPreviewCallbackFlagL(Parameters &params, int flag) {
         }
     }
 
+}
+
+status_t Camera2Client::setPreviewCallbackTarget(
+        const sp<IGraphicBufferProducer>& callbackProducer) {
+    ATRACE_CALL();
+    ALOGV("%s: E", __FUNCTION__);
+    Mutex::Autolock icl(mICameraLock);
+    status_t res;
+    if ( (res = checkPid(__FUNCTION__) ) != OK) return res;
+
+    sp<ANativeWindow> window;
+    if (callbackProducer != 0) {
+        window = new Surface(callbackProducer);
+    }
+
+    //res = mCallbackProcessor->setCallbackWindow(window);
+    if (res != OK) {
+        ALOGE("%s: Camera %d: Unable to set preview callback surface: %s (%d)",
+                __FUNCTION__, mCameraId, strerror(-res), res);
+        return res;
+    }
+
+    SharedParameters::Lock l(mParameters);
+
+    if (window != NULL) {
+        // Disable traditional callbacks when a valid callback target is given
+        l.mParameters.previewCallbackFlags = CAMERA_FRAME_CALLBACK_FLAG_NOOP;
+        l.mParameters.previewCallbackOneShot = false;
+        //l.mParameters.previewCallbackSurface = true;
+    } else {
+        // Disable callback target if given a NULL interface.
+        //l.mParameters.previewCallbackSurface = false;
+    }
+
+    switch(l.mParameters.state) {
+        case Parameters::PREVIEW:
+            res = startPreviewL(l.mParameters, true);
+            break;
+        case Parameters::RECORD:
+        case Parameters::VIDEO_SNAPSHOT:
+            res = startRecordingL(l.mParameters, true);
+            break;
+        default:
+            break;
+    }
+    if (res != OK) {
+        ALOGE("%s: Camera %d: Unable to refresh request in state %s",
+                __FUNCTION__, mCameraId,
+                Parameters::getStateName(l.mParameters.state));
+    }
+
+    return OK;
 }
 
 status_t Camera2Client::startPreview() {
@@ -1265,7 +1336,7 @@ status_t Camera2Client::commandStartFaceDetectionL(int type) {
     }
     // Ignoring type
     if (l.mParameters.fastInfo.bestFaceDetectMode ==
-            ANDROID_STATS_FACE_DETECTION_OFF) {
+            ANDROID_STATISTICS_FACE_DETECT_MODE_OFF) {
         ALOGE("%s: Camera %d: Face detection not supported",
                 __FUNCTION__, mCameraId);
         return INVALID_OPERATION;

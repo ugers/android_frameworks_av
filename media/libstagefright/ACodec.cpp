@@ -426,6 +426,12 @@ void ACodec::initiateSetup(const sp<AMessage> &msg) {
     msg->post();
 }
 
+void ACodec::signalSetParameters(const sp<AMessage> &params) {
+    sp<AMessage> msg = new AMessage(kWhatSetParameters, id());
+    msg->setMessage("params", params);
+    msg->post();
+}
+
 void ACodec::initiateAllocateComponent(const sp<AMessage> &msg) {
     msg->setWhat(kWhatAllocateComponent);
     msg->setTarget(id());
@@ -436,6 +442,14 @@ void ACodec::initiateConfigureComponent(const sp<AMessage> &msg) {
     msg->setWhat(kWhatConfigureComponent);
     msg->setTarget(id());
     msg->post();
+}
+
+void ACodec::initiateCreateInputSurface() {
+    (new AMessage(kWhatCreateInputSurface, id()))->post();
+}
+
+void ACodec::signalEndOfInputStream() {
+    (new AMessage(kWhatSignalEndOfInputStream, id()))->post();
 }
 
 void ACodec::initiateStart() {
@@ -3922,12 +3936,100 @@ bool ACodec::ExecutingState::onMessageReceived(const sp<AMessage> &msg) {
             break;
         }
 
+        case kWhatSetParameters:
+        {
+            sp<AMessage> params;
+            CHECK(msg->findMessage("params", &params));
+
+            status_t err = mCodec->setParameters(params);
+
+            sp<AMessage> reply;
+            if (msg->findMessage("reply", &reply)) {
+                reply->setInt32("err", err);
+                reply->post();
+            }
+
+            handled = true;
+            break;
+        }
+
+        case ACodec::kWhatSignalEndOfInputStream:
+        {
+            mCodec->onSignalEndOfInputStream();
+            handled = true;
+            break;
+        }
+
         default:
             handled = BaseState::onMessageReceived(msg);
             break;
     }
 
     return handled;
+}
+
+status_t ACodec::setParameters(const sp<AMessage> &params) {
+    int32_t videoBitrate;
+    if (params->findInt32("video-bitrate", &videoBitrate)) {
+        OMX_VIDEO_CONFIG_BITRATETYPE configParams;
+        InitOMXParams(&configParams);
+        configParams.nPortIndex = kPortIndexOutput;
+        configParams.nEncodeBitrate = videoBitrate;
+
+        status_t err = mOMX->setConfig(
+                mNode,
+                OMX_IndexConfigVideoBitrate,
+                &configParams,
+                sizeof(configParams));
+
+        if (err != OK) {
+            ALOGE("setConfig(OMX_IndexConfigVideoBitrate, %d) failed w/ err %d",
+                   videoBitrate, err);
+
+            return err;
+        }
+    }
+
+    int32_t dropInputFrames;
+    if (params->findInt32("drop-input-frames", &dropInputFrames)) {
+        bool suspend = dropInputFrames != 0;
+
+        status_t err =
+            mOMX->setInternalOption(
+                     mNode,
+                     kPortIndexInput,
+                     IOMX::INTERNAL_OPTION_SUSPEND,
+                     &suspend,
+                     sizeof(suspend));
+
+        if (err != OK) {
+            ALOGE("Failed to set parameter 'drop-input-frames' (err %d)", err);
+            return err;
+        }
+    }
+
+    int32_t dummy;
+    if (params->findInt32("request-sync", &dummy)) {
+        status_t err = requestIDRFrame();
+
+        if (err != OK) {
+            ALOGE("Requesting a sync frame failed w/ err %d", err);
+            return err;
+        }
+    }
+
+    return OK;
+}
+
+void ACodec::onSignalEndOfInputStream() {
+    sp<AMessage> notify = mNotify->dup();
+    notify->setInt32("what", ACodec::kWhatSignaledInputEOS);
+
+    status_t err = mOMX->signalEndOfInputStream(mNode);
+    if (err != OK) {
+        notify->setInt32("err", err);
+    }
+    notify->post();
 }
 
 bool ACodec::ExecutingState::onOMXEvent(

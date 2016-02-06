@@ -29,7 +29,7 @@
 #include <utils/Trace.h>
 
 #include "ZslProcessor.h"
-#include <gui/SurfaceTextureClient.h>
+#include <gui/Surface.h>
 #include "../Camera2Device.h"
 #include "../Camera2Client.h"
 
@@ -117,14 +117,13 @@ status_t ZslProcessor::updateStream(const Parameters &params) {
 
     if (mZslConsumer == 0) {
         // Create CPU buffer queue endpoint
-        mZslConsumer = new BufferItemConsumer(
+		sp<BufferQueue> bq = new BufferQueue();
+        mZslConsumer = new BufferItemConsumer(bq,
             GRALLOC_USAGE_HW_CAMERA_ZSL,
-            kZslBufferDepth,
-            true);
+            kZslBufferDepth);
         mZslConsumer->setFrameAvailableListener(this);
         mZslConsumer->setName(String8("Camera2Client::ZslConsumer"));
-        mZslWindow = new SurfaceTextureClient(
-            mZslConsumer->getProducerInterface());
+        mZslWindow = new Surface(bq);
     }
 
     if (mZslStreamId != NO_STREAM) {
@@ -408,7 +407,7 @@ status_t ZslProcessor::processNewZslBuffer(sp<Camera2Client> &client) {
 
     ALOGVV("Trying to get next buffer");
     BufferItemConsumer::BufferItem item;
-    res = mZslConsumer->acquireBuffer(&item);
+    res = mZslConsumer->acquireBuffer(&item, 0);
     if (res != OK) {
         if (res != BufferItemConsumer::NO_BUFFER_AVAILABLE) {
             ALOGE("%s: Camera %d: Error receiving ZSL image buffer: "
